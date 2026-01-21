@@ -1,0 +1,23 @@
+{
+  "name": "@uni-status/licensing",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Keygen.sh license validation configuration for Uni-Status - DO NOT MODIFY",
+  "exports": {
+    ".": {
+      "types": "./keygen.ts",
+      "import": "./keygen.ts",
+      "default": "./keygen.ts"
+    }
+  },
+  "main": "./keygen.ts",
+  "types": "./keygen.ts",
+  "scripts": {
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  },
+  "license": "SEE LICENSE IN LICENSE"
+}

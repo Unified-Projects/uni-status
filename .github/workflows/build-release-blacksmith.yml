@@ -1,0 +1,95 @@
+name: Build Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., 1.0.0, 0.1.0-beta.1) - leave empty to use "dev"'
+        required: false
+        type: string
+
+env:
+  REGISTRY: docker.io
+  IMAGE_PREFIX: ${{ secrets.DOCKERHUB_USERNAME }}/uni-status
+
+jobs:
+  build-images:
+    name: Build service images
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: controller
+            dockerfile: apps/api/Dockerfile
+          - name: console
+            dockerfile: apps/web/Dockerfile
+          - name: workers
+            dockerfile: apps/workers/Dockerfile
+          - name: migrations
+            dockerfile: docker/db-migrate/Dockerfile
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@8e8c483
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@5e57cd1
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Setup Blacksmith Docker builder
+        uses: useblacksmith/setup-docker-builder@33fed32c1ba8775f20366ec9e8d0cd9fe8fc1dd3
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            VERSION="${{ github.event.release.tag_name }}"
+            VERSION="${VERSION#v}"
+            IS_PRERELEASE="${{ github.event.release.prerelease }}"
+          elif [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+            VERSION="${VERSION#v}"
+            IS_PRERELEASE="false"
+          else
+            VERSION="dev"
+            IS_PRERELEASE="false"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "is_prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@c299e40
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.name }}
+          tags: |
+            type=raw,value=${{ steps.version.outputs.version }}
+            type=raw,value=latest,enable=${{ steps.version.outputs.version != 'dev' && steps.version.outputs.is_prerelease != 'true' }}
+
+      - name: Build and push ${{ matrix.name }} image
+        id: docker-build
+        uses: useblacksmith/build-push-action@30c71162f16ea2c27c3e21523255d209b8b538c1
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          no-cache: true
+          pull: true
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: false
+          sbom: false
+
+      - name: Record artifact digest
+        if: steps.docker-build.outputs.digest != ''
+        run: |
+          echo "Image digest for ${{ matrix.name }}: ${{ steps.docker-build.outputs.digest }}"

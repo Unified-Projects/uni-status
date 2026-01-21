@@ -1,0 +1,47 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": [".env"],
+  "globalEnv": [
+    "DEPLOYMENT_TYPE",
+    "UNI_STATUS_URL",
+    "UNI_STATUS_DB_URL",
+    "UNI_STATUS_REDIS_URL",
+    "UNI_STATUS_AUTH_SECRET",
+    "UNI_STATUS_CORS_ENABLED",
+    "UNI_STATUS_CORS_ORIGINS"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "start": {
+      "dependsOn": ["build"]
+    },
+    "lint": {
+      "dependsOn": []
+    },
+    "type-check": {
+      "dependsOn": []
+    },
+    "test": {
+      "dependsOn": ["^build"]
+    },
+    "clean": {
+      "cache": false
+    },
+    "db:generate": {
+      "cache": false
+    },
+    "db:migrate": {
+      "cache": false
+    },
+    "db:push": {
+      "cache": false
+    }
+  }
+}

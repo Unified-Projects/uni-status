@@ -1,0 +1,40 @@
+# Dependencies - must be installed fresh in container for correct architecture
+node_modules
+**/node_modules
+
+# Build outputs
+.next
+**/.next
+dist
+**/dist
+.turbo
+**/.turbo
+
+# Development files
+.env
+.env.*
+!.env.example
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+coverage
+**/coverage
+tests/logs
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore

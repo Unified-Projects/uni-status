@@ -1,0 +1,73 @@
+{
+  "name": "@uni-status/enterprise",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "license": "SEE LICENSE IN LICENSE",
+  "exports": {
+    ".": "./src/index.ts",
+    "./database": "./src/database/index.ts",
+    "./database/schema": "./src/database/schema/index.ts",
+    "./api/routes": "./src/api/routes/index.ts",
+    "./api/middleware/license": "./src/api/middleware/license.ts",
+    "./workers": "./src/workers/processors/index.ts",
+    "./lib": "./src/lib/index.ts",
+    "./shared/roles": "./src/shared/roles-extended.ts",
+    "./web": "./src/web/index.ts",
+    "./web/components/audit": "./src/web/components/audit/index.ts",
+    "./web/components/team": "./src/web/components/team/index.ts",
+    "./web/components/settings": "./src/web/components/settings/index.ts",
+    "./web/components/banners": "./src/web/components/banners/index.ts",
+    "./web/hooks": "./src/web/hooks/index.ts"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:license": "vitest run tests/api/license.test.ts tests/api/webhooks.test.ts tests/integration/*.test.ts",
+    "test:unit": "vitest run tests/unit/**/*.test.ts",
+    "test:integration": "vitest run tests/integration/**/*.test.ts",
+    "test:workers": "vitest run tests/workers/**/*.test.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.958.0",
+    "@uni-status/database": "workspace:*",
+    "@uni-status/licensing": "workspace:*",
+    "@uni-status/shared": "workspace:*",
+    "@uni-status/ui": "workspace:*",
+    "bullmq": "^5.66.4",
+    "drizzle-orm": "^0.45.1",
+    "ioredis": "^5.6.0",
+    "postgres": "^3.4.5",
+    "puppeteer": "^24.34.0"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^2.1.8",
+    "@types/react": "^19.2.1",
+    "@types/react-dom": "^19.2.1",
+    "pg": "^8.13.1",
+    "nanoid": "^5.0.9",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "lucide-react": "^0.562.0",
+    "@tanstack/react-query": "^5.90.14",
+    "react-hook-form": "^7.69.0",
+    "@hookform/resolvers": "^5.0.0",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  },
+  "peerDependencies": {
+    "drizzle-orm": "^0.45.1",
+    "hono": "^4.11.0",
+    "@hono/zod-openapi": "^0.19.0",
+    "bullmq": "^5.66.4",
+    "react": "^19.0.0",
+    "lucide-react": "^0.562.0",
+    "@tanstack/react-query": "^5.90.14",
+    "react-hook-form": "^7.69.0",
+    "@hookform/resolvers": "^5.0.0",
+    "zod": "^3.23.8"
+  }
+}

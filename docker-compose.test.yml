@@ -1,0 +1,89 @@
+# Docker Compose for Testing with Self-Hosted Keygen.sh
+#
+# This configuration runs a local Keygen.sh instance for development
+# and testing purposes. DO NOT use for production.
+#
+# Usage:
+#   docker compose -f docker-compose.test.yml up -d
+#
+# Then set these environment variables:
+#   UNI_STATUS_KEYGEN_API_URL=http://localhost:3030/v1
+#   UNI_STATUS_KEYGEN_ACCOUNT_ID=test-account
+#   UNI_STATUS_KEYGEN_API_TOKEN=<generate in Keygen dashboard>
+
+services:
+  # Self-hosted Keygen.sh API
+  keygen:
+    image: keygen/api:latest
+    container_name: uni-status-keygen
+    restart: unless-stopped
+    ports:
+      - "3030:3000"
+    environment:
+      # Keygen.sh configuration
+      - KEYGEN_MODE=singleplayer
+      - SECRET_KEY_BASE=your-secret-key-base-at-least-64-characters-long-for-secure-encryption-in-testing
+      - KEYGEN_ACCOUNT_ID=test-account
+      - KEYGEN_EDITION=CE
+      # Database configuration (uses embedded SQLite by default)
+      - DATABASE_URL=sqlite3:///data/keygen.sqlite3
+      # Redis configuration (optional, for caching)
+      - REDIS_URL=redis://redis:6379/0
+      # Disable certain features for testing
+      - KEYGEN_HOST=localhost:3030
+      - KEYGEN_PROTOCOL=http
+    volumes:
+      - keygen_data:/data
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Redis for Keygen.sh caching
+  redis:
+    image: redis:7-alpine
+    container_name: uni-status-keygen-redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"  # Use different port to avoid conflicts
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Optional: PostgreSQL for Keygen.sh (instead of SQLite)
+  # Uncomment if you want to use PostgreSQL for more production-like testing
+  # keygen-postgres:
+  #   image: postgres:15-alpine
+  #   container_name: uni-status-keygen-postgres
+  #   restart: unless-stopped
+  #   environment:
+  #     - POSTGRES_USER=keygen
+  #     - POSTGRES_PASSWORD=keygen
+  #     - POSTGRES_DB=keygen
+  #   volumes:
+  #     - keygen_postgres_data:/var/lib/postgresql/data
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U keygen"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+
+volumes:
+  keygen_data:
+    driver: local
+  redis_data:
+    driver: local
+  # keygen_postgres_data:
+  #   driver: local
+
+networks:
+  default:
+    name: uni-status-test-network

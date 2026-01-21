@@ -1,0 +1,31 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "..",
+    "declaration": true,
+    "declarationMap": true,
+    "composite": true,
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "baseUrl": ".",
+    "paths": {
+      "@uni-status/database": ["../packages/database/src"],
+      "@uni-status/database/*": ["../packages/database/src/*"],
+      "@uni-status/shared": ["../packages/shared/src"],
+      "@uni-status/shared/*": ["../packages/shared/src/*"],
+      "@uni-status/licensing": ["../packages/licensing"],
+      "@uni-status/licensing/*": ["../packages/licensing/*"],
+      "@uni-status/ui": ["../packages/ui/src"],
+      "@uni-status/ui/*": ["../packages/ui/src/*"]
+    }
+  },
+  "include": [
+    "src/**/*",
+    "../packages/database/src/**/*",
+    "../packages/shared/src/**/*",
+    "../packages/licensing/**/*",
+    "../packages/ui/src/**/*"
+  ],
+  "exclude": ["node_modules", "dist", "tests"]
+}

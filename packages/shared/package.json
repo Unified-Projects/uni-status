@@ -1,0 +1,86 @@
+{
+  "name": "@uni-status/shared",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./types": {
+      "types": "./src/types/index.ts",
+      "default": "./src/types/index.ts"
+    },
+    "./types/permissions": {
+      "types": "./src/types/permissions.ts",
+      "default": "./src/types/permissions.ts"
+    },
+    "./validators": {
+      "types": "./src/validators/index.ts",
+      "default": "./src/validators/index.ts"
+    },
+    "./types/credentials": {
+      "types": "./src/types/credentials.ts",
+      "default": "./src/types/credentials.ts"
+    },
+    "./constants": {
+      "types": "./src/constants/index.ts",
+      "default": "./src/constants/index.ts"
+    },
+    "./constants/roles": {
+      "types": "./src/constants/roles.ts",
+      "default": "./src/constants/roles.ts"
+    },
+    "./crypto": {
+      "types": "./src/lib/crypto.ts",
+      "default": "./src/lib/crypto.ts"
+    },
+    "./lib/crypto": {
+      "types": "./src/lib/crypto.ts",
+      "default": "./src/lib/crypto.ts"
+    },
+    "./lib/webhook-signing": {
+      "types": "./src/lib/webhook-signing.ts",
+      "default": "./src/lib/webhook-signing.ts"
+    },
+    "./config": {
+      "types": "./src/config/env.ts",
+      "default": "./src/config/env.ts"
+    },
+    "./config/env": {
+      "types": "./src/config/env.ts",
+      "default": "./src/config/env.ts"
+    },
+    "./lib/keygen": {
+      "types": "./src/lib/keygen.ts",
+      "default": "./src/lib/keygen.ts"
+    },
+    "./lib/org-type": {
+      "types": "./src/lib/org-type.ts",
+      "default": "./src/lib/org-type.ts"
+    },
+    "./types/organization": {
+      "types": "./src/types/organization.ts",
+      "default": "./src/types/organization.ts"
+    },
+    "./lib/dns-resolver": {
+      "types": "./src/lib/dns-resolver.ts",
+      "default": "./src/lib/dns-resolver.ts"
+    },
+    "./lib/federation": {
+      "types": "./src/lib/federation.ts",
+      "default": "./src/lib/federation.ts"
+    }
+  },
+  "scripts": {
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@uni-status/licensing": "workspace:*",
+    "zod": "^4.3.5"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

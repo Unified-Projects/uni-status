@@ -1,0 +1,72 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+.next/
+.turbo/
+out/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# Misc
+*.pem
+*.key
+
+# Docker
+docker-compose.override.yml
+
+# Database
+*.sql.backup
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Drizzle
+drizzle/meta/
+
+# Build caches
+.cache/
+*.tsbuildinfo
+
+# Test artifacts
+tests/fixtures/nginx/certs/*.key
+tests/fixtures/nginx/certs/*.crt
+
+# Additional environment files
+.env.development
+.env.test
+.env.production
+
+# Editor metadata
+*.sublime-*
+
+# Temporary files
+tmp/
+temp/

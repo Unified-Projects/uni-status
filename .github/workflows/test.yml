@@ -1,0 +1,219 @@
+name: Test Suite
+
+on:
+    push:
+        branches: [main, develop]
+        paths-ignore:
+            - "**/*.md"
+            - "docs/**"
+            - "LICENSE*"
+            - ".vscode/**"
+            - ".editorconfig"
+    pull_request:
+        branches:
+            - main
+        paths-ignore:
+            - "**/*.md"
+            - "docs/**"
+            - "LICENSE*"
+            - ".vscode/**"
+            - ".editorconfig"
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+permissions:
+    contents: read
+
+jobs:
+    lint:
+        name: Lint
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@8e8c483
+
+            - name: Setup pnpm
+              uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061
+
+            - name: Setup Node.js
+              uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f
+              with:
+                  node-version: "20"
+                  cache: "pnpm"
+
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+
+            - name: Lint
+              run: pnpm lint
+
+    validate:
+        name: Validate
+        needs: lint
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@8e8c483
+
+            - name: Setup pnpm
+              uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061
+
+            - name: Setup Node.js
+              uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f
+              with:
+                  node-version: "20"
+                  cache: "pnpm"
+
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76
+              with:
+                  bun-version: "1.3.2"
+
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+
+            - name: Type check
+              id: typecheck
+              run: pnpm type-check
+
+            - name: Build
+              id: build
+              run: pnpm build
+
+            - name: Write validation summary
+              if: always()
+              run: |
+                  echo "## Validation Results" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+                  echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+                  if [ "${{ steps.typecheck.outcome }}" == "success" ]; then
+                    echo "| Type Check | Passed |" >> $GITHUB_STEP_SUMMARY
+                  else
+                    echo "| Type Check | Failed |" >> $GITHUB_STEP_SUMMARY
+                  fi
+                  if [ "${{ steps.build.outcome }}" == "success" ]; then
+                    echo "| Build | Passed |" >> $GITHUB_STEP_SUMMARY
+                  else
+                    echo "| Build | Failed |" >> $GITHUB_STEP_SUMMARY
+                  fi
+
+            - name: Fail if validation failed
+              if: steps.typecheck.outcome == 'failure' || steps.build.outcome == 'failure'
+              run: exit 1
+
+    test:
+        name: Integration Tests
+        needs: validate
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Clean up any previous containers
+              run: |
+                  docker ps -aq --filter "name=uni-status-*-test" | xargs -r docker rm -f 2>/dev/null || true
+                  docker ps -aq --filter "name=uni-status-test-runner" | xargs -r docker rm -f 2>/dev/null || true
+                  docker volume ls -q --filter "name=tests_" | xargs -r docker volume rm -f 2>/dev/null || true
+                  docker volume ls -q --filter "name=postgres_data_test" | xargs -r docker volume rm -f 2>/dev/null || true
+                  docker volume ls -q --filter "name=redis_data_test" | xargs -r docker volume rm -f 2>/dev/null || true
+                  docker volume ls -q --filter "name=test_logs" | xargs -r docker volume rm -f 2>/dev/null || true
+                  if [ -f "${{ github.workspace }}/tests/docker-compose.yml" ]; then
+                    cd "${{ github.workspace }}/tests" && docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v --remove-orphans 2>/dev/null || true
+                  fi
+                  docker system prune -f --filter "until=24h" || true
+
+            - name: Checkout repository
+              uses: actions/checkout@8e8c483
+              with:
+                  clean: true
+
+            - name: Generate test SSL certificates
+              working-directory: tests/fixtures/nginx/certs
+              run: |
+                  openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                    -keyout server.key -out server.crt \
+                    -subj "/CN=localhost/O=Test/C=US" \
+                    -addext "subjectAltName=DNS:localhost,DNS=nginx-ssl,IP:127.0.0.1" 2>/dev/null || true
+
+            - name: Build and run test suite
+              id: tests
+              working-directory: tests
+              run: |
+                  docker compose -f docker-compose.yml -f docker-compose.ci.yml build
+
+                  docker compose -f docker-compose.yml -f docker-compose.ci.yml up \
+                    --abort-on-container-exit \
+                    --exit-code-from test-runner \
+                    test-runner
+
+            - name: Extract test results for summary
+              if: always()
+              working-directory: tests
+              run: |
+                  mkdir -p logs
+                  docker run --rm -v tests_test_logs:/src -v $(pwd)/logs:/dst alpine sh -c "cp -r /src/* /dst/ 2>/dev/null || true"
+
+                  echo "## Integration Test Results" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  if [ -d logs ] && ls logs/run-*.txt 1> /dev/null 2>&1; then
+                    LATEST_LOG=$(ls -t logs/run-*.txt | head -1)
+                    if grep -q "Tests:" "$LATEST_LOG" 2>/dev/null; then
+                      echo "### Test Summary" >> $GITHUB_STEP_SUMMARY
+                      echo '```' >> $GITHUB_STEP_SUMMARY
+                      grep -E "(Tests:|Duration:|Files:)" "$LATEST_LOG" | tail -10 >> $GITHUB_STEP_SUMMARY
+                      echo '```' >> $GITHUB_STEP_SUMMARY
+                    else
+                      echo "Test output available in artifacts" >> $GITHUB_STEP_SUMMARY
+                    fi
+                  else
+                    echo "No test logs found" >> $GITHUB_STEP_SUMMARY
+                  fi
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  if [ "${{ steps.tests.outcome }}" == "success" ]; then
+                    echo "**Status:** Passed" >> $GITHUB_STEP_SUMMARY
+                  else
+                    echo "**Status:** Failed" >> $GITHUB_STEP_SUMMARY
+                  fi
+
+            - name: Show logs on failure
+              if: failure()
+              working-directory: tests
+              run: |
+                  echo "=== API Container Logs ==="
+                  docker compose -f docker-compose.yml -f docker-compose.ci.yml logs api --tail=100
+                  echo ""
+                  echo "=== HAProxy Logs ==="
+                  docker compose -f docker-compose.yml -f docker-compose.ci.yml logs haproxy --tail=100
+                  echo ""
+                  echo "=== Workers Logs ==="
+                  docker compose -f docker-compose.yml -f docker-compose.ci.yml logs workers --tail=100
+                  echo ""
+                  echo "=== DB Migrate Logs ==="
+                  docker compose -f docker-compose.yml -f docker-compose.ci.yml logs db-migrate --tail=50
+                  echo ""
+                  echo "=== Postgres Logs ==="
+                  docker compose -f docker-compose.yml -f docker-compose.ci.yml logs postgres --tail=50
+                  echo ""
+                  echo "=== Test Runner Logs ==="
+                  docker compose -f docker-compose.yml -f docker-compose.ci.yml logs test-runner --tail=200
+                  echo ""
+                  echo "=== All Container Status ==="
+                  docker compose -f docker-compose.yml -f docker-compose.ci.yml ps -a
+
+            - name: Upload test logs
+              if: always()
+              uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+              with:
+                  name: test-logs
+                  path: tests/logs/
+                  retention-days: 7
+
+            - name: Cleanup
+              if: always()
+              working-directory: tests
+              run: |
+                  docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v --remove-orphans
+                  docker system prune -f --filter "until=24h" || true

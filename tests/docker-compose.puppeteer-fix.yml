@@ -1,0 +1,5 @@
+# Override file to fix Puppeteer on Apple Silicon (M1/M2/M3)
+# Forces workers service to run under linux/amd64 emulation
+services:
+  workers:
+    platform: linux/amd64

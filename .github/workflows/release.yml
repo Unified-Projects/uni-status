@@ -1,0 +1,83 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number (e.g., 1.0.0, 0.1.0-beta.1)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        type: boolean
+        default: false
+      draft:
+        description: 'Create as draft'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@8e8c483
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
+          if [ -z "$PREVIOUS_TAG" ]; then
+            echo "No previous tag found, generating changelog from all commits"
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges | head -50)
+          else
+            echo "Generating changelog since $PREVIOUS_TAG"
+            CHANGELOG=$(git log ${PREVIOUS_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
+          fi
+
+          echo "$CHANGELOG" > changelog.txt
+          echo "previous_tag=$PREVIOUS_TAG" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="v${{ inputs.version }}"
+          PRERELEASE_FLAG=""
+          DRAFT_FLAG=""
+
+          if [ "${{ inputs.prerelease }}" = "true" ]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+
+          if [ "${{ inputs.draft }}" = "true" ]; then
+            DRAFT_FLAG="--draft"
+          fi
+
+          gh release create "$VERSION" \
+            --title "Release $VERSION" \
+            --notes-file changelog.txt \
+            $PRERELEASE_FLAG \
+            $DRAFT_FLAG
+
+      - name: Output release info
+        run: |
+          echo "Created release v${{ inputs.version }}"
+          echo "Pre-release: ${{ inputs.prerelease }}"
+          echo "Draft: ${{ inputs.draft }}"
+
+  build-images:
+    name: Build and push Docker images
+    needs: create-release
+    uses: ./.github/workflows/build-release-blacksmith.yml
+    with:
+      version: ${{ inputs.version }}
+    secrets: inherit

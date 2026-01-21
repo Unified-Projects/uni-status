@@ -1,0 +1,357 @@
+@import "tailwindcss";
+@config "../../tailwind.config.ts";
+
+@layer base {
+    :root {
+        --background: 0 0% 100%;
+        --foreground: 222.2 84% 4.9%;
+        --card: 0 0% 100%;
+        --card-foreground: 222.2 84% 4.9%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 222.2 84% 4.9%;
+        --primary: 160 84% 39%;
+        --primary-foreground: 210 40% 98%;
+        --secondary: 210 40% 96.1%;
+        --secondary-foreground: 222.2 47.4% 11.2%;
+        --muted: 210 40% 96.1%;
+        --muted-foreground: 215.4 16.3% 46.9%;
+        --accent: 210 40% 96.1%;
+        --accent-foreground: 222.2 47.4% 11.2%;
+        --destructive: 0 84.2% 60.2%;
+        --destructive-foreground: 210 40% 98%;
+        --border: 214.3 31.8% 91.4%;
+        --input: 214.3 31.8% 91.4%;
+        --ring: 160 84% 39%;
+        --radius: 0.5rem;
+
+        /* Status color semantic variables - light mode */
+        /* Success (green) - active/operational/resolved states */
+        --status-success-solid: #22c55e;
+        --status-success-solid-hover: #16a34a;
+        --status-success-bg: #dcfce7;
+        --status-success-bg-subtle: #f0fdf4;
+        --status-success-text: #166534;
+        --status-success-border: #bbf7d0;
+        --status-success-icon: #16a34a;
+
+        /* Warning (yellow) - degraded/investigating states */
+        --status-warning-solid: #eab308;
+        --status-warning-solid-hover: #ca8a04;
+        --status-warning-bg: #fef9c3;
+        --status-warning-bg-subtle: #fefce8;
+        --status-warning-text: #854d0e;
+        --status-warning-border: #fde047;
+        --status-warning-icon: #ca8a04;
+
+        /* Error (red) - down/critical states */
+        --status-error-solid: #ef4444;
+        --status-error-solid-hover: #dc2626;
+        --status-error-bg: #fee2e2;
+        --status-error-bg-subtle: #fef2f2;
+        --status-error-text: #991b1b;
+        --status-error-border: #fecaca;
+        --status-error-icon: #dc2626;
+
+        /* Info (blue) - monitoring/active maintenance states */
+        --status-info-solid: #3b82f6;
+        --status-info-solid-hover: #2563eb;
+        --status-info-bg: #dbeafe;
+        --status-info-bg-subtle: #eff6ff;
+        --status-info-text: #1e40af;
+        --status-info-border: #bfdbfe;
+        --status-info-icon: #2563eb;
+
+        /* Orange - identified states */
+        --status-orange-solid: #f97316;
+        --status-orange-solid-hover: #ea580c;
+        --status-orange-bg: #ffedd5;
+        --status-orange-bg-subtle: #fff7ed;
+        --status-orange-text: #9a3412;
+        --status-orange-border: #fed7aa;
+        --status-orange-icon: #ea580c;
+
+        /* Gray - paused/pending/disabled states */
+        --status-gray-solid: #6b7280;
+        --status-gray-solid-hover: #4b5563;
+        --status-gray-bg: #f3f4f6;
+        --status-gray-bg-subtle: #f9fafb;
+        --status-gray-text: #4b5563;
+        --status-gray-border: #e5e7eb;
+        --status-gray-icon: #6b7280;
+
+        /* Purple - scheduled/maintenance states */
+        --status-purple-solid: #a855f7;
+        --status-purple-solid-hover: #9333ea;
+        --status-purple-bg: #f3e8ff;
+        --status-purple-bg-subtle: #faf5ff;
+        --status-purple-text: #6b21a8;
+        --status-purple-border: #e9d5ff;
+        --status-purple-icon: #9333ea;
+
+        /* Status page variables - inherit from dashboard theme when not custom themed */
+        --status-text: hsl(var(--foreground));
+        --status-muted-text: hsl(var(--muted-foreground));
+        --status-bg: hsl(var(--background));
+        --status-card: hsl(var(--card));
+        --status-muted: hsl(var(--muted));
+        --status-border: hsl(var(--border));
+        --status-primary: hsl(var(--primary));
+    }
+
+    .dark {
+        --background: 222.2 84% 4.9%;
+        --foreground: 210 40% 98%;
+        --card: 222.2 84% 4.9%;
+        --card-foreground: 210 40% 98%;
+        --popover: 222.2 84% 4.9%;
+        --popover-foreground: 210 40% 98%;
+        --primary: 160 84% 39%;
+        --primary-foreground: 222.2 47.4% 11.2%;
+        --secondary: 217.2 32.6% 17.5%;
+        --secondary-foreground: 210 40% 98%;
+        --muted: 217.2 32.6% 17.5%;
+        --muted-foreground: 215 20.2% 65.1%;
+        --accent: 217.2 32.6% 17.5%;
+        --accent-foreground: 210 40% 98%;
+        --destructive: 0 84.2% 60.2%;
+        --destructive-foreground: 210 40% 98%;
+        --border: 217.2 32.6% 17.5%;
+        --input: 217.2 32.6% 17.5%;
+        --ring: 160 84% 39%;
+
+        /* Status color semantic variables - dark mode */
+        /* Success (green) - active/operational/resolved states */
+        --status-success-solid: #22c55e;
+        --status-success-solid-hover: #4ade80;
+        --status-success-bg: #14532d;
+        --status-success-bg-subtle: #052e16;
+        --status-success-text: #86efac;
+        --status-success-border: #166534;
+        --status-success-icon: #4ade80;
+
+        /* Warning (yellow) - degraded/investigating states */
+        --status-warning-solid: #eab308;
+        --status-warning-solid-hover: #facc15;
+        --status-warning-bg: #713f12;
+        --status-warning-bg-subtle: #422006;
+        --status-warning-text: #fde047;
+        --status-warning-border: #854d0e;
+        --status-warning-icon: #facc15;
+
+        /* Error (red) - down/critical states */
+        --status-error-solid: #ef4444;
+        --status-error-solid-hover: #f87171;
+        --status-error-bg: #7f1d1d;
+        --status-error-bg-subtle: #450a0a;
+        --status-error-text: #fca5a5;
+        --status-error-border: #991b1b;
+        --status-error-icon: #f87171;
+
+        /* Info (blue) - monitoring/active maintenance states */
+        --status-info-solid: #3b82f6;
+        --status-info-solid-hover: #60a5fa;
+        --status-info-bg: #1e3a8a;
+        --status-info-bg-subtle: #172554;
+        --status-info-text: #93c5fd;
+        --status-info-border: #1e40af;
+        --status-info-icon: #60a5fa;
+
+        /* Orange - identified states */
+        --status-orange-solid: #f97316;
+        --status-orange-solid-hover: #fb923c;
+        --status-orange-bg: #7c2d12;
+        --status-orange-bg-subtle: #431407;
+        --status-orange-text: #fdba74;
+        --status-orange-border: #9a3412;
+        --status-orange-icon: #fb923c;
+
+        /* Gray - paused/pending/disabled states */
+        --status-gray-solid: #6b7280;
+        --status-gray-solid-hover: #9ca3af;
+        --status-gray-bg: #374151;
+        --status-gray-bg-subtle: #1f2937;
+        --status-gray-text: #9ca3af;
+        --status-gray-border: #4b5563;
+        --status-gray-icon: #9ca3af;
+
+        /* Purple - scheduled/maintenance states */
+        --status-purple-solid: #a855f7;
+        --status-purple-solid-hover: #c084fc;
+        --status-purple-bg: #581c87;
+        --status-purple-bg-subtle: #3b0764;
+        --status-purple-text: #d8b4fe;
+        --status-purple-border: #7e22ce;
+        --status-purple-icon: #c084fc;
+
+        /* Status page variables - inherit from dashboard theme when not custom themed (dark mode) */
+        --status-text: hsl(var(--foreground));
+        --status-muted-text: hsl(var(--muted-foreground));
+        --status-bg: hsl(var(--background));
+        --status-card: hsl(var(--card));
+        --status-muted: hsl(var(--muted));
+        --status-border: hsl(var(--border));
+        --status-primary: hsl(var(--primary));
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+
+    body {
+        @apply bg-background text-foreground;
+    }
+
+    /* Hide scrollbar for Chrome, Safari and Opera */
+    ::-webkit-scrollbar {
+        display: none;
+    }
+
+    /* Hide scrollbar for IE, Edge and Firefox */
+    html {
+        -ms-overflow-style: none;
+        /* IE and Edge */
+        scrollbar-width: none;
+        /* Firefox */
+    }
+
+    /* Color picker styling - fill the entire square */
+    input[type="color"] {
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        appearance: none;
+        background: none;
+        border: none;
+        cursor: pointer;
+    }
+
+    input[type="color"]::-webkit-color-swatch-wrapper {
+        padding: 0;
+    }
+
+    input[type="color"]::-webkit-color-swatch {
+        border: none;
+        border-radius: 0.5rem;
+    }
+
+    input[type="color"]::-moz-color-swatch {
+        border: none;
+        border-radius: 0.5rem;
+    }
+
+    /* Leaflet popup theming for dark/light mode */
+    .leaflet-popup-content-wrapper {
+        background-color: hsl(var(--card));
+        color: hsl(var(--card-foreground));
+        border-radius: 0.5rem;
+        box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        border: 1px solid hsl(var(--border));
+    }
+
+    .dark .leaflet-popup-content-wrapper {
+        box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.2);
+    }
+
+    .leaflet-popup-tip {
+        background-color: hsl(var(--card));
+        border-left: 1px solid hsl(var(--border));
+        border-bottom: 1px solid hsl(var(--border));
+    }
+
+    .leaflet-popup-content {
+        margin: 0.75rem;
+        color: hsl(var(--card-foreground));
+    }
+
+    .leaflet-popup-close-button {
+        color: hsl(var(--muted-foreground)) !important;
+        font-size: 20px !important;
+        width: 24px !important;
+        height: 24px !important;
+        padding: 0 !important;
+        top: 4px !important;
+        right: 4px !important;
+    }
+
+    .leaflet-popup-close-button:hover {
+        color: hsl(var(--foreground)) !important;
+        background-color: hsl(var(--muted)) !important;
+        border-radius: 4px;
+    }
+
+    /* Leaflet zoom controls theming */
+    .leaflet-control-zoom {
+        border: 1px solid hsl(var(--border)) !important;
+        border-radius: 0.5rem !important;
+        overflow: hidden;
+        box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    }
+
+    .dark .leaflet-control-zoom {
+        box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.2);
+    }
+
+    .leaflet-control-zoom-in,
+    .leaflet-control-zoom-out {
+        background-color: hsl(var(--card)) !important;
+        color: hsl(var(--card-foreground)) !important;
+        border: none !important;
+        width: 32px !important;
+        height: 32px !important;
+        line-height: 32px !important;
+        font-size: 18px !important;
+        font-weight: 500 !important;
+    }
+
+    .leaflet-control-zoom-in:hover,
+    .leaflet-control-zoom-out:hover {
+        background-color: hsl(var(--muted)) !important;
+        color: hsl(var(--foreground)) !important;
+    }
+
+    .leaflet-control-zoom-in {
+        border-bottom: 1px solid hsl(var(--border)) !important;
+        border-radius: 0.5rem 0.5rem 0 0 !important;
+    }
+
+    .leaflet-control-zoom-out {
+        border-radius: 0 0 0.5rem 0.5rem !important;
+    }
+
+    .leaflet-disabled {
+        opacity: 0.4 !important;
+        cursor: not-allowed !important;
+    }
+
+    /* Leaflet attribution theming */
+    .leaflet-control-attribution {
+        background-color: hsl(var(--card) / 0.85) !important;
+        color: hsl(var(--muted-foreground)) !important;
+        font-size: 10px !important;
+        padding: 2px 6px !important;
+        border-radius: 4px 0 0 0;
+        backdrop-filter: blur(4px);
+    }
+
+    .leaflet-control-attribution a {
+        color: hsl(var(--primary)) !important;
+    }
+
+    .leaflet-control-attribution a:hover {
+        color: hsl(var(--primary)) !important;
+        text-decoration: underline;
+    }
+
+    /* Leaflet container background to match theme */
+    .leaflet-container {
+        background-color: hsl(var(--muted));
+        font-family: inherit;
+    }
+
+    /* Custom marker styling fixes */
+    .custom-marker {
+        background: transparent !important;
+        border: none !important;
+    }
+}

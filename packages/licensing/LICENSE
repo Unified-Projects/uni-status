@@ -1,0 +1,29 @@
+KEYGEN LICENSING CONFIGURATION - DO NOT MODIFY
+
+Copyright (c) 2025 Unified Projects Ltd. All rights reserved.
+
+NOTICE: The files in this directory contain cryptographic keys and
+identifiers used for license validation of Uni-Status Enterprise features.
+
+TERMS:
+1. The contents of this directory (including but not limited to keygen.ts,
+   and any cryptographic keys contained therein) MUST NOT be modified,
+   altered, or replaced in any derivative works or forks of this software.
+
+2. These files are provided solely for the purpose of validating licenses
+   purchased from Unified Projects Ltd through the official channels.
+
+3. Any attempt to modify, bypass, or circumvent the license validation
+   mechanism is strictly prohibited and may constitute a violation of
+   applicable laws including but not limited to copyright law and the
+   Computer Fraud and Abuse Act.
+
+4. The public key contained herein is the property of Unified Projects Ltd.
+   and is provided for license verification purposes only.
+
+5. Forking or redistributing this software does not grant any rights to
+   modify the licensing validation mechanism or the cryptographic keys
+   used therein.
+
+For licensing inquiries: licensing@unified.sh
+For purchasing enterprise licenses: https://status.unified.sh/pricing

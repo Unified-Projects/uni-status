@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200" width="800" height="200">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0F172A"/>
+      <stop offset="100%" style="stop-color:#1E293B"/>
+    </linearGradient>
+    <linearGradient id="chartFill" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="5%" style="stop-color:#10b981;stop-opacity:0.15"/>
+      <stop offset="95%" style="stop-color:#10b981;stop-opacity:0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="800" height="200" fill="url(#bgGrad)" rx="8"/>
+
+  <!-- Logo -->
+  <g transform="translate(40, 35) scale(0.32)">
+    <path fill="#065f46" d="m299.5 46.5q12 10 25 19 30.2 25.5 46.5 62 3.9 9.3 6.5 19 4 21.8 8 43 0 3.5 0 7-0.5 0-1 0-42.9-38.6-101-32.5-12.5 0.9-24 4.5-0.5 0-1 0-18.2-10.9-37-21.5-33-25-68-47-67.6-32.5-121 19.5 6.6-14.8 17-27 16.2-17.6 34-33.5 1.9-1.7 3.5-0.5 0.6-2.1 1.5-4 8.7-7.2 19-12 2.1 0.2 4-0.5 21.2-10.6 43-17.5 57.6-11.2 113 7.5 16.1 6.8 32 14.5z"/>
+    <path fill="#065f46" d="m299.5 46.5q-15.9-7.7-32-14.5-55.4-18.7-113-7.5 61.2-15.3 120 8.5 13 6 25 13.5z"/>
+    <path fill="#065f46" d="m154.5 24.5q-21.8 6.9-43 17.5-1.9 0.7-4 0.5 21.8-13.1 47-18z"/>
+    <path fill="#065f46" d="m299.5 46.5q13.8 7.8 25 19-13-9-25-19z"/>
+    <path fill="#065f46" d="m88.5 54.5q-0.9 1.9-1.5 4-1.6-1.2-3.5 0.5-17.8 15.9-34 33.5 15.6-23.1 39-38z"/>
+    <path fill="#ef4444" d="m258.5 168.5q-10 3.1-20 6.5-29.7 13.3-60 25-38 14.5-78 7-19.9-5.2-36-17.5-21.6-24.8-38-53.5 1.1-2.6 1-5.5 1.3-6.1 5-11 53.4-52 121-19.5 35 22 68 47 18.8 10.6 37 21.5z"/>
+    <path fill="#047857" d="m27.5 130.5q0.1 2.9-1 5.5 16.4 28.7 38 53.5 32.8 40.1 76 68.5 12.9 8 27 13.5 41.3 18 86 9.5 17-3 34-6 41.3-6.8 74 18.5-8.1 14.1-19 26-27.6-15.2-59-10.5-13.4 2.1-26 7-30 15.9-60 32-31.1 15-65.5 16.5-6.3-0.3-12.5-0.5-7.6-1.5-15-3.5-70.3-43-88.5-124-4.7-24.8-2.5-50 0.8-4.6 3-9-1.3-2.9-1-6 3-21.5 12-41z"/>
+    <path fill="#f97316" d="m384.5 196.5q-15.5 6.1-32 9.5-22.2 1.4-42-9-26.1-13.5-51-28.5 11.5-3.6 24-4.5 58.1-6.1 101 32.5z"/>
+    <path fill="#065f46" d="m377.5 146.5q7.4 20.7 8 43-4-21.2-8-43z"/>
+    <path fill="#f97316" d="m258.5 168.5q0.5 0 1 0 24.9 15 51 28.5 19.8 10.4 42 9 16.5-3.4 32-9.5 0.5 0 1 0 1.6 24.6-5 48-1.1 0.6-1.5 2-31-24.6-70.5-18.5-18.5 3.2-36 10-29.1 13.2-58 27-22.7 9.6-47 6.5-14.1-5.5-27-13.5-43.2-28.4-76-68.5 16.1 12.3 36 17.5 40 7.5 78-7 30.3-11.7 60-25 10-3.4 20-6.5z"/>
+    <path fill="#047857" d="m15.5 171.5q-0.3 3.1 1 6-2.2 4.4-3 9-0.3-7.9 2-15z"/>
+    <path fill="#ef4444" d="m380.5 244.5q-5.8 26-19 49-32.7-25.3-74-18.5-17 3-34 6-44.7 8.5-86-9.5 24.3 3.1 47-6.5 28.9-13.8 58-27 17.5-6.8 36-10 39.5-6.1 70.5 18.5 0.4-1.4 1.5-2z"/>
+    <path fill="#064e3b" d="m342.5 319.5q-35.7 44.6-91 60-4-0.1-7 2-0.5 0-1 0-22.4 3.4-45 4-19.6-0.5-39-3-30-5.3-55-22 7.4 2 15 3.5 6.3 0.3 12.5 0.5 34.4-1.5 65.5-16.5 30-16.1 60-32 12.6-4.9 26-7 31.4-4.7 59 10.5z"/>
+    <path fill="#064e3b" opacity="0.19" d="m251.5 379.5q-3 2.1-7 2 3-2.1 7-2z"/>
+    <path fill="#064e3b" d="m243.5 381.5q-41.9 11.3-84 1 19.4 2.5 39 3 22.6-0.6 45-4z"/>
+  </g>
+
+  <!-- Title -->
+  <text x="200" y="90" font-family="system-ui, -apple-system, sans-serif" font-size="42" font-weight="600" fill="#F8FBFE">Uni-Status</text>
+
+  <!-- Uptime Bar (90 day style) -->
+  <g transform="translate(200, 110)">
+    <rect x="0" y="0" width="8" height="24" rx="2" fill="#22c55e"/>
+    <rect x="10" y="0" width="8" height="24" rx="0" fill="#22c55e"/>
+    <rect x="20" y="0" width="8" height="24" rx="0" fill="#22c55e"/>
+    <rect x="30" y="0" width="8" height="24" rx="0" fill="#22c55e"/>
+    <rect x="40" y="0" width="8" height="24" rx="0" fill="#22c55e"/>
+    <rect x="50" y="0" width="8" height="24" rx="0" fill="#22c55e"/>
+    <rect x="60" y="0" width="8" height="24" rx="0" fill="#eab308"/>
+    <rect x="70" y="0" width="8" height="24" rx="0" fill="#22c55e"/>
+    <rect x="80" y="0" width="8" height="24" rx="0" fill="#22c55e"/>
+    <rect x="90" y="0" width="8" height="24" rx="0" fill="#22c55e"/>
+    <rect x="100" y="0" width="8" height="24" rx="0" fill="#22c55e"/>
+    <rect x="110" y="0" width="8" height="24" rx="0" fill="#22c55e"/>
+    <rect x="120" y="0" width="8" height="24" rx="0" fill="#ef4444"/>
+    <rect x="130" y="0" width="8" height="24" rx="0" fill="#22c55e"/>
+    <rect x="140" y="0" width="8" height="24" rx="0" fill="#22c55e"/>
+    <rect x="150" y="0" width="8" height="24" rx="0" fill="#22c55e"/>
+    <rect x="160" y="0" width="8" height="24" rx="0" fill="#22c55e"/>
+    <rect x="170" y="0" width="8" height="24" rx="0" fill="#22c55e"/>
+    <rect x="180" y="0" width="8" height="24" rx="2" fill="#22c55e"/>
+    <text x="200" y="18" font-family="system-ui, -apple-system, sans-serif" font-size="14" fill="#94A3B8">99.9%</text>
+  </g>
+
+  <!-- Response Time Chart -->
+  <g transform="translate(500, 50)">
+    <!-- Grid lines -->
+    <line x1="0" y1="0" x2="250" y2="0" stroke="#334155" stroke-width="1" stroke-dasharray="3 3"/>
+    <line x1="0" y1="35" x2="250" y2="35" stroke="#334155" stroke-width="1" stroke-dasharray="3 3"/>
+    <line x1="0" y1="70" x2="250" y2="70" stroke="#334155" stroke-width="1" stroke-dasharray="3 3"/>
+
+    <!-- Chart fill -->
+    <path d="M0,50 L25,45 L50,55 L75,40 L100,48 L125,35 L150,42 L175,38 L200,45 L225,40 L250,42 L250,70 L0,70 Z" fill="url(#chartFill)"/>
+
+    <!-- Chart line -->
+    <path d="M0,50 L25,45 L50,55 L75,40 L100,48 L125,35 L150,42 L175,38 L200,45 L225,40 L250,42" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Active dot -->
+    <circle cx="250" cy="42" r="5" fill="#10b981" stroke="#fff" stroke-width="2"/>
+
+    <!-- Labels -->
+    <text x="0" y="90" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#6b7280">24h</text>
+    <text x="230" y="90" font-family="system-ui, -apple-sans-serif" font-size="11" fill="#6b7280">now</text>
+    <text x="125" y="110" font-family="system-ui, -apple-system, sans-serif" font-size="12" fill="#94A3B8">Response Time</text>
+  </g>
+
+  <!-- Bottom accent -->
+  <rect x="0" y="196" width="800" height="4" rx="0" fill="#10b981"/>
+</svg>

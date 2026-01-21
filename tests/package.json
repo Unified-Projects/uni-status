@@ -1,0 +1,17 @@
+{
+  "name": "@uni-status/tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
+    "@types/pg": "^8.11.10",
+    "bcrypt": "^5.1.1",
+    "nanoid": "^5.0.9",
+    "pg": "^8.13.1",
+    "vitest": "^2.1.4"
+  }
+}

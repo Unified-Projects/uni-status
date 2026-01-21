@@ -1,0 +1,153 @@
+# CI override - use production builds and fix volume mount issues
+services:
+  # Postgres - use !reset to clear inherited volumes and avoid file mount issues
+  postgres:
+    volumes: !reset
+      - postgres_data_test:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+      target: production
+    environment:
+      - DEPLOYMENT_TYPE=SELF-HOSTED
+      - NODE_ENV=test
+      - UNI_STATUS_URL=http://haproxy
+      - UNI_STATUS_DB_URL=postgresql://${POSTGRES_USER:-uni_status}:${POSTGRES_PASSWORD:-uni_status_dev}@postgres:5432/${POSTGRES_DB:-uni_status}?sslmode=disable
+      - UNI_STATUS_REDIS_URL=redis://redis:6379
+      - UNI_STATUS_API_PORT=3001
+      - RUN_REPORTS_INLINE=1
+      - UNI_STATUS_AUTH_SECRET=${UNI_STATUS_AUTH_SECRET:-super-secret-key-change-in-production-32}
+      - UNI_STATUS_CORS_ENABLED=true
+      - UNI_STATUS_DISABLE_RATE_LIMITS=true
+      # Keygen.sh licensing (for webhook verification in tests)
+      - UNI_STATUS_KEYGEN_WEBHOOK_SECRET=${UNI_STATUS_KEYGEN_WEBHOOK_SECRET:-test-webhook-secret}
+    volumes:
+      - reports_data_test:/app/reports
+      - uploads_data_test:/app/uploads
+
+  web:
+    environment:
+      - DEPLOYMENT_TYPE=SELF-HOSTED
+      - NODE_ENV=test
+      - UNI_STATUS_URL=http://haproxy
+      - UNI_STATUS_DB_URL=postgresql://${POSTGRES_USER:-uni_status}:${POSTGRES_PASSWORD:-uni_status_dev}@postgres:5432/${POSTGRES_DB:-uni_status}?sslmode=disable
+      - UNI_STATUS_AUTH_SECRET=${UNI_STATUS_AUTH_SECRET:-super-secret-key-change-in-production-32}
+
+  workers:
+    build:
+      context: ..
+      dockerfile: apps/workers/Dockerfile
+      target: production
+    environment:
+      - DEPLOYMENT_TYPE=SELF-HOSTED
+      - NODE_ENV=test
+      - UNI_STATUS_URL=http://haproxy
+      - UNI_STATUS_DB_URL=postgresql://${POSTGRES_USER:-uni_status}:${POSTGRES_PASSWORD:-uni_status_dev}@postgres:5432/${POSTGRES_DB:-uni_status}?sslmode=disable
+      - UNI_STATUS_REDIS_URL=redis://redis:6379
+      - UNI_STATUS_SMTP_HOST=${SMTP_HOST:-mailhog}
+      - UNI_STATUS_SMTP_PORT=${SMTP_PORT:-1025}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-uni_status}:${POSTGRES_PASSWORD:-uni_status_dev}@postgres:5432/${POSTGRES_DB:-uni_status}?sslmode=disable
+      - REDIS_URL=redis://redis:6379
+      - SMTP_HOST=${SMTP_HOST:-mailhog}
+      - SMTP_PORT=${SMTP_PORT:-1025}
+    volumes:
+      - reports_data_test:/app/reports
+
+  # HAProxy - write config at runtime to avoid file mount issues
+  haproxy:
+    volumes: []
+    entrypoint:
+      - sh
+      - -c
+      - |
+        cat > /tmp/haproxy.cfg << 'HAPROXY_CFG'
+        global
+            log stdout format raw local0
+            maxconn 4096
+        defaults
+            log global
+            mode http
+            option httplog
+            option dontlognull
+            option forwardfor
+            timeout connect 5s
+            timeout client 50s
+            timeout server 50s
+        frontend http_front
+            bind *:80
+            acl is_auth path_beg /api/auth
+            use_backend web_backend if is_auth
+            acl is_api path_beg /api
+            use_backend api_backend if is_api
+            default_backend web_backend
+        backend api_backend
+            balance roundrobin
+            server api api:3001 check
+        backend web_backend
+            balance roundrobin
+            server web web:3000 check
+        HAPROXY_CFG
+        exec haproxy -f /tmp/haproxy.cfg
+
+  # Nginx-SSL - generate certs and config at runtime
+  nginx-ssl:
+    volumes: []
+    entrypoint:
+      - sh
+      - -c
+      - |
+        apk add --no-cache openssl >/dev/null 2>&1
+        mkdir -p /tmp/certs
+        openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
+          -keyout /tmp/certs/server.key \
+          -out /tmp/certs/server.crt \
+          -subj "/CN=localhost" 2>/dev/null
+        cat > /tmp/nginx.conf << 'NGINX_CFG'
+        events { worker_connections 1024; }
+        http {
+          server {
+            listen 80;
+            listen 443 ssl;
+            server_name localhost;
+            ssl_certificate /tmp/certs/server.crt;
+            ssl_certificate_key /tmp/certs/server.key;
+            location / { return 200 '{"status":"ok"}'; add_header Content-Type application/json; }
+            location /health { return 200 'healthy'; add_header Content-Type text/plain; }
+          }
+        }
+        NGINX_CFG
+        exec nginx -c /tmp/nginx.conf -g 'daemon off;'
+
+  # Mosquitto - write config at runtime
+  mosquitto:
+    volumes: []
+    entrypoint:
+      - sh
+      - -c
+      - |
+        cat > /tmp/mosquitto.conf << 'MQTT_CFG'
+        allow_anonymous true
+        listener 1883
+        protocol mqtt
+        persistence true
+        persistence_location /mosquitto/data/
+        log_dest stdout
+        MQTT_CFG
+        exec /usr/sbin/mosquitto -c /tmp/mosquitto.conf
+
+  # Test runner - use named volume for logs to avoid permission issues
+  test-runner:
+    volumes: !reset
+      - test_logs:/tests/logs
+    environment:
+      - DEPLOYMENT_TYPE=SELF-HOSTED
+      - API_BASE_URL=http://uni-status-api-test:3001
+      - WEB_BASE_URL=http://uni-status-web-test:3000
+      - HAPROXY_BASE_URL=http://uni-status-haproxy-test
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-uni_status}:${POSTGRES_PASSWORD:-uni_status_dev}@postgres:5432/${POSTGRES_DB:-uni_status}?sslmode=disable
+      - LOG_DIR=/tests/logs
+
+volumes:
+  test_logs:

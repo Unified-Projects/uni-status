@@ -1,0 +1,180 @@
+services:
+  haproxy:
+    image: haproxy:2.9-alpine
+    container_name: uni-status-haproxy
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    depends_on:
+      - web
+      - api
+    networks:
+      - uni-status-network
+
+  db-migrate:
+    build:
+      context: .
+      dockerfile: docker/db-migrate/Dockerfile
+    container_name: uni-status-db-migrate
+    environment:
+      - UNI_STATUS_DB_URL=postgresql://${POSTGRES_USER:-uni_status}:${POSTGRES_PASSWORD:-uni_status_dev}@postgres:5432/${POSTGRES_DB:-uni_status}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-uni_status}:${POSTGRES_PASSWORD:-uni_status_dev}@postgres:5432/${POSTGRES_DB:-uni_status}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - uni-status-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: uni-status-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-uni_status}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-uni_status_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-uni_status}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-uni_status}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - uni-status-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: uni-status-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - uni-status-network
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: dev
+    container_name: uni-status-api
+    environment:
+      - DEPLOYMENT_TYPE=SELF-HOSTED
+      - UNI_STATUS_URL=http://localhost
+      - UNI_STATUS_DB_URL=postgresql://${POSTGRES_USER:-uni_status}:${POSTGRES_PASSWORD:-uni_status_dev}@postgres:5432/${POSTGRES_DB:-uni_status}
+      - UNI_STATUS_REDIS_URL=redis://redis:6379
+      - UNI_STATUS_API_PORT=3001
+      - UNI_STATUS_AUTH_SECRET=${UNI_STATUS_AUTH_SECRET:-super-secret-key-change-in-production-32}
+      - UNI_STATUS_CORS_ENABLED=true
+    expose:
+      - "3001"
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/api/src:/app/apps/api/src
+      - ./packages:/app/packages
+      - /app/node_modules
+      - reports_data:/app/reports
+      - uploads_data:/app/apps/api/uploads
+    networks:
+      - uni-status-network
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      # target: dev
+    container_name: uni-status-web
+    environment:
+      - DEPLOYMENT_TYPE=SELF-HOSTED
+      - UNI_STATUS_URL=http://localhost
+      - UNI_STATUS_DB_URL=postgresql://${POSTGRES_USER:-uni_status}:${POSTGRES_PASSWORD:-uni_status_dev}@postgres:5432/${POSTGRES_DB:-uni_status}
+      - UNI_STATUS_AUTH_SECRET=${UNI_STATUS_AUTH_SECRET:-super-secret-key-change-in-production-32}
+    expose:
+      - "3000"
+    depends_on:
+      - api
+    # volumes:
+    # - ./apps/web/src:/app/apps/web/src
+    # - ./packages:/app/packages
+    # - /app/node_modules
+    # - /app/apps/web/node_modules
+    # - /app/apps/web/.next
+    networks:
+      - uni-status-network
+
+  workers:
+    build:
+      context: .
+      dockerfile: apps/workers/Dockerfile
+      target: dev
+    container_name: uni-status-workers
+    environment:
+      - DEPLOYMENT_TYPE=SELF-HOSTED
+      - UNI_STATUS_URL=http://localhost
+      - UNI_STATUS_DB_URL=postgresql://${POSTGRES_USER:-uni_status}:${POSTGRES_PASSWORD:-uni_status_dev}@postgres:5432/${POSTGRES_DB:-uni_status}
+      - UNI_STATUS_REDIS_URL=redis://redis:6379
+      - UNI_STATUS_SMTP_HOST=${SMTP_HOST:-mailhog}
+      - UNI_STATUS_SMTP_PORT=${SMTP_PORT:-1025}
+      # Legacy vars for backwards compatibility
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-uni_status}:${POSTGRES_PASSWORD:-uni_status_dev}@postgres:5432/${POSTGRES_DB:-uni_status}
+      - REDIS_URL=redis://redis:6379
+      - SMTP_HOST=${SMTP_HOST:-mailhog}
+      - SMTP_PORT=${SMTP_PORT:-1025}
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/workers/src:/app/apps/workers/src
+      - ./packages:/app/packages
+      - /app/node_modules
+      - reports_data:/app/reports
+    networks:
+      - uni-status-network
+
+  bullboard:
+    image: deadly0/bull-board
+    container_name: uni-status-bullboard
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    ports:
+      - "3002:3000"
+    depends_on:
+      - redis
+    networks:
+      - uni-status-network
+
+  mailhog:
+    image: mailhog/mailhog
+    container_name: uni-status-mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - uni-status-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  uploads_data:
+  reports_data:
+
+networks:
+  uni-status-network:
+    driver: bridge
