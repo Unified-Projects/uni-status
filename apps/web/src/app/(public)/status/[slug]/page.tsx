@@ -14,9 +14,7 @@ import {
 } from "@/components/public-status";
 import { getDefaultTemplateConfig, type TemplateConfig } from "@uni-status/shared";
 
-const RAW_API_URL =
-  process.env.INTERNAL_API_URL ||
-  "http://api:3001";
+const RAW_API_URL = process.env.INTERNAL_API_URL;
 const API_URL = RAW_API_URL.replace(/\/$/, "");
 const BASE_INCLUDES_API = API_URL.endsWith("/api");
 const DEFAULT_PRIMARY = "#3b82f6";
@@ -26,7 +24,7 @@ const DEFAULT_BACKGROUND = "#ffffff";
  * Check if the current request is from a custom domain (not the main app domain)
  */
 function isCustomDomain(hostname: string): boolean {
-  const appUrl = process.env.UNI_STATUS_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const appUrl = process.env.UNI_STATUS_URL || process.env.NEXT_PUBLIC_APP_URL;
   const appHostname = new URL(appUrl).hostname;
   // Remove port for comparison
   const requestHostname = hostname.split(":")[0];
@@ -373,14 +371,14 @@ export async function generateMetadata({
   let ogImageUrl: string | undefined;
   if (data.seo.ogTemplate) {
     // Use dynamic OG image route
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
     ogImageUrl = `${appUrl}/api/og/${slug}?template=${data.seo.ogTemplate}`;
   } else if (data.seo.ogImage) {
     ogImageUrl = normalizeAssetUrl(data.seo.ogImage);
   }
 
   // Build feed URLs for auto-discovery
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
   const feedBaseUrl = `${appUrl}/api/public/feeds/status-pages/${slug}`;
 
   const metadata: Metadata = {

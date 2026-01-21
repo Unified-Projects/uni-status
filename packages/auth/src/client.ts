@@ -3,7 +3,7 @@ import { organizationClient, adminClient, twoFactorClient, genericOAuthClient } 
 import { ssoClient } from "@better-auth/sso/client";
 
 export const authClient = createAuthClient({
-  baseURL: process.env.NEXT_PUBLIC_UNI_STATUS_URL || "http://localhost:3000",
+  baseURL: process.env.NEXT_PUBLIC_UNI_STATUS_URL,
   plugins: [
     organizationClient(),
     adminClient(),
