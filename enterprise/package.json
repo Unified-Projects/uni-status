@@ -32,28 +32,28 @@
     "test:workers": "vitest run tests/workers/**/*.test.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.958.0",
+    "@aws-sdk/client-s3": "^3.972.0",
     "@uni-status/database": "workspace:*",
     "@uni-status/licensing": "workspace:*",
     "@uni-status/shared": "workspace:*",
     "@uni-status/ui": "workspace:*",
-    "bullmq": "^5.66.4",
+    "bullmq": "^5.66.5",
     "drizzle-orm": "^0.45.1",
-    "ioredis": "^5.6.0",
-    "postgres": "^3.4.5",
-    "puppeteer": "^24.34.0"
+    "ioredis": "^5.9.2",
+    "postgres": "^3.4.8",
+    "puppeteer": "^24.35.0"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^2.1.8",
     "@types/react": "^19.2.1",
     "@types/react-dom": "^19.2.1",
-    "pg": "^8.13.1",
+    "pg": "^8.17.2",
     "nanoid": "^5.0.9",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
     "lucide-react": "^0.562.0",
-    "@tanstack/react-query": "^5.90.14",
-    "react-hook-form": "^7.69.0",
+    "@tanstack/react-query": "^5.90.19",
+    "react-hook-form": "^7.71.1",
     "@hookform/resolvers": "^5.0.0",
     "typescript": "^5.7.3",
     "vitest": "^2.1.8"
@@ -62,11 +62,11 @@
     "drizzle-orm": "^0.45.1",
     "hono": "^4.11.0",
     "@hono/zod-openapi": "^0.19.0",
-    "bullmq": "^5.66.4",
+    "bullmq": "^5.66.5",
     "react": "^19.0.0",
     "lucide-react": "^0.562.0",
-    "@tanstack/react-query": "^5.90.14",
-    "react-hook-form": "^7.69.0",
+    "@tanstack/react-query": "^5.90.19",
+    "react-hook-form": "^7.71.1",
     "@hookform/resolvers": "^5.0.0",
     "zod": "^3.23.8"
   }
