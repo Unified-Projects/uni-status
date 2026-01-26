@@ -28,8 +28,8 @@
     "devDependencies": {
         "@react-email/preview-server": "^5.2.1",
         "@types/nodemailer": "^7.0.4",
-        "@types/react": "^19.2.1",
-        "react": "^19.2.1",
+        "@types/react": "^19.2.9",
+        "react": "^19.2.4",
         "typescript": "^5.7.3"
     },
     "peerDependencies": {
