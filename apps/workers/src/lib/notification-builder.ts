@@ -103,20 +103,129 @@ export async function buildNotificationJobData(
         orgResendCredentials: orgCredentials?.resend,
       };
     }
-    case "slack":
-    case "discord":
-    case "teams": {
+    case "slack": {
+      const statusEmoji =
+        alertData.status === "recovered"
+          ? ":white_check_mark:"
+          : alertData.status === "degraded"
+            ? ":warning:"
+            : ":x:";
+
+      const slackFields = [
+        { type: "mrkdwn", text: `*URL:*\n${alertData.monitorUrl}` },
+        {
+          type: "mrkdwn",
+          text: `*Response Time:*\n${alertData.responseTime ? `${alertData.responseTime}ms` : "N/A"}`,
+        },
+      ];
+
+      if (alertData.statusCode) {
+        slackFields.push({
+          type: "mrkdwn",
+          text: `*Status Code:*\n${alertData.statusCode}`,
+        });
+      }
+
       return {
         ...loggingIds,
         webhookUrl: channel.config.webhookUrl,
-        status: alertData.status,
-        message: alertData.message,
-        monitorName: alertData.monitorName,
-        monitorUrl: alertData.monitorUrl,
-        dashboardUrl: alertData.dashboardUrl,
-        timestamp: alertData.timestamp,
-        responseTime: alertData.responseTime,
-        statusCode: alertData.statusCode,
+        message: {
+          text: `${statusEmoji} ${alertData.monitorName} is ${alertData.status}`,
+          blocks: [
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: `*${alertData.monitorName}* is *${alertData.status}*\n${alertData.message || ""}`,
+              },
+            },
+            {
+              type: "section",
+              fields: slackFields,
+            },
+            {
+              type: "actions",
+              elements: [
+                {
+                  type: "button",
+                  text: { type: "plain_text", text: "View Dashboard" },
+                  url: alertData.dashboardUrl,
+                },
+              ],
+            },
+          ],
+        },
+      };
+    }
+    case "discord": {
+      const statusColor =
+        alertData.status === "recovered"
+          ? 65280 // Green
+          : alertData.status === "degraded"
+            ? 16776960 // Yellow
+            : 16711680; // Red
+
+      const discordFields: Array<{ name: string; value: string; inline: boolean }> = [
+        { name: "Monitor", value: alertData.monitorName, inline: true },
+        { name: "Status", value: alertData.status.toUpperCase(), inline: true },
+      ];
+
+      if (alertData.responseTime) {
+        discordFields.push({
+          name: "Response Time",
+          value: `${alertData.responseTime}ms`,
+          inline: true,
+        });
+      }
+
+      if (alertData.statusCode) {
+        discordFields.push({
+          name: "Status Code",
+          value: String(alertData.statusCode),
+          inline: true,
+        });
+      }
+
+      return {
+        ...loggingIds,
+        webhookUrl: channel.config.webhookUrl,
+        message: {
+          embeds: [
+            {
+              title: `${alertData.monitorName} is ${alertData.status}`,
+              description: alertData.message || undefined,
+              color: statusColor,
+              url: alertData.dashboardUrl,
+              fields: discordFields,
+              footer: { text: "Uni-Status Alert" },
+              timestamp: alertData.timestamp,
+            },
+          ],
+        },
+      };
+    }
+    case "teams": {
+      const severity =
+        alertData.status === "recovered"
+          ? "resolved"
+          : alertData.status === "degraded"
+            ? "minor"
+            : "major";
+
+      return {
+        ...loggingIds,
+        webhookUrl: channel.config.webhookUrl,
+        message: {
+          title: `${alertData.monitorName} is ${alertData.status}`,
+          text: alertData.message || `Monitor ${alertData.monitorName} status changed`,
+          severity,
+          monitorName: alertData.monitorName,
+          monitorUrl: alertData.monitorUrl,
+          statusPageUrl: alertData.dashboardUrl,
+          timestamp: alertData.timestamp,
+          responseTime: alertData.responseTime,
+          statusCode: alertData.statusCode,
+        },
       };
     }
     case "pagerduty": {

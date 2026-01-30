@@ -5,6 +5,19 @@ export const idSchema = z.string().min(1);
 export const slugSchema = z.string().min(3).max(50).regex(/^[a-z0-9-]+$/);
 export const emailSchema = z.string().email();
 export const urlSchema = z.string().url();
+export const assetUrlSchema = z.string().refine(
+  (val) => {
+    if (val === "") return true;
+    if (val.startsWith("/")) return true;
+    try {
+      new URL(val);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  { message: "Must be a valid URL or a relative path starting with /" }
+);
 
 // Monitor validators
 export const monitorTypeSchema = z.enum([
@@ -708,7 +721,7 @@ export const statusPageAuthConfigSchema = z.object({
 export const statusPageSeoSchema = z.object({
   title: z.string().max(200).optional(),
   description: z.string().max(500).optional(),
-  ogImage: urlSchema.optional(),
+  ogImage: assetUrlSchema.optional(),
   ogTemplate: z.enum(["classic", "modern", "minimal", "dashboard", "hero", "compact"]).optional(),
 });
 
@@ -719,8 +732,8 @@ export const createStatusPageSchema = z.object({
   published: z.boolean().default(false),
   password: z.string().min(6).optional(),
   passwordProtected: z.boolean().optional(), // When false, clears the password
-  logo: z.union([urlSchema, z.literal("")]).optional(),
-  favicon: z.union([urlSchema, z.literal("")]).optional(),
+  logo: z.union([assetUrlSchema, z.literal("")]).optional(),
+  favicon: z.union([assetUrlSchema, z.literal("")]).optional(),
   theme: statusPageThemeSchema.optional(),
   settings: statusPageSettingsSchema.optional(),
   template: statusPageTemplateSchema.optional(),
@@ -854,7 +867,7 @@ export const assignRoleSchema = z.object({
 export const createOrganizationSchema = z.object({
   name: z.string().min(1).max(100),
   slug: slugSchema,
-  logoUrl: z.string().url().optional(),
+  logoUrl: assetUrlSchema.optional(),
 });
 
 export const inviteMemberSchema = z.object({
@@ -1114,7 +1127,7 @@ export const reportFrequencySchema = z.enum(["weekly", "monthly", "quarterly", "
 export const reportStatusSchema = z.enum(["pending", "generating", "completed", "failed", "expired"]);
 
 export const reportBrandingSchema = z.object({
-  logoUrl: urlSchema.optional(),
+  logoUrl: assetUrlSchema.optional(),
   primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   secondaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   companyName: z.string().max(100).optional(),
@@ -1169,7 +1182,7 @@ export const createReportTemplateSchema = z.object({
   footerHtml: z.string().max(10000).optional(),
   cssStyles: z.string().max(50000).optional(),
   branding: z.object({
-    logoUrl: urlSchema.optional(),
+    logoUrl: assetUrlSchema.optional(),
     primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
     secondaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
     accentColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),

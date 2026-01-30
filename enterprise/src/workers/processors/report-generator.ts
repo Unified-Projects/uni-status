@@ -207,7 +207,8 @@ async function gatherReportData(
         .select({
           totalChecks: sql<number>`COUNT(*)`,
           successfulChecks: sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'success')`,
-          failedChecks: sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} != 'success')`,
+          degradedChecks: sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'degraded')`,
+          failedChecks: sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} IN ('failure', 'error', 'timeout'))`,
           avgResponseTime: sql<number>`AVG(${checkResults.responseTimeMs})`,
         })
         .from(checkResults)
@@ -219,12 +220,13 @@ async function gatherReportData(
           )
         );
 
-      const s = stats[0] || { totalChecks: 0, successfulChecks: 0, failedChecks: 0, avgResponseTime: 0 };
+      const s = stats[0] || { totalChecks: 0, successfulChecks: 0, degradedChecks: 0, failedChecks: 0, avgResponseTime: 0 };
       const totalChecks = Number(s.totalChecks || 0);
       const successfulChecks = Number(s.successfulChecks || 0);
+      const degradedChecks = Number(s.degradedChecks || 0);
       const failedChecks = Number(s.failedChecks || 0);
       const avgResponseTime = Number(s.avgResponseTime || 0);
-      const uptimePercentage = totalChecks > 0 ? (successfulChecks / totalChecks) * 100 : 100;
+      const uptimePercentage = totalChecks > 0 ? ((successfulChecks + degradedChecks) / totalChecks) * 100 : 100;
 
       // Estimate downtime (failed checks * check interval)
       const intervalSeconds = monitor.intervalSeconds ?? 60;

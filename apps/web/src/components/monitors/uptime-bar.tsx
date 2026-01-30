@@ -116,13 +116,29 @@ export function UptimeBar({
     return recentData;
   }, [data, targetSegments, granularity]);
 
-  // Calculate overall uptime
+  // Calculate overall uptime - weighted by check counts for consistency with API
   const overallUptime = useMemo(() => {
     const validData = normalizedData.filter(
       (d) => d.uptimePercentage !== null && d.status !== "unknown"
     );
     if (validData.length === 0) return null;
 
+    // If we have check counts, use weighted calculation (consistent with backend)
+    const hasCheckCounts = validData.some(d => d.totalCount !== undefined && d.totalCount > 0);
+
+    if (hasCheckCounts) {
+      const totals = validData.reduce(
+        (acc, d) => ({
+          success: acc.success + (d.successCount ?? 0),
+          degraded: acc.degraded + (d.degradedCount ?? 0),
+          total: acc.total + (d.totalCount ?? 0),
+        }),
+        { success: 0, degraded: 0, total: 0 }
+      );
+      return totals.total > 0 ? ((totals.success + totals.degraded) / totals.total) * 100 : null;
+    }
+
+    // Fallback to unweighted average if no check counts available
     const sum = validData.reduce((acc, d) => acc + (d.uptimePercentage || 0), 0);
     return sum / validData.length;
   }, [normalizedData]);

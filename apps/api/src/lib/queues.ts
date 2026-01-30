@@ -278,7 +278,22 @@ function buildTestNotificationJobData(
     case "discord":
       return {
         webhookUrl: channel.config.webhookUrl,
-        ...testData,
+        message: {
+          embeds: [
+            {
+              title: "[Test] Uni-Status Alert",
+              description: testData.message,
+              color: 16711680, // Red
+              fields: [
+                { name: "Monitor", value: testData.monitorName, inline: true },
+                { name: "Status", value: testData.status.toUpperCase(), inline: true },
+                { name: "URL", value: testData.monitorUrl, inline: false },
+              ],
+              footer: { text: "Uni-Status" },
+              timestamp: testData.timestamp,
+            },
+          ],
+        },
       };
 
     case "teams":
