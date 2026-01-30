@@ -116,8 +116,8 @@ export function DataTable<T extends object>({
 
   return (
     <div className={cn("space-y-4", className)}>
-      <div className="rounded-md border">
-        <table className="w-full">
+      <div className="rounded-md border overflow-x-auto">
+        <table className="w-full min-w-[600px]">
           <thead>
             <tr className="border-b bg-muted/50">
               {columns.map((column) => (
@@ -196,11 +196,11 @@ function DataTablePagination({
   const endItem = Math.min(page * pageSize, total);
 
   return (
-    <div className="flex items-center justify-between px-2">
-      <div className="text-sm text-muted-foreground">
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between px-2">
+      <div className="text-sm text-muted-foreground text-center sm:text-left">
         Showing {startItem} to {endItem} of {total} results
       </div>
-      <div className="flex items-center space-x-2">
+      <div className="flex items-center justify-center space-x-2">
         <Button
           variant="outline"
           size="sm"
@@ -208,7 +208,7 @@ function DataTablePagination({
           disabled={page <= 1}
         >
           <ChevronLeft className="h-4 w-4" />
-          Previous
+          <span className="hidden sm:inline">Previous</span>
         </Button>
         <div className="text-sm text-muted-foreground">
           Page {page} of {totalPages}
@@ -219,7 +219,7 @@ function DataTablePagination({
           onClick={() => onPageChange(page + 1)}
           disabled={page >= totalPages}
         >
-          Next
+          <span className="hidden sm:inline">Next</span>
           <ChevronRight className="h-4 w-4" />
         </Button>
       </div>

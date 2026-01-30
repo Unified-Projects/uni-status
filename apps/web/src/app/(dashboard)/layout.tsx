@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { auth } from "@uni-status/auth/server";
 import { DashboardNav } from "@/components/dashboard-nav";
+import { MobileHeader } from "@/components/mobile-header";
 import { LicenseStatusBannerWrapper } from "@/components/banners";
 import { getAppUrl, isSelfHosted } from "@uni-status/shared/config";
 
@@ -68,12 +69,13 @@ export default async function DashboardLayout({
     }
 
     return (
-        <div className="fixed inset-0 flex overflow-hidden">
+        <div className="min-h-screen">
             <DashboardNav user={session.user} />
-            <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="lg:ml-64 flex flex-col min-h-screen">
+                <MobileHeader />
                 <LicenseStatusBannerWrapper />
                 <main className="flex-1 overflow-auto">
-                    <div className="container mx-auto p-6">{children}</div>
+                    <div className="container mx-auto p-4 sm:p-6">{children}</div>
                 </main>
             </div>
         </div>

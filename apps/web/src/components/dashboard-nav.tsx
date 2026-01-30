@@ -42,9 +42,11 @@ import {
   Shield,
   Mail,
   Lock,
+  X,
 } from "lucide-react";
 import { useOrganizations } from "@/hooks/use-organizations";
 import { useDashboardStore } from "@/stores/dashboard-store";
+import { useSidebarStore } from "@/stores/sidebar-store";
 import { authClient } from "@uni-status/auth/client";
 import { usePendingInvitations, useAcceptInvitation, useDeclineInvitation } from "@/hooks/use-invitations";
 import { useSystemStatus } from "@/hooks/use-system-status";
@@ -116,6 +118,7 @@ export function DashboardNav({ user }: DashboardNavProps) {
   const router = useRouter();
   const { data: organizations, isLoading: orgsLoading } = useOrganizations();
   const { currentOrganizationId, setCurrentOrganization } = useDashboardStore();
+  const { isOpen, setOpen } = useSidebarStore();
   const { data: systemStatus } = useSystemStatus();
   const { hasFeature, getRequiredPlan } = useLicenseStatus();
 
@@ -137,6 +140,11 @@ export function DashboardNav({ user }: DashboardNavProps) {
       setCurrentOrganization(organizations[0].id);
     }
   }, [currentOrganizationId, organizations, setCurrentOrganization]);
+
+  // Close sidebar on navigation (for mobile)
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname, setOpen]);
 
   const currentOrg = organizations?.find((o) => o.id === currentOrganizationId);
 
@@ -192,8 +200,9 @@ export function DashboardNav({ user }: DashboardNavProps) {
     router.push("/login");
   };
 
-  return (
-    <aside className="flex h-full w-64 flex-col border-r bg-muted/30">
+  // Shared sidebar content
+  const SidebarContent = () => (
+    <>
       {/* Logo */}
       <div className="flex h-16 items-center border-b px-6">
         <Link href="/dashboard" className="flex items-center gap-2">
@@ -397,6 +406,41 @@ export function DashboardNav({ user }: DashboardNavProps) {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+    </>
+  );
+
+  return (
+    <>
+      {/* Desktop Sidebar - Fixed position, full height */}
+      <aside className="hidden lg:flex lg:flex-col lg:w-64 lg:fixed lg:inset-y-0 lg:left-0 lg:z-40 lg:border-r lg:bg-muted/30">
+        <SidebarContent />
+      </aside>
+
+      {/* Mobile Sidebar Overlay */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          onClick={() => setOpen(false)}
+        />
+      )}
+
+      {/* Mobile Sidebar Drawer */}
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 w-72 bg-background border-r transform transition-transform duration-300 ease-in-out lg:hidden flex flex-col",
+          isOpen ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
+        {/* Close button for mobile */}
+        <button
+          onClick={() => setOpen(false)}
+          className="absolute top-4 right-4 p-2 rounded-lg hover:bg-muted z-10"
+          aria-label="Close navigation menu"
+        >
+          <X className="h-5 w-5" />
+        </button>
+        <SidebarContent />
+      </aside>
 
       {/* Invitation Modal */}
       <InvitationModal
@@ -408,6 +452,6 @@ export function DashboardNav({ user }: DashboardNavProps) {
         isAccepting={acceptInvitation.isPending}
         isDeclining={declineInvitation.isPending}
       />
-    </aside>
+    </>
   );
 }
