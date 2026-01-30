@@ -195,12 +195,17 @@ export const config = {
   matcher: [
     /*
      * Match all request paths except for:
-     * - api routes
+     * - api routes (except api/public/ and api/v1/assets/ which need proxying for custom domains)
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - static files (uploads, reports, etc.)
      * - public files (favicon.ico, etc.)
+     *
+     * The negative lookahead (?!api/(?!public/|v1/assets/)) means:
+     * - Exclude paths starting with api/ UNLESS they continue with public/ or v1/assets/
+     * - This allows api/public/* and api/v1/assets/* through for custom domain proxying
+     * - Other api/* paths are still excluded (handled by Next.js API routes)
      */
-    "/((?!api/|_next/static|_next/image|uploads|reports|favicon.ico|robots.txt|sitemap.xml|health).*)",
+    "/((?!api/(?!public/|v1/assets/)|_next/static|_next/image|uploads|reports|favicon.ico|robots.txt|sitemap.xml|health).*)",
   ],
 };

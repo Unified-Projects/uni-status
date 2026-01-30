@@ -51,6 +51,7 @@ import {
   useUpdateStatusPageMonitor,
 } from "@/hooks/use-status-pages";
 import { useMonitors } from "@/hooks/use-monitors";
+import { getCanonicalStatusPageUrl } from "@uni-status/shared";
 import { StatusPageForm } from "@/components/forms/status-page-form";
 import { MonitorList, MonitorPicker, CrowdsourcedSettingsCard, type MonitorListItem } from "@/components/status-pages";
 import { EmbedCodeGenerator } from "@/components/embeds";
@@ -111,6 +112,16 @@ export default function StatusPageDetailPage() {
   const selectedMonitorIds = useMemo(() => {
     return statusPage?.monitors?.map((m) => m.monitorId) || [];
   }, [statusPage?.monitors]);
+
+  // Calculate canonical URL for the status page
+  const canonicalUrl = useMemo(() => {
+    if (!statusPage) return undefined;
+    return getCanonicalStatusPageUrl({
+      customDomain: statusPage.customDomain,
+      slug: statusPage.slug,
+      systemUrl: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+    });
+  }, [statusPage]);
 
   // Handlers
   const handleDelete = async () => {
@@ -557,6 +568,7 @@ export default function StatusPageDetailPage() {
               <EmbedCodeGenerator
                 slug={statusPage.slug}
                 statusPageName={statusPage.name}
+                canonicalUrl={canonicalUrl}
               />
             </CardContent>
           </Card>

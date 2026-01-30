@@ -1,9 +1,10 @@
 "use client";
 
-import { use } from "react";
+import { use, useMemo } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@uni-status/ui";
+import { getCanonicalStatusPageUrl } from "@uni-status/shared";
 import { useStatusPages } from "@/hooks/use-status-pages";
 import { EmbedCodeGenerator } from "@/components/embeds";
 import { LoadingState } from "@/components/ui/loading-state";
@@ -26,6 +27,16 @@ export default function StatusPageEmbedGeneratorPage({ params }: PageProps) {
       </div>
     );
   }
+
+  // Calculate canonical URL for the status page
+  const canonicalUrl = useMemo(() => {
+    if (!statusPage) return undefined;
+    return getCanonicalStatusPageUrl({
+      customDomain: statusPage.customDomain,
+      slug: statusPage.slug,
+      systemUrl: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+    });
+  }, [statusPage]);
 
   if (!statusPage) {
     return (
@@ -68,6 +79,7 @@ export default function StatusPageEmbedGeneratorPage({ params }: PageProps) {
       <EmbedCodeGenerator
         slug={statusPage.slug}
         statusPageName={statusPage.name}
+        canonicalUrl={canonicalUrl}
       />
     </div>
   );

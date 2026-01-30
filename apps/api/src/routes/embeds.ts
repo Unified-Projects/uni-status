@@ -15,6 +15,7 @@ import { eq, and, desc, gte, ne, inArray, sql } from "drizzle-orm";
 import { requireOrganization } from "../middleware/auth";
 import { getAuditUserId, createAuditLog } from "../lib/audit";
 import { getAppUrl } from "@uni-status/shared/config";
+import { getCanonicalStatusPageUrl } from "@uni-status/shared";
 import {
   generateBadgeSvg,
   generateDotSvg,
@@ -215,7 +216,11 @@ embedsRoutes.get("/status-pages/:slug/status.json", async (c) => {
     status: data.overallStatus,
     statusText: statusLabels[data.overallStatus],
     name: data.page.name,
-    url: `/status/${slug}`,
+    url: getCanonicalStatusPageUrl({
+      customDomain: data.page.customDomain,
+      slug,
+      systemUrl: getAppUrl(),
+    }),
     lastUpdatedAt: new Date().toISOString(),
   };
 
@@ -709,9 +714,14 @@ embedsRoutes.put("/badge-templates/:id", async (c) => {
       ));
   }
 
+  // Merge config instead of replacing to preserve existing settings
+  const mergedConfig = data.config
+    ? { ...existing.config, ...data.config }
+    : existing.config;
+
   await db
     .update(badgeTemplates)
-    .set({ ...data, updatedAt: now })
+    .set({ ...data, config: mergedConfig, updatedAt: now })
     .where(eq(badgeTemplates.id, id));
 
   await createAuditLog(c, {

@@ -14,9 +14,17 @@ import {
 } from "@/components/public-status";
 import { getDefaultTemplateConfig, type TemplateConfig } from "@uni-status/shared";
 
-const RAW_API_URL = process.env.INTERNAL_API_URL;
-const API_URL = RAW_API_URL.replace(/\/$/, "");
-const BASE_INCLUDES_API = API_URL.endsWith("/api");
+function getApiUrl(): string {
+  const rawUrl = process.env.INTERNAL_API_URL;
+  if (!rawUrl) {
+    throw new Error("INTERNAL_API_URL environment variable is required");
+  }
+  return rawUrl.replace(/\/$/, "");
+}
+
+function baseIncludesApi(): boolean {
+  return getApiUrl().endsWith("/api");
+}
 const DEFAULT_PRIMARY = "#3b82f6";
 const DEFAULT_BACKGROUND = "#ffffff";
 
@@ -24,7 +32,7 @@ const DEFAULT_BACKGROUND = "#ffffff";
  * Check if the current request is from a custom domain (not the main app domain)
  */
 function isCustomDomain(hostname: string): boolean {
-  const appUrl = process.env.UNI_STATUS_URL || process.env.NEXT_PUBLIC_APP_URL;
+  const appUrl = process.env.UNI_STATUS_URL || process.env.NEXT_PUBLIC_APP_URL!;
   const appHostname = new URL(appUrl).hostname;
   // Remove port for comparison
   const requestHostname = hostname.split(":")[0];
@@ -306,10 +314,11 @@ async function getStatusPageData(
   slug: string,
   cookies?: string
 ): Promise<ApiResponse> {
-  const path = BASE_INCLUDES_API
+  const apiUrl = getApiUrl();
+  const path = baseIncludesApi()
     ? `/public/status-pages/${slug}`
     : `/api/public/status-pages/${slug}`;
-  const fullUrl = `${API_URL}${path}`;
+  const fullUrl = `${apiUrl}${path}`;
 
   try {
     const response = await fetch(fullUrl, {
@@ -367,19 +376,32 @@ export async function generateMetadata({
   const description =
     data.seo.description || `Current status and uptime for ${data.name}`;
 
+  // Detect if accessed via custom domain
+  const headersList = await headers();
+  const hostname = headersList.get("x-forwarded-host") || headersList.get("host") || "localhost";
+  const onCustomDomain = isCustomDomain(hostname);
+
+  // Build canonical base URL
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  const canonicalBaseUrl = onCustomDomain
+    ? `https://${hostname.split(":")[0]}` // Use custom domain (strip port)
+    : `${appUrl}/status/${slug}`; // Use system URL with path
+
   // Determine OG image URL - use template if set, otherwise custom image
+  // OG images are served from system URL (Next.js edge routes)
   let ogImageUrl: string | undefined;
   if (data.seo.ogTemplate) {
     // Use dynamic OG image route
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
     ogImageUrl = `${appUrl}/api/og/${slug}?template=${data.seo.ogTemplate}`;
   } else if (data.seo.ogImage) {
     ogImageUrl = normalizeAssetUrl(data.seo.ogImage);
   }
 
-  // Build feed URLs for auto-discovery
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
-  const feedBaseUrl = `${appUrl}/api/public/feeds/status-pages/${slug}`;
+  // Build feed URLs for auto-discovery using canonical base URL
+  // On custom domains, feeds are proxied via middleware
+  const feedBaseUrl = onCustomDomain
+    ? `https://${hostname.split(":")[0]}/api/public/feeds/status-pages/${slug}`
+    : `${appUrl}/api/public/feeds/status-pages/${slug}`;
 
   const metadata: Metadata = {
     title,
@@ -388,6 +410,7 @@ export async function generateMetadata({
       title,
       description,
       type: "website",
+      url: canonicalBaseUrl,
       images: ogImageUrl ? [ogImageUrl] : undefined,
     },
     twitter: {
@@ -397,6 +420,7 @@ export async function generateMetadata({
       images: ogImageUrl ? [ogImageUrl] : undefined,
     },
     alternates: {
+      canonical: canonicalBaseUrl,
       types: {
         "application/rss+xml": `${feedBaseUrl}/rss`,
         "application/atom+xml": `${feedBaseUrl}/atom`,

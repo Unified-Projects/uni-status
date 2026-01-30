@@ -942,19 +942,19 @@ export const apiClient = {
 
   badgeTemplates: {
     list: (organizationId?: string) =>
-      unwrap(apiGet<BadgeTemplateData[]>("/api/public/embeds/badge-templates", { organizationId })),
+      unwrap(apiGet<BadgeTemplateData[]>("/api/v1/embeds/badge-templates", { organizationId })),
 
     get: (id: string, organizationId?: string) =>
-      unwrap(apiGet<BadgeTemplateData>(`/api/public/embeds/badge-templates/${id}`, { organizationId })),
+      unwrap(apiGet<BadgeTemplateData>(`/api/v1/embeds/badge-templates/${id}`, { organizationId })),
 
     create: (data: BadgeTemplateInput, organizationId?: string) =>
-      unwrap(apiPost<BadgeTemplateData>("/api/public/embeds/badge-templates", data, { organizationId })),
+      unwrap(apiPost<BadgeTemplateData>("/api/v1/embeds/badge-templates", data, { organizationId })),
 
     update: (id: string, data: UpdateBadgeTemplateInput, organizationId?: string) =>
-      unwrap(apiPut<BadgeTemplateData>(`/api/public/embeds/badge-templates/${id}`, data, { organizationId })),
+      unwrap(apiPut<BadgeTemplateData>(`/api/v1/embeds/badge-templates/${id}`, data, { organizationId })),
 
     delete: (id: string, organizationId?: string) =>
-      unwrap(apiDelete<{ deleted: boolean }>(`/api/public/embeds/badge-templates/${id}`, { organizationId })),
+      unwrap(apiDelete<{ deleted: boolean }>(`/api/v1/embeds/badge-templates/${id}`, { organizationId })),
   },
 
   alerts: {

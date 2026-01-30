@@ -31,6 +31,8 @@ interface EmbedCodeGeneratorProps {
   monitorName?: string;
   apiUrl?: string;
   appUrl?: string;
+  /** Canonical URL for the status page (uses custom domain if configured) */
+  canonicalUrl?: string;
 }
 
 type BadgeStyle = "flat" | "plastic" | "flat-square" | "for-the-badge" | "modern";
@@ -43,6 +45,7 @@ export function EmbedCodeGenerator({
   monitorName,
   apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api",
   appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+  canonicalUrl,
 }: EmbedCodeGeneratorProps) {
   const [embedType, setEmbedType] = useState<EmbedType>("badge");
   const [copied, setCopied] = useState(false);
@@ -80,7 +83,8 @@ export function EmbedCodeGenerator({
     switch (embedType) {
       case "badge": {
         const badgeUrl = `${baseApiUrl}/badge.svg?label=${encodeURIComponent(badgeLabel)}&style=${badgeStyle}`;
-        const statusPageUrl = isMonitorEmbed ? "#" : `${appUrl}/status/${slug}`;
+        // Use canonical URL if provided (respects custom domain), otherwise fall back to system URL
+        const statusPageUrl = isMonitorEmbed ? "#" : (canonicalUrl || `${appUrl}/status/${slug}`);
 
         return {
           markdown: `[![${displayName}](${badgeUrl})](${statusPageUrl})`,
@@ -136,6 +140,7 @@ export function EmbedCodeGenerator({
     displayName,
     apiUrl,
     appUrl,
+    canonicalUrl,
     badgeLabel,
     badgeStyle,
     dotSize,
