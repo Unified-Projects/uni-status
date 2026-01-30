@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { Check, Copy } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { Check, Copy, Palette } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -21,6 +21,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@uni-status/ui";
+import type { BadgeTemplateData, BadgeTemplateConfig } from "@uni-status/shared/types";
 import { EmbedTypeSelector, type EmbedType } from "./embed-type-selector";
 import { EmbedPreview } from "./embed-preview";
 
@@ -33,6 +34,8 @@ interface EmbedCodeGeneratorProps {
   appUrl?: string;
   /** Canonical URL for the status page (uses custom domain if configured) */
   canonicalUrl?: string;
+  /** Custom badge templates from the user's organization */
+  badgeTemplates?: BadgeTemplateData[];
 }
 
 type BadgeStyle = "flat" | "plastic" | "flat-square" | "for-the-badge" | "modern";
@@ -46,6 +49,7 @@ export function EmbedCodeGenerator({
   apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api",
   appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
   canonicalUrl,
+  badgeTemplates = [],
 }: EmbedCodeGeneratorProps) {
   const [embedType, setEmbedType] = useState<EmbedType>("badge");
   const [copied, setCopied] = useState(false);
@@ -53,6 +57,31 @@ export function EmbedCodeGenerator({
   // Badge options
   const [badgeLabel, setBadgeLabel] = useState("status");
   const [badgeStyle, setBadgeStyle] = useState<BadgeStyle>("modern");
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+
+  // Get the selected template (if any)
+  const selectedTemplate = useMemo(() => {
+    if (!selectedTemplateId) return null;
+    return badgeTemplates.find((t) => t.id === selectedTemplateId) || null;
+  }, [selectedTemplateId, badgeTemplates]);
+
+  // Get template config for URL generation
+  const templateConfig = useMemo((): BadgeTemplateConfig | null => {
+    if (!selectedTemplate) return null;
+    return selectedTemplate.config || null;
+  }, [selectedTemplate]);
+
+  // Update badge options when a template is selected
+  useEffect(() => {
+    if (selectedTemplate) {
+      // Apply template style
+      setBadgeStyle(selectedTemplate.style as BadgeStyle);
+      // Apply template label if configured
+      if (selectedTemplate.config?.label) {
+        setBadgeLabel(selectedTemplate.config.label);
+      }
+    }
+  }, [selectedTemplate]);
 
   // Dot options
   const [dotSize, setDotSize] = useState(12);
@@ -82,7 +111,31 @@ export function EmbedCodeGenerator({
 
     switch (embedType) {
       case "badge": {
-        const badgeUrl = `${baseApiUrl}/badge.svg?label=${encodeURIComponent(badgeLabel)}&style=${badgeStyle}`;
+        // Build badge URL with base params
+        const badgeParams = new URLSearchParams();
+        badgeParams.set("label", badgeLabel);
+        badgeParams.set("style", badgeStyle);
+
+        // Add template config params if using a template
+        if (templateConfig) {
+          if (templateConfig.labelColor) {
+            badgeParams.set("labelColor", templateConfig.labelColor);
+          }
+          if (templateConfig.textColor) {
+            badgeParams.set("textColor", templateConfig.textColor);
+          }
+          if (templateConfig.statusTextColor) {
+            badgeParams.set("statusTextColor", templateConfig.statusTextColor);
+          }
+          if (templateConfig.scale && templateConfig.scale !== 1) {
+            badgeParams.set("scale", templateConfig.scale.toString());
+          }
+          if (templateConfig.statusColors) {
+            badgeParams.set("statusColors", JSON.stringify(templateConfig.statusColors));
+          }
+        }
+
+        const badgeUrl = `${baseApiUrl}/badge.svg?${badgeParams.toString()}`;
         // Use canonical URL if provided (respects custom domain), otherwise fall back to system URL
         const statusPageUrl = isMonitorEmbed ? "#" : (canonicalUrl || `${appUrl}/status/${slug}`);
 
@@ -143,6 +196,7 @@ export function EmbedCodeGenerator({
     canonicalUrl,
     badgeLabel,
     badgeStyle,
+    templateConfig,
     dotSize,
     dotAnimate,
     theme,
@@ -165,7 +219,11 @@ export function EmbedCodeGenerator({
     theme,
     showMonitors,
     showIncidents,
+    templateConfig,
   };
+
+  // Filter templates to only show badge type templates
+  const badgeTypeTemplates = badgeTemplates.filter((t) => t.type === "badge");
 
   return (
     <div className="space-y-6">
@@ -183,6 +241,38 @@ export function EmbedCodeGenerator({
         <CardContent className="space-y-4">
           {embedType === "badge" && (
             <>
+              {/* Template Selector - shown when user has saved templates */}
+              {badgeTypeTemplates.length > 0 && (
+                <div className="space-y-2">
+                  <Label htmlFor="badge-template" className="flex items-center gap-2">
+                    <Palette className="h-4 w-4" />
+                    Custom Template
+                  </Label>
+                  <Select
+                    value={selectedTemplateId || "none"}
+                    onValueChange={(v) => setSelectedTemplateId(v === "none" ? null : v)}
+                  >
+                    <SelectTrigger id="badge-template">
+                      <SelectValue placeholder="Use default styling" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Use default styling</SelectItem>
+                      {badgeTypeTemplates.map((template) => (
+                        <SelectItem key={template.id} value={template.id}>
+                          {template.name}
+                          {template.isDefault && " (Default)"}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedTemplate && selectedTemplate.description && (
+                    <p className="text-xs text-muted-foreground">
+                      {selectedTemplate.description}
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="badge-label">Label Text</Label>
@@ -209,6 +299,16 @@ export function EmbedCodeGenerator({
                   </Select>
                 </div>
               </div>
+
+              {/* Show custom colors indicator when using a template */}
+              {selectedTemplate && templateConfig && (
+                <div className="flex items-center gap-2 p-2 bg-muted rounded-md text-xs text-muted-foreground">
+                  <Palette className="h-3 w-3" />
+                  <span>
+                    Using custom colors from &quot;{selectedTemplate.name}&quot; template
+                  </span>
+                </div>
+              )}
             </>
           )}
 

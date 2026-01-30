@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, Skeleton, cn } from "@uni-status/ui";
 import { RefreshCw } from "lucide-react";
+import type { BadgeTemplateConfig } from "@uni-status/shared/types";
 import type { EmbedType } from "./embed-type-selector";
 
 interface EmbedPreviewProps {
@@ -17,6 +18,7 @@ interface EmbedPreviewProps {
     theme?: "light" | "dark" | "auto";
     showMonitors?: boolean;
     showIncidents?: boolean;
+    templateConfig?: BadgeTemplateConfig | null;
   };
   apiUrl: string;
 }
@@ -46,7 +48,32 @@ export function EmbedPreview({
 
       try {
         if (type === "badge") {
-          const url = `${baseUrl}/badge.svg?label=${encodeURIComponent(options.label || "status")}&style=${options.style || "flat"}`;
+          // Build URL with template config params
+          const badgeParams = new URLSearchParams();
+          badgeParams.set("label", options.label || "status");
+          badgeParams.set("style", options.style || "flat");
+
+          // Add template config params if provided
+          const templateConfig = options.templateConfig;
+          if (templateConfig) {
+            if (templateConfig.labelColor) {
+              badgeParams.set("labelColor", templateConfig.labelColor);
+            }
+            if (templateConfig.textColor) {
+              badgeParams.set("textColor", templateConfig.textColor);
+            }
+            if (templateConfig.statusTextColor) {
+              badgeParams.set("statusTextColor", templateConfig.statusTextColor);
+            }
+            if (templateConfig.scale && templateConfig.scale !== 1) {
+              badgeParams.set("scale", templateConfig.scale.toString());
+            }
+            if (templateConfig.statusColors) {
+              badgeParams.set("statusColors", JSON.stringify(templateConfig.statusColors));
+            }
+          }
+
+          const url = `${baseUrl}/badge.svg?${badgeParams.toString()}`;
           const response = await fetch(url);
           if (!response.ok) throw new Error("Failed to load badge");
           const svg = await response.text();
@@ -69,7 +96,7 @@ export function EmbedPreview({
     }
 
     fetchPreview();
-  }, [type, baseUrl, options.label, options.style, options.size, options.animate]);
+  }, [type, baseUrl, options.label, options.style, options.size, options.animate, options.templateConfig]);
 
   const previewBgClass =
     options.theme === "dark"

@@ -6,6 +6,7 @@ import { ArrowLeft } from "lucide-react";
 import { Button } from "@uni-status/ui";
 import { getCanonicalStatusPageUrl } from "@uni-status/shared";
 import { useStatusPages } from "@/hooks/use-status-pages";
+import { useBadgeTemplates } from "@/hooks/use-badge-templates";
 import { EmbedCodeGenerator } from "@/components/embeds";
 import { LoadingState } from "@/components/ui/loading-state";
 
@@ -16,6 +17,7 @@ interface PageProps {
 export default function StatusPageEmbedGeneratorPage({ params }: PageProps) {
   const { slug } = use(params);
   const { data: statusPagesResponse, isLoading } = useStatusPages();
+  const { data: badgeTemplates } = useBadgeTemplates();
   const statusPages = statusPagesResponse?.data;
 
   const statusPage = statusPages?.find((p) => p.slug === slug);
@@ -80,6 +82,7 @@ export default function StatusPageEmbedGeneratorPage({ params }: PageProps) {
         slug={statusPage.slug}
         statusPageName={statusPage.name}
         canonicalUrl={canonicalUrl}
+        badgeTemplates={badgeTemplates}
       />
     </div>
   );

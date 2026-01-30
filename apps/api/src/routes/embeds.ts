@@ -137,17 +137,50 @@ embedsRoutes.get("/status-pages/:slug/badge.svg", async (c) => {
   const label = c.req.query("label") || "status";
   const style = (c.req.query("style") || "flat") as BadgeStyle;
 
+  // Parse optional template config params
+  const labelColor = c.req.query("labelColor");
+  const textColor = c.req.query("textColor");
+  const statusTextColor = c.req.query("statusTextColor");
+  const scaleParam = c.req.query("scale");
+  const statusColorsParam = c.req.query("statusColors");
+
+  // Build config object from query params
+  const config: {
+    labelColor?: string;
+    textColor?: string;
+    statusTextColor?: string;
+    scale?: number;
+    statusColors?: Record<string, string>;
+  } = {};
+
+  if (labelColor) config.labelColor = labelColor;
+  if (textColor) config.textColor = textColor;
+  if (statusTextColor) config.statusTextColor = statusTextColor;
+  if (scaleParam) {
+    const scale = parseFloat(scaleParam);
+    if (!isNaN(scale) && scale >= 0.5 && scale <= 3) {
+      config.scale = scale;
+    }
+  }
+  if (statusColorsParam) {
+    try {
+      config.statusColors = JSON.parse(statusColorsParam);
+    } catch {
+      // Ignore invalid JSON
+    }
+  }
+
   const data = await getStatusPageEmbedData(slug);
 
   if (!data) {
     // Return a "not found" badge
-    const svg = generateBadgeSvg(label, "maintenance" as OverallStatus, style);
+    const svg = generateBadgeSvg(label, "maintenance" as OverallStatus, style, config);
     c.header("Content-Type", "image/svg+xml");
     c.header("Cache-Control", "public, max-age=60, s-maxage=60");
     return c.body(svg);
   }
 
-  const svg = generateBadgeSvg(label, data.overallStatus, style);
+  const svg = generateBadgeSvg(label, data.overallStatus, style, config);
 
   c.header("Content-Type", "image/svg+xml");
   c.header("Cache-Control", "public, max-age=60, s-maxage=60");
@@ -444,16 +477,49 @@ embedsRoutes.get("/monitors/:id/badge.svg", async (c) => {
   const label = c.req.query("label") || "status";
   const style = (c.req.query("style") || "flat") as BadgeStyle;
 
+  // Parse optional template config params
+  const labelColor = c.req.query("labelColor");
+  const textColor = c.req.query("textColor");
+  const statusTextColor = c.req.query("statusTextColor");
+  const scaleParam = c.req.query("scale");
+  const statusColorsParam = c.req.query("statusColors");
+
+  // Build config object from query params
+  const config: {
+    labelColor?: string;
+    textColor?: string;
+    statusTextColor?: string;
+    scale?: number;
+    statusColors?: Record<string, string>;
+  } = {};
+
+  if (labelColor) config.labelColor = labelColor;
+  if (textColor) config.textColor = textColor;
+  if (statusTextColor) config.statusTextColor = statusTextColor;
+  if (scaleParam) {
+    const scale = parseFloat(scaleParam);
+    if (!isNaN(scale) && scale >= 0.5 && scale <= 3) {
+      config.scale = scale;
+    }
+  }
+  if (statusColorsParam) {
+    try {
+      config.statusColors = JSON.parse(statusColorsParam);
+    } catch {
+      // Ignore invalid JSON
+    }
+  }
+
   const data = await getMonitorEmbedData(id);
 
   if (!data) {
-    const svg = generateBadgeSvg(label, "pending" as MonitorStatus, style);
+    const svg = generateBadgeSvg(label, "pending" as MonitorStatus, style, config);
     c.header("Content-Type", "image/svg+xml");
     c.header("Cache-Control", "public, max-age=60, s-maxage=60");
     return c.body(svg);
   }
 
-  const svg = generateBadgeSvg(label, data.monitor.status, style);
+  const svg = generateBadgeSvg(label, data.monitor.status, style, config);
 
   c.header("Content-Type", "image/svg+xml");
   c.header("Cache-Control", "public, max-age=60, s-maxage=60");

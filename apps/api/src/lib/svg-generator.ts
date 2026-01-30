@@ -4,6 +4,15 @@ export type OverallStatus = "operational" | "degraded" | "partial_outage" | "maj
 export type MonitorStatus = "active" | "degraded" | "down" | "paused" | "pending";
 export type BadgeStyle = "flat" | "plastic" | "flat-square" | "for-the-badge" | "modern";
 
+// Config options for customizing badge appearance
+export interface BadgeSvgConfig {
+  labelColor?: string;
+  textColor?: string;
+  statusTextColor?: string;
+  scale?: number;
+  statusColors?: Record<string, string>;
+}
+
 // Status colors matching the existing design system
 const STATUS_COLORS: Record<OverallStatus | MonitorStatus, string> = {
   // Overall status
@@ -44,11 +53,41 @@ function measureText(text: string, fontSize: number): number {
 export function generateBadgeSvg(
   label: string,
   status: OverallStatus | MonitorStatus,
-  style: BadgeStyle = "flat"
+  style: BadgeStyle = "flat",
+  config: BadgeSvgConfig = {}
 ): string {
   const statusLabel = STATUS_LABELS[status] || status;
-  const statusColor = STATUS_COLORS[status] || "#6b7280";
-  const labelColor = "#555";
+
+  // Apply custom status colors if provided, otherwise use defaults
+  let statusColor = STATUS_COLORS[status] || "#6b7280";
+  if (config.statusColors) {
+    // Map status to config key names (handle snake_case to camelCase)
+    const statusKeyMap: Record<string, string> = {
+      operational: "operational",
+      degraded: "degraded",
+      partial_outage: "partialOutage",
+      major_outage: "majorOutage",
+      maintenance: "maintenance",
+      active: "operational",
+      down: "majorOutage",
+      paused: "maintenance",
+      pending: "unknown",
+    };
+    const configKey = statusKeyMap[status];
+    if (configKey && config.statusColors[configKey]) {
+      statusColor = config.statusColors[configKey];
+    }
+  }
+
+  // Apply custom label color or use default
+  const labelColor = config.labelColor || "#555";
+
+  // Apply custom text colors
+  const labelTextColor = config.textColor || "#fff";
+  const statusTextColorValue = config.statusTextColor || "#fff";
+
+  // Apply scale factor
+  const scale = config.scale || 1;
 
   const fontSize = style === "for-the-badge" ? 11 : 11;
   const height = style === "for-the-badge" ? 28 : 20;
@@ -62,8 +101,12 @@ export function generateBadgeSvg(
   const statusWidth = Math.round(measureText(statusText, fontSize) + padding * 2);
   const totalWidth = labelWidth + statusWidth;
 
+  // Calculate scaled dimensions
+  const scaledWidth = Math.round(totalWidth * scale);
+  const scaledHeight = Math.round(height * scale);
+
   if (style === "flat") {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}" height="${height}" role="img" aria-label="${label}: ${statusLabel}">
+    const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}" height="${height}" role="img" aria-label="${label}: ${statusLabel}">
   <title>${label}: ${statusLabel}</title>
   <linearGradient id="s" x2="0" y2="100%">
     <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
@@ -77,17 +120,45 @@ export function generateBadgeSvg(
     <rect x="${labelWidth}" width="${statusWidth}" height="${height}" fill="${statusColor}"/>
     <rect width="${totalWidth}" height="${height}" fill="url(#s)"/>
   </g>
-  <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" text-rendering="geometricPrecision" font-size="${fontSize}">
+  <g fill="${labelTextColor}" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" text-rendering="geometricPrecision" font-size="${fontSize}">
     <text x="${labelWidth / 2}" y="${textY}" fill="#010101" fill-opacity=".3">${escapeXml(labelText)}</text>
-    <text x="${labelWidth / 2}" y="${textY - 1}" fill="#fff">${escapeXml(labelText)}</text>
+    <text x="${labelWidth / 2}" y="${textY - 1}" fill="${labelTextColor}">${escapeXml(labelText)}</text>
     <text x="${labelWidth + statusWidth / 2}" y="${textY}" fill="#010101" fill-opacity=".3">${escapeXml(statusText)}</text>
-    <text x="${labelWidth + statusWidth / 2}" y="${textY - 1}" fill="#fff">${escapeXml(statusText)}</text>
+    <text x="${labelWidth + statusWidth / 2}" y="${textY - 1}" fill="${statusTextColorValue}">${escapeXml(statusText)}</text>
   </g>
 </svg>`;
+    // Apply scale if needed
+    if (scale !== 1) {
+      return `<svg xmlns="http://www.w3.org/2000/svg" width="${scaledWidth}" height="${scaledHeight}" viewBox="0 0 ${totalWidth} ${height}" role="img" aria-label="${label}: ${statusLabel}">
+  <title>${label}: ${statusLabel}</title>
+  <linearGradient id="s" x2="0" y2="100%">
+    <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
+    <stop offset="1" stop-opacity=".1"/>
+  </linearGradient>
+  <clipPath id="r">
+    <rect width="${totalWidth}" height="${height}" rx="3" fill="#fff"/>
+  </clipPath>
+  <g clip-path="url(#r)">
+    <rect width="${labelWidth}" height="${height}" fill="${labelColor}"/>
+    <rect x="${labelWidth}" width="${statusWidth}" height="${height}" fill="${statusColor}"/>
+    <rect width="${totalWidth}" height="${height}" fill="url(#s)"/>
+  </g>
+  <g fill="${labelTextColor}" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" text-rendering="geometricPrecision" font-size="${fontSize}">
+    <text x="${labelWidth / 2}" y="${textY}" fill="#010101" fill-opacity=".3">${escapeXml(labelText)}</text>
+    <text x="${labelWidth / 2}" y="${textY - 1}" fill="${labelTextColor}">${escapeXml(labelText)}</text>
+    <text x="${labelWidth + statusWidth / 2}" y="${textY}" fill="#010101" fill-opacity=".3">${escapeXml(statusText)}</text>
+    <text x="${labelWidth + statusWidth / 2}" y="${textY - 1}" fill="${statusTextColorValue}">${escapeXml(statusText)}</text>
+  </g>
+</svg>`;
+    }
+    return svgContent;
   }
 
   if (style === "plastic") {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}" height="${height}" role="img" aria-label="${label}: ${statusLabel}">
+    const w = scale !== 1 ? scaledWidth : totalWidth;
+    const h = scale !== 1 ? scaledHeight : height;
+    const viewBox = scale !== 1 ? ` viewBox="0 0 ${totalWidth} ${height}"` : "";
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"${viewBox} role="img" aria-label="${label}: ${statusLabel}">
   <title>${label}: ${statusLabel}</title>
   <linearGradient id="s" x2="0" y2="100%">
     <stop offset="0" stop-color="#fff" stop-opacity=".7"/>
@@ -103,25 +174,28 @@ export function generateBadgeSvg(
     <rect x="${labelWidth}" width="${statusWidth}" height="${height}" fill="${statusColor}"/>
     <rect width="${totalWidth}" height="${height}" fill="url(#s)"/>
   </g>
-  <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" text-rendering="geometricPrecision" font-size="${fontSize}">
+  <g fill="${labelTextColor}" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" text-rendering="geometricPrecision" font-size="${fontSize}">
     <text x="${labelWidth / 2}" y="${textY}" fill="#010101" fill-opacity=".3">${escapeXml(labelText)}</text>
-    <text x="${labelWidth / 2}" y="${textY - 1}" fill="#fff">${escapeXml(labelText)}</text>
+    <text x="${labelWidth / 2}" y="${textY - 1}" fill="${labelTextColor}">${escapeXml(labelText)}</text>
     <text x="${labelWidth + statusWidth / 2}" y="${textY}" fill="#010101" fill-opacity=".3">${escapeXml(statusText)}</text>
-    <text x="${labelWidth + statusWidth / 2}" y="${textY - 1}" fill="#fff">${escapeXml(statusText)}</text>
+    <text x="${labelWidth + statusWidth / 2}" y="${textY - 1}" fill="${statusTextColorValue}">${escapeXml(statusText)}</text>
   </g>
 </svg>`;
   }
 
   if (style === "flat-square") {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}" height="${height}" role="img" aria-label="${label}: ${statusLabel}">
+    const w = scale !== 1 ? scaledWidth : totalWidth;
+    const h = scale !== 1 ? scaledHeight : height;
+    const viewBox = scale !== 1 ? ` viewBox="0 0 ${totalWidth} ${height}"` : "";
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"${viewBox} role="img" aria-label="${label}: ${statusLabel}">
   <title>${label}: ${statusLabel}</title>
   <g shape-rendering="crispEdges">
     <rect width="${labelWidth}" height="${height}" fill="${labelColor}"/>
     <rect x="${labelWidth}" width="${statusWidth}" height="${height}" fill="${statusColor}"/>
   </g>
-  <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" text-rendering="geometricPrecision" font-size="${fontSize}">
-    <text x="${labelWidth / 2}" y="${textY}">${escapeXml(labelText)}</text>
-    <text x="${labelWidth + statusWidth / 2}" y="${textY}">${escapeXml(statusText)}</text>
+  <g fill="${labelTextColor}" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" text-rendering="geometricPrecision" font-size="${fontSize}">
+    <text x="${labelWidth / 2}" y="${textY}" fill="${labelTextColor}">${escapeXml(labelText)}</text>
+    <text x="${labelWidth + statusWidth / 2}" y="${textY}" fill="${statusTextColorValue}">${escapeXml(statusText)}</text>
   </g>
 </svg>`;
   }
@@ -140,23 +214,31 @@ export function generateBadgeSvg(
     const textWidth = Math.round(measureText(displayText, modernFontSize));
     const modernWidth = iconPadding + iconSize + gap + textWidth + textPadding;
 
-    // SVG path icons (Lucide-style, simplified)
+    // Apply scale for modern style
+    const scaledModernWidth = Math.round(modernWidth * scale);
+    const scaledModernHeight = Math.round(modernHeight * scale);
+
+    // Use custom text color or default white for modern style
+    const modernTextColor = statusTextColorValue;
+    const iconStrokeColor = modernTextColor;
+
+    // SVG path icons (Lucide-style, simplified) with dynamic color
     const icons: Record<string, string> = {
       // CheckCircle for operational/active
-      operational: `<path d="M7.5 12l2 2 5-5" stroke="white" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="6" stroke="white" stroke-width="1.5" fill="none"/>`,
-      active: `<path d="M7.5 12l2 2 5-5" stroke="white" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="6" stroke="white" stroke-width="1.5" fill="none"/>`,
+      operational: `<path d="M7.5 12l2 2 5-5" stroke="${iconStrokeColor}" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="6" stroke="${iconStrokeColor}" stroke-width="1.5" fill="none"/>`,
+      active: `<path d="M7.5 12l2 2 5-5" stroke="${iconStrokeColor}" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="6" stroke="${iconStrokeColor}" stroke-width="1.5" fill="none"/>`,
       // AlertTriangle for degraded/partial
-      degraded: `<path d="M12 6.5v4M12 14.5h.01" stroke="white" stroke-width="1.5" stroke-linecap="round"/><path d="M5.5 17h13L12 5.5 5.5 17z" stroke="white" stroke-width="1.5" fill="none" stroke-linejoin="round"/>`,
-      partial_outage: `<path d="M12 6.5v4M12 14.5h.01" stroke="white" stroke-width="1.5" stroke-linecap="round"/><path d="M5.5 17h13L12 5.5 5.5 17z" stroke="white" stroke-width="1.5" fill="none" stroke-linejoin="round"/>`,
+      degraded: `<path d="M12 6.5v4M12 14.5h.01" stroke="${iconStrokeColor}" stroke-width="1.5" stroke-linecap="round"/><path d="M5.5 17h13L12 5.5 5.5 17z" stroke="${iconStrokeColor}" stroke-width="1.5" fill="none" stroke-linejoin="round"/>`,
+      partial_outage: `<path d="M12 6.5v4M12 14.5h.01" stroke="${iconStrokeColor}" stroke-width="1.5" stroke-linecap="round"/><path d="M5.5 17h13L12 5.5 5.5 17z" stroke="${iconStrokeColor}" stroke-width="1.5" fill="none" stroke-linejoin="round"/>`,
       // XCircle for down/major
-      down: `<circle cx="12" cy="12" r="6" stroke="white" stroke-width="1.5" fill="none"/><path d="M9.5 9.5l5 5M14.5 9.5l-5 5" stroke="white" stroke-width="1.5" stroke-linecap="round"/>`,
-      major_outage: `<circle cx="12" cy="12" r="6" stroke="white" stroke-width="1.5" fill="none"/><path d="M9.5 9.5l5 5M14.5 9.5l-5 5" stroke="white" stroke-width="1.5" stroke-linecap="round"/>`,
+      down: `<circle cx="12" cy="12" r="6" stroke="${iconStrokeColor}" stroke-width="1.5" fill="none"/><path d="M9.5 9.5l5 5M14.5 9.5l-5 5" stroke="${iconStrokeColor}" stroke-width="1.5" stroke-linecap="round"/>`,
+      major_outage: `<circle cx="12" cy="12" r="6" stroke="${iconStrokeColor}" stroke-width="1.5" fill="none"/><path d="M9.5 9.5l5 5M14.5 9.5l-5 5" stroke="${iconStrokeColor}" stroke-width="1.5" stroke-linecap="round"/>`,
       // Wrench for maintenance
-      maintenance: `<path d="M14.5 6.5a3.5 3.5 0 00-5 4.95l-4 4 1.4 1.4 4-4a3.5 3.5 0 004.6-6.35z" stroke="white" stroke-width="1.5" fill="none" stroke-linejoin="round"/>`,
+      maintenance: `<path d="M14.5 6.5a3.5 3.5 0 00-5 4.95l-4 4 1.4 1.4 4-4a3.5 3.5 0 004.6-6.35z" stroke="${iconStrokeColor}" stroke-width="1.5" fill="none" stroke-linejoin="round"/>`,
       // Pause for paused
-      paused: `<rect x="8" y="7" width="2.5" height="10" rx="0.5" fill="white"/><rect x="13.5" y="7" width="2.5" height="10" rx="0.5" fill="white"/>`,
+      paused: `<rect x="8" y="7" width="2.5" height="10" rx="0.5" fill="${iconStrokeColor}"/><rect x="13.5" y="7" width="2.5" height="10" rx="0.5" fill="${iconStrokeColor}"/>`,
       // Clock for pending
-      pending: `<circle cx="12" cy="12" r="6" stroke="white" stroke-width="1.5" fill="none"/><path d="M12 8v4l2.5 2.5" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
+      pending: `<circle cx="12" cy="12" r="6" stroke="${iconStrokeColor}" stroke-width="1.5" fill="none"/><path d="M12 8v4l2.5 2.5" stroke="${iconStrokeColor}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
     };
 
     const icon = icons[status] || icons.pending;
@@ -165,24 +247,31 @@ export function generateBadgeSvg(
     const textX = iconPadding + iconSize + gap;
     const textY2 = modernHeight / 2 + modernFontSize / 2 - 1;
 
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${modernWidth}" height="${modernHeight}" role="img" aria-label="${displayText}">
+    const w = scale !== 1 ? scaledModernWidth : modernWidth;
+    const h = scale !== 1 ? scaledModernHeight : modernHeight;
+    const viewBox = scale !== 1 ? ` viewBox="0 0 ${modernWidth} ${modernHeight}"` : "";
+
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"${viewBox} role="img" aria-label="${displayText}">
   <title>${displayText}</title>
   <rect width="${modernWidth}" height="${modernHeight}" rx="12" fill="${statusColor}"/>
   <g transform="translate(${iconX}, ${iconY}) scale(${iconSize / 24})">${icon}</g>
-  <text x="${textX}" y="${textY2}" fill="#fff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="${modernFontSize}" font-weight="500">${escapeXml(displayText)}</text>
+  <text x="${textX}" y="${textY2}" fill="${modernTextColor}" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="${modernFontSize}" font-weight="500">${escapeXml(displayText)}</text>
 </svg>`;
   }
 
   // for-the-badge style
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}" height="${height}" role="img" aria-label="${label}: ${statusLabel}">
+  const ftbW = scale !== 1 ? scaledWidth : totalWidth;
+  const ftbH = scale !== 1 ? scaledHeight : height;
+  const ftbViewBox = scale !== 1 ? ` viewBox="0 0 ${totalWidth} ${height}"` : "";
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${ftbW}" height="${ftbH}"${ftbViewBox} role="img" aria-label="${label}: ${statusLabel}">
   <title>${label}: ${statusLabel}</title>
   <g shape-rendering="crispEdges">
     <rect width="${labelWidth}" height="${height}" fill="${labelColor}"/>
     <rect x="${labelWidth}" width="${statusWidth}" height="${height}" fill="${statusColor}"/>
   </g>
-  <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" text-rendering="geometricPrecision" font-size="${fontSize}" font-weight="bold" letter-spacing="1">
-    <text x="${labelWidth / 2}" y="${textY}">${escapeXml(labelText)}</text>
-    <text x="${labelWidth + statusWidth / 2}" y="${textY}">${escapeXml(statusText)}</text>
+  <g fill="${labelTextColor}" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" text-rendering="geometricPrecision" font-size="${fontSize}" font-weight="bold" letter-spacing="1">
+    <text x="${labelWidth / 2}" y="${textY}" fill="${labelTextColor}">${escapeXml(labelText)}</text>
+    <text x="${labelWidth + statusWidth / 2}" y="${textY}" fill="${statusTextColorValue}">${escapeXml(statusText)}</text>
   </g>
 </svg>`;
 }

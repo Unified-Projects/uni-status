@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@uni-status/ui";
 import { useMonitors } from "@/hooks/use-monitors";
+import { useBadgeTemplates } from "@/hooks/use-badge-templates";
 import { EmbedCodeGenerator } from "@/components/embeds";
 import { LoadingState } from "@/components/ui/loading-state";
 
@@ -15,6 +16,7 @@ interface PageProps {
 export default function MonitorEmbedGeneratorPage({ params }: PageProps) {
   const { id } = use(params);
   const { data: monitorsResponse, isLoading } = useMonitors();
+  const { data: badgeTemplates } = useBadgeTemplates();
   const monitors = monitorsResponse?.data;
 
   const monitor = monitors?.find((m) => m.id === id);
@@ -70,6 +72,7 @@ export default function MonitorEmbedGeneratorPage({ params }: PageProps) {
         statusPageName=""
         monitorId={monitor.id}
         monitorName={monitor.name}
+        badgeTemplates={badgeTemplates}
       />
     </div>
   );
