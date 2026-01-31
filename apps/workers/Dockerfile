@@ -40,6 +40,7 @@ COPY packages/licensing/package.json ./packages/licensing/
 COPY enterprise/package.json ./enterprise/
 RUN pnpm install --shamefully-hoist
 COPY . .
+RUN pnpm build --filter=@uni-status/shared --filter=@uni-status/database
 WORKDIR /app/apps/workers
 RUN bun run build
 
