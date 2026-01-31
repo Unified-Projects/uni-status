@@ -58,6 +58,89 @@ const statusColors: Record<UptimeStatus, string> = {
   incident: "bg-[var(--status-error-solid)]",
 };
 
+interface SegmentHeights {
+  success: number;
+  degraded: number;
+  failure: number;
+}
+
+/**
+ * Calculate pixel heights for each status segment based on percentage.
+ * Ensures non-zero values have at least minimum visible height.
+ */
+function calculateSegmentHeights(
+  data: UptimeDataPoint,
+  totalHeight: number,
+  minHeight: number = 2
+): SegmentHeights {
+  const { successCount = 0, degradedCount = 0, failureCount = 0, totalCount = 0 } = data;
+
+  // If no data, return zero heights
+  if (totalCount === 0) {
+    return { success: 0, degraded: 0, failure: 0 };
+  }
+
+  // Calculate raw percentages
+  const successPct = successCount / totalCount;
+  const degradedPct = degradedCount / totalCount;
+  const failurePct = failureCount / totalCount;
+
+  // Calculate initial heights based on percentages
+  let successHeight = successPct * totalHeight;
+  let degradedHeight = degradedPct * totalHeight;
+  let failureHeight = failurePct * totalHeight;
+
+  // Track which segments need minimum height adjustment
+  const segments: { key: keyof SegmentHeights; count: number; height: number }[] = [
+    { key: "success", count: successCount, height: successHeight },
+    { key: "degraded", count: degradedCount, height: degradedHeight },
+    { key: "failure", count: failureCount, height: failureHeight },
+  ];
+
+  // Count non-zero segments that need minimum height
+  const nonZeroSegments = segments.filter(s => s.count > 0);
+  const segmentsNeedingMinHeight = nonZeroSegments.filter(s => s.height < minHeight);
+
+  if (segmentsNeedingMinHeight.length > 0) {
+    // Calculate how much extra space we need
+    const extraNeeded = segmentsNeedingMinHeight.reduce(
+      (acc, s) => acc + (minHeight - s.height),
+      0
+    );
+
+    // Find the largest segment to take space from
+    const largestSegment = [...nonZeroSegments]
+      .filter(s => s.height >= minHeight)
+      .sort((a, b) => b.height - a.height)[0];
+
+    if (largestSegment && largestSegment.height > extraNeeded + minHeight) {
+      // Adjust heights
+      const result: SegmentHeights = { success: 0, degraded: 0, failure: 0 };
+
+      for (const seg of segments) {
+        if (seg.count === 0) {
+          result[seg.key] = 0;
+        } else if (seg.height < minHeight) {
+          result[seg.key] = minHeight;
+        } else if (seg.key === largestSegment.key) {
+          result[seg.key] = seg.height - extraNeeded;
+        } else {
+          result[seg.key] = seg.height;
+        }
+      }
+
+      return result;
+    }
+  }
+
+  // Return calculated heights (may be less than minHeight for small segments)
+  return {
+    success: successCount > 0 ? Math.max(successHeight, minHeight) : 0,
+    degraded: degradedCount > 0 ? Math.max(degradedHeight, minHeight) : 0,
+    failure: failureCount > 0 ? Math.max(failureHeight, minHeight) : 0,
+  };
+}
+
 export function UptimeBar({
   data,
   days,
@@ -220,22 +303,65 @@ function UptimeBarSegment({
   isLast,
 }: UptimeBarSegmentProps) {
   const hasIncidents = data.incidents && data.incidents.length > 0;
+  const { successCount = 0, degradedCount = 0, failureCount = 0, totalCount = 0 } = data;
 
-  // Show incident color for any interval that had incidents (including resolved ones)
-  // Otherwise use the status from the API (which is based on actual check results)
-  let status: UptimeStatus;
+  // Determine if we should use proportional rendering
+  // Use proportional only when there are mixed results (degraded or failed checks)
+  const hasMixedResults = totalCount > 0 && (degradedCount > 0 || failureCount > 0);
+  const useProportionalRendering = hasMixedResults && data.status !== "unknown" && data.status !== "maintenance";
+
+  // Calculate segment heights for proportional rendering
+  const segmentHeights = useProportionalRendering
+    ? calculateSegmentHeights(data, height)
+    : null;
+
+  // For solid color rendering, determine the status
+  let solidStatus: UptimeStatus;
   if (hasIncidents) {
-    status = "incident";
+    solidStatus = "incident";
   } else {
-    // Trust the status from the API - it's based on actual degraded/failure check results
-    status = data.status;
+    solidStatus = data.status;
   }
 
-  const segment = (
+  const segment = useProportionalRendering ? (
+    // Proportional stacked bar: failures at bottom, success at top
+    <div
+      className={cn(
+        "relative flex-1 min-w-[2px] transition-all hover:opacity-80 flex flex-col-reverse overflow-hidden",
+        isFirst && "rounded-l",
+        isLast && "rounded-r",
+        hasIncidents && "ring-1 ring-inset ring-[var(--status-error-solid)]/50"
+      )}
+      style={{ height }}
+    >
+      {/* Failure segment (bottom) */}
+      {segmentHeights!.failure > 0 && (
+        <div
+          className="w-full bg-[var(--status-error-solid)] flex-shrink-0"
+          style={{ height: segmentHeights!.failure }}
+        />
+      )}
+      {/* Degraded segment (middle) */}
+      {segmentHeights!.degraded > 0 && (
+        <div
+          className="w-full bg-[var(--status-warning-solid)] flex-shrink-0"
+          style={{ height: segmentHeights!.degraded }}
+        />
+      )}
+      {/* Success segment (top) - uses flex-grow to fill remaining space */}
+      {segmentHeights!.success > 0 && (
+        <div
+          className="w-full bg-[var(--status-success-solid)] flex-grow"
+          style={{ minHeight: segmentHeights!.success }}
+        />
+      )}
+    </div>
+  ) : (
+    // Solid color rendering for 100% success, maintenance, unknown, or no data
     <div
       className={cn(
         "relative flex-1 min-w-[2px] transition-all hover:opacity-80",
-        statusColors[status],
+        statusColors[solidStatus],
         isFirst && "rounded-l",
         isLast && "rounded-r"
       )}
@@ -286,16 +412,40 @@ function UptimeBarSegment({
               <div className="text-sm">
                 Uptime: {data.uptimePercentage.toFixed(2)}%
               </div>
-              {data.totalCount !== undefined && (
-                <div className="text-xs text-muted-foreground space-y-0.5">
-                  <div>{data.successCount ?? 0} successful</div>
-                  {(data.degradedCount ?? 0) > 0 && (
-                    <div className="text-[var(--status-warning-solid)]">{data.degradedCount} degraded (slow)</div>
-                  )}
-                  {(data.failureCount ?? 0) > 0 && (
-                    <div className="text-[var(--status-error-solid)]">{data.failureCount} failed</div>
-                  )}
-                  <div className="text-muted-foreground/70">{data.totalCount} total checks</div>
+              {data.totalCount !== undefined && data.totalCount > 0 && (
+                <div className="text-xs text-muted-foreground space-y-1.5">
+                  {/* Mini horizontal breakdown bar */}
+                  <div className="flex h-2 w-full rounded overflow-hidden">
+                    {successCount > 0 && (
+                      <div
+                        className="bg-[var(--status-success-solid)]"
+                        style={{ width: `${(successCount / totalCount) * 100}%` }}
+                      />
+                    )}
+                    {degradedCount > 0 && (
+                      <div
+                        className="bg-[var(--status-warning-solid)]"
+                        style={{ width: `${(degradedCount / totalCount) * 100}%` }}
+                      />
+                    )}
+                    {failureCount > 0 && (
+                      <div
+                        className="bg-[var(--status-error-solid)]"
+                        style={{ width: `${(failureCount / totalCount) * 100}%` }}
+                      />
+                    )}
+                  </div>
+                  {/* Text breakdown */}
+                  <div className="space-y-0.5">
+                    <div>{successCount} successful</div>
+                    {degradedCount > 0 && (
+                      <div className="text-[var(--status-warning-solid)]">{degradedCount} degraded (slow)</div>
+                    )}
+                    {failureCount > 0 && (
+                      <div className="text-[var(--status-error-solid)]">{failureCount} failed</div>
+                    )}
+                    <div className="text-muted-foreground/70">{totalCount} total checks</div>
+                  </div>
                 </div>
               )}
             </>
