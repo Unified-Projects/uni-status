@@ -166,10 +166,12 @@ export interface StatusPage {
     allowedRoles?: Array<"owner" | "admin" | "member" | "viewer">;
   };
   template?: TemplateConfig;
-  seoTitle: string | null;
-  seoDescription: string | null;
-  ogImageUrl: string | null;
-  ogTemplate?: "classic" | "modern" | "minimal" | "dashboard" | "hero" | "compact";
+  seo?: {
+    title?: string;
+    description?: string;
+    ogImage?: string;
+    ogTemplate?: "classic" | "modern" | "minimal" | "dashboard" | "hero" | "compact";
+  };
   createdAt: string;
   updatedAt: string;
 }

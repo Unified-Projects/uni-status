@@ -339,11 +339,11 @@ export function StatusPageForm({ statusPage, mode }: StatusPageFormProps) {
         },
       },
       template: statusPage?.template ?? defaultTemplate,
-      seoTitle: statusPage?.seoTitle ?? "",
-      seoDescription: statusPage?.seoDescription ?? "",
-      ogImageUrl: statusPage?.ogImageUrl ? getAssetUrl(statusPage.ogImageUrl) : "",
-      ogTemplate: statusPage?.ogTemplate ?? "classic",
-      useOgTemplate: !statusPage?.ogImageUrl,
+      seoTitle: statusPage?.seo?.title ?? "",
+      seoDescription: statusPage?.seo?.description ?? "",
+      ogImageUrl: statusPage?.seo?.ogImage ? getAssetUrl(statusPage.seo.ogImage) : "",
+      ogTemplate: statusPage?.seo?.ogTemplate ?? "classic",
+      useOgTemplate: !statusPage?.seo?.ogImage,
     },
   });
 
@@ -458,7 +458,7 @@ export function StatusPageForm({ statusPage, mode }: StatusPageFormProps) {
       seo: {
         title: data.seoTitle || undefined,
         description: data.seoDescription || undefined,
-        ogImage: data.useOgTemplate ? undefined : (normalizeAssetForSubmit(data.ogImageUrl, statusPage?.ogImageUrl) || undefined),
+        ogImage: data.useOgTemplate ? undefined : (normalizeAssetForSubmit(data.ogImageUrl, statusPage?.seo?.ogImage) || undefined),
         ogTemplate: data.useOgTemplate ? data.ogTemplate : undefined,
       },
     };
