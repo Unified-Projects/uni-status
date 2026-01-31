@@ -121,15 +121,141 @@ function generateStatusColorVariants(baseHex: string): {
   };
 }
 
-function generateThemeCustomCss(themeName: string, colors: { success: string; warning: string; error: string; info?: string; primary?: string }): string {
+// Convert hex to HSL string format for Tailwind CSS variables (e.g., "222.2 84% 4.9%")
+function hexToHslString(hex: string): string {
+  const hsl = hexToHsl(hex);
+  if (!hsl) return "0 0% 50%";
+  return `${hsl.h.toFixed(1)} ${hsl.s.toFixed(1)}% ${hsl.l.toFixed(1)}%`;
+}
+
+// Generate a lighter/darker variant of a color for foreground text
+function generateForegroundColor(hex: string, isLight: boolean): string {
+  const hsl = hexToHsl(hex);
+  if (!hsl) return isLight ? "222.2 47.4% 11.2%" : "210 40% 98%";
+  // For light backgrounds, use dark text; for dark backgrounds, use light text
+  if (hsl.l > 50) {
+    return `${hsl.h.toFixed(1)} ${Math.min(hsl.s, 50).toFixed(1)}% 11%`;
+  } else {
+    return `${hsl.h.toFixed(1)} ${Math.min(hsl.s, 40).toFixed(1)}% 98%`;
+  }
+}
+
+// Generate muted variant of a color
+function generateMutedColor(hex: string, isDark: boolean): string {
+  const hsl = hexToHsl(hex);
+  if (!hsl) return isDark ? "217.2 32.6% 17.5%" : "210 40% 96.1%";
+  if (isDark) {
+    return `${hsl.h.toFixed(1)} ${Math.min(hsl.s, 35).toFixed(1)}% 17%`;
+  } else {
+    return `${hsl.h.toFixed(1)} ${Math.min(hsl.s, 45).toFixed(1)}% 96%`;
+  }
+}
+
+// Generate muted foreground color
+function generateMutedForeground(isDark: boolean): string {
+  return isDark ? "215 20.2% 65.1%" : "215.4 16.3% 46.9%";
+}
+
+// Generate border/input color from surface color
+function generateBorderColor(surfaceHex: string, isDark: boolean): string {
+  const hsl = hexToHsl(surfaceHex);
+  if (!hsl) return isDark ? "217.2 32.6% 17.5%" : "214.3 31.8% 91.4%";
+  if (isDark) {
+    return `${hsl.h.toFixed(1)} ${Math.min(hsl.s, 35).toFixed(1)}% ${Math.min(hsl.l + 5, 25).toFixed(1)}%`;
+  } else {
+    return `${hsl.h.toFixed(1)} ${Math.min(hsl.s, 35).toFixed(1)}% ${Math.max(hsl.l - 5, 85).toFixed(1)}%`;
+  }
+}
+
+interface ThemeColors {
+  success: string;
+  warning: string;
+  error: string;
+  info?: string;
+  primary?: string;
+  secondary?: string;
+  background?: string;
+  backgroundDark?: string;
+  text?: string;
+  textDark?: string;
+  surface?: string;
+  surfaceDark?: string;
+  border?: string;
+  borderDark?: string;
+}
+
+function generateThemeCustomCss(themeName: string, colors: ThemeColors): string {
   const success = generateStatusColorVariants(colors.success);
   const warning = generateStatusColorVariants(colors.warning);
   const error = generateStatusColorVariants(colors.error);
   const info = generateStatusColorVariants(colors.info || colors.primary || "#3b82f6");
 
+  // Base design system colors
+  const primaryHex = colors.primary || "#3b82f6";
+  const backgroundLight = colors.background || "#ffffff";
+  const backgroundDark = colors.backgroundDark || "#0a0a0a";
+  const textLight = colors.text || "#0a0a0a";
+  const textDark = colors.textDark || "#fafafa";
+  const surfaceLight = colors.surface || "#ffffff";
+  const surfaceDark = colors.surfaceDark || "#0a0a0a";
+  const borderLight = colors.border || "#e5e5e5";
+  const borderDark = colors.borderDark || "#262626";
+  const secondaryHex = colors.secondary || surfaceLight;
+  const secondaryDarkHex = colors.secondary || surfaceDark;
+
+  // Convert to HSL strings for CSS variables
+  const primaryHsl = hexToHslString(primaryHex);
+  const primaryForegroundLight = generateForegroundColor(primaryHex, true);
+  const primaryForegroundDark = generateForegroundColor(primaryHex, false);
+
+  const backgroundLightHsl = hexToHslString(backgroundLight);
+  const backgroundDarkHsl = hexToHslString(backgroundDark);
+  const foregroundLightHsl = hexToHslString(textLight);
+  const foregroundDarkHsl = hexToHslString(textDark);
+
+  const cardLightHsl = hexToHslString(surfaceLight);
+  const cardDarkHsl = hexToHslString(surfaceDark);
+
+  const mutedLightHsl = generateMutedColor(surfaceLight, false);
+  const mutedDarkHsl = generateMutedColor(surfaceDark, true);
+  const mutedForegroundLightHsl = generateMutedForeground(false);
+  const mutedForegroundDarkHsl = generateMutedForeground(true);
+
+  const accentLightHsl = generateMutedColor(surfaceLight, false);
+  const accentDarkHsl = generateMutedColor(surfaceDark, true);
+
+  const borderLightHsl = hexToHslString(borderLight);
+  const borderDarkHsl = hexToHslString(borderDark);
+
+  const secondaryLightHsl = hexToHslString(secondaryHex);
+  const secondaryDarkHsl = hexToHslString(secondaryDarkHex);
+
+  const destructiveHsl = hexToHslString(colors.error);
+
   // Using html selector for higher specificity to override globals.css @layer base
   return `/* Theme: ${themeName} */
 html {
+  /* Base design system variables */
+  --background: ${backgroundLightHsl} !important;
+  --foreground: ${foregroundLightHsl} !important;
+  --card: ${cardLightHsl} !important;
+  --card-foreground: ${foregroundLightHsl} !important;
+  --popover: ${cardLightHsl} !important;
+  --popover-foreground: ${foregroundLightHsl} !important;
+  --primary: ${primaryHsl} !important;
+  --primary-foreground: ${primaryForegroundLight} !important;
+  --secondary: ${secondaryLightHsl} !important;
+  --secondary-foreground: ${foregroundLightHsl} !important;
+  --muted: ${mutedLightHsl} !important;
+  --muted-foreground: ${mutedForegroundLightHsl} !important;
+  --accent: ${accentLightHsl} !important;
+  --accent-foreground: ${foregroundLightHsl} !important;
+  --destructive: ${destructiveHsl} !important;
+  --destructive-foreground: 210 40% 98% !important;
+  --border: ${borderLightHsl} !important;
+  --input: ${borderLightHsl} !important;
+  --ring: ${primaryHsl} !important;
+  /* Status color variables */
   --status-success-solid: ${success.light.solid} !important;
   --status-success-solid-hover: ${success.light.solidHover} !important;
   --status-success-bg: ${success.light.bg} !important;
@@ -160,6 +286,27 @@ html {
   --status-info-icon: ${info.light.icon} !important;
 }
 html.dark {
+  /* Base design system variables */
+  --background: ${backgroundDarkHsl} !important;
+  --foreground: ${foregroundDarkHsl} !important;
+  --card: ${cardDarkHsl} !important;
+  --card-foreground: ${foregroundDarkHsl} !important;
+  --popover: ${cardDarkHsl} !important;
+  --popover-foreground: ${foregroundDarkHsl} !important;
+  --primary: ${primaryHsl} !important;
+  --primary-foreground: ${primaryForegroundDark} !important;
+  --secondary: ${secondaryDarkHsl} !important;
+  --secondary-foreground: ${foregroundDarkHsl} !important;
+  --muted: ${mutedDarkHsl} !important;
+  --muted-foreground: ${mutedForegroundDarkHsl} !important;
+  --accent: ${accentDarkHsl} !important;
+  --accent-foreground: ${foregroundDarkHsl} !important;
+  --destructive: ${destructiveHsl} !important;
+  --destructive-foreground: 210 40% 98% !important;
+  --border: ${borderDarkHsl} !important;
+  --input: ${borderDarkHsl} !important;
+  --ring: ${primaryHsl} !important;
+  /* Status color variables */
   --status-success-solid: ${success.dark.solid} !important;
   --status-success-solid-hover: ${success.dark.solidHover} !important;
   --status-success-bg: ${success.dark.bg} !important;
@@ -1366,13 +1513,22 @@ function AppearanceSection({
       setSelectedThemeId(themeId);
       setValue("theme.primaryColor", theme.colors.primary, { shouldDirty: true });
 
-      // Generate complete CSS to override all status color variants
+      // Generate complete CSS to override all status color variants AND base design system variables
       const statusCss = generateThemeCustomCss(theme.name, {
         success: theme.colors.success,
         warning: theme.colors.warning,
         error: theme.colors.error,
         info: theme.colors.info,
         primary: theme.colors.primary,
+        secondary: theme.colors.secondary,
+        background: theme.colors.background,
+        backgroundDark: theme.colors.backgroundDark,
+        text: theme.colors.text,
+        textDark: theme.colors.textDark,
+        surface: theme.colors.surface,
+        surfaceDark: theme.colors.surfaceDark,
+        border: theme.colors.border,
+        borderDark: theme.colors.borderDark,
       });
       setValue("theme.customCss", statusCss, { shouldDirty: true });
     }
