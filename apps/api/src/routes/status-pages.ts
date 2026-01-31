@@ -234,12 +234,30 @@ statusPagesRoutes.patch("/:id", async (c) => {
     });
   }
 
-  const { password, passwordProtected, customDomain, logo, favicon, ...rest } = validated;
+  const { password, passwordProtected, customDomain, logo, favicon, theme, settings, seo, ...rest } = validated;
+
+  // Merge theme with existing to preserve fields not in the update
+  const mergedTheme = theme
+    ? { ...(currentPage.theme as Record<string, unknown> ?? {}), ...theme }
+    : undefined;
+
+  // Merge settings with existing to preserve fields not in the update
+  const mergedSettings = settings
+    ? { ...(currentPage.settings as Record<string, unknown> ?? {}), ...settings }
+    : undefined;
+
+  // Merge seo with existing to preserve fields not in the update
+  const mergedSeo = seo
+    ? { ...(currentPage.seo as Record<string, unknown> ?? {}), ...seo }
+    : undefined;
 
   const [page] = await db
     .update(statusPages)
     .set({
       ...rest,
+      ...(mergedTheme !== undefined ? { theme: mergedTheme } : {}),
+      ...(mergedSettings !== undefined ? { settings: mergedSettings } : {}),
+      ...(mergedSeo !== undefined ? { seo: mergedSeo } : {}),
       ...(passwordHash !== undefined ? { passwordHash } : {}),
       ...(customDomainValue !== undefined ? { customDomain: customDomainValue } : {}),
       ...(logoValue !== undefined ? { logo: logoValue } : {}),
