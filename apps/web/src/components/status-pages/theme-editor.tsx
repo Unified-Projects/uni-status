@@ -156,7 +156,7 @@ function ColorPickerField({
           type="color"
           value={value || placeholder || "#000000"}
           onChange={(e) => onChange(e.target.value)}
-          className="h-10 w-10 rounded border cursor-pointer"
+          className="h-10 w-10 cursor-pointer appearance-none rounded-md border border-input bg-transparent p-0.5 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded [&::-webkit-color-swatch]:border-none [&::-moz-color-swatch]:rounded [&::-moz-color-swatch]:border-none"
         />
         {optional && value && (
           <Button
