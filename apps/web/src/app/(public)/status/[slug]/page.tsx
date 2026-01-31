@@ -53,6 +53,7 @@ interface PublicStatusPageData {
     backgroundColor?: string;
     textColor?: string;
     customCss?: string;
+    colorMode?: "system" | "light" | "dark";
   };
   settings: {
     showUptimePercentage: boolean;
@@ -562,6 +563,11 @@ export default async function PublicStatusPage({
   const localization = data.settings.localization;
   const defaultTimezone = data.settings.defaultTimezone || "local";
 
+  // Generate color mode script to force light/dark mode
+  const colorModeScript = data.theme.colorMode && data.theme.colorMode !== "system"
+    ? `(function(){document.documentElement.classList.${data.theme.colorMode === "dark" ? "add" : "remove"}("dark")})();`
+    : null;
+
   // Check if this layout needs full-page control
   if (isFullPageLayout(template.layout)) {
     // Full-page layouts (sidebar, cards, single-page) render everything themselves
@@ -571,6 +577,10 @@ export default async function PublicStatusPage({
         defaultTimezone={defaultTimezone}
         initialLocale={initialLocale}
       >
+        {/* Force color mode if set */}
+        {colorModeScript && (
+          <script dangerouslySetInnerHTML={{ __html: colorModeScript }} />
+        )}
         <div
           className="min-h-screen bg-background text-foreground"
           style={themeStyles}
@@ -607,6 +617,10 @@ export default async function PublicStatusPage({
       defaultTimezone={defaultTimezone}
       initialLocale={initialLocale}
     >
+      {/* Force color mode if set */}
+      {colorModeScript && (
+        <script dangerouslySetInnerHTML={{ __html: colorModeScript }} />
+      )}
       <div
         className="min-h-screen bg-background text-foreground"
         style={themeStyles}
