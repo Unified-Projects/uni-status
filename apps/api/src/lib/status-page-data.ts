@@ -38,6 +38,7 @@ export interface PublicStatusPagePayload {
     backgroundColor?: string;
     textColor?: string;
     customCss?: string;
+    colorMode?: "system" | "light" | "dark";
   };
   settings: StatusPage["settings"] & {
     showUptimePercentage: boolean;
