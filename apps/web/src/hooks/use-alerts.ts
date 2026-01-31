@@ -5,6 +5,17 @@ import { apiClient, queryKeys, type PaginationParams } from "@/lib/api-client";
 import type { CreateAlertChannelInput, CreateAlertPolicyInput } from "@uni-status/shared/validators";
 import { useDashboardStore } from "@/stores/dashboard-store";
 
+// On-Call Rotations (for alert policy routing)
+export function useOncallRotations() {
+  const organizationId = useDashboardStore((state) => state.currentOrganizationId);
+
+  return useQuery({
+    queryKey: ["oncall", "rotations", organizationId],
+    queryFn: () => apiClient.oncall.listRotations(organizationId ?? undefined),
+    enabled: !!organizationId,
+  });
+}
+
 // Alert Channels
 export function useAlertChannels(params?: PaginationParams) {
   const organizationId = useDashboardStore((state) => state.currentOrganizationId);

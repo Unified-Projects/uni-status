@@ -45,6 +45,7 @@ import {
   useDeleteAlertPolicy,
   useAcknowledgeAlert,
   usePolicyMonitorCounts,
+  useOncallRotations,
 } from "@/hooks/use-alerts";
 import { useMonitors } from "@/hooks/use-monitors";
 import {
@@ -116,6 +117,7 @@ export default function AlertsPage() {
   const { data: monitorsResponse } = useMonitors();
   const monitors = monitorsResponse?.data;
   const { data: policyMonitorCounts } = usePolicyMonitorCounts();
+  const { data: oncallRotations } = useOncallRotations();
 
   // Mutations
   const createChannel = useCreateAlertChannel();
@@ -517,6 +519,7 @@ export default function AlertsPage() {
         policy={selectedPolicy}
         availableChannels={channels || []}
         availableMonitors={monitors || []}
+        availableOncallRotations={oncallRotations || []}
         onSubmit={handlePolicySubmit}
         isSubmitting={createPolicy.isPending || updatePolicy.isPending}
       />

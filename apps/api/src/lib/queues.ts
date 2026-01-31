@@ -2,6 +2,7 @@ import { Queue } from "bullmq";
 import { redis, queuePrefix } from "./redis";
 import { QUEUE_NAMES } from "@uni-status/shared/constants";
 import { getAppUrl } from "@uni-status/shared/config";
+import type { OrganizationCredentials } from "@uni-status/shared/types/credentials";
 
 const queueOpts = { connection: redis, prefix: queuePrefix };
 
@@ -236,7 +237,8 @@ export interface TestNotificationChannel {
 }
 
 function buildTestNotificationJobData(
-  channel: TestNotificationChannel
+  channel: TestNotificationChannel,
+  orgCredentials?: OrganizationCredentials
 ): Record<string, unknown> {
   const testData = {
     monitorName: "Test Monitor",
@@ -256,6 +258,8 @@ function buildTestNotificationJobData(
         subject: "[Test] Uni-Status Alert Channel Test",
         emailType: "alert",
         data: testData,
+        orgSmtpCredentials: orgCredentials?.smtp,
+        orgResendCredentials: orgCredentials?.resend,
       };
 
     case "slack":
@@ -371,10 +375,11 @@ function buildTestNotificationJobData(
 }
 
 export async function queueTestNotification(
-  channel: TestNotificationChannel
+  channel: TestNotificationChannel,
+  orgCredentials?: OrganizationCredentials
 ): Promise<string> {
   const queue = getNotifyQueueForType(channel.type);
-  const jobData = buildTestNotificationJobData(channel);
+  const jobData = buildTestNotificationJobData(channel, orgCredentials);
   const jobId = `test-${channel.id}-${Date.now()}`;
 
   await queue.add(`test-${channel.id}`, jobData, {

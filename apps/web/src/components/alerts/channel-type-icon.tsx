@@ -124,6 +124,12 @@ export interface ChannelTypeIconProps {
   className?: string;
 }
 
+const sizeClasses = {
+  sm: "h-4 w-4",
+  md: "h-5 w-5",
+  lg: "h-6 w-6",
+};
+
 export function ChannelTypeIcon({
   type,
   size = "md",
@@ -132,13 +138,14 @@ export function ChannelTypeIcon({
   className,
 }: ChannelTypeIconProps) {
   const config = channelTypeConfig[type];
-  const Icon = config.icon;
 
-  const sizeClasses = {
-    sm: "h-4 w-4",
-    md: "h-5 w-5",
-    lg: "h-6 w-6",
-  };
+  // Defensive check for unrecognized types
+  if (!config) {
+    console.warn(`Unknown channel type: ${type}`);
+    return <Bell className={cn(sizeClasses[size], "text-muted-foreground", className)} />;
+  }
+
+  const Icon = config.icon;
 
   const bgSizeClasses = {
     sm: "p-1.5",

@@ -97,6 +97,7 @@ export const alertPolicies = pgTable(
     description: text("description"),
     enabled: boolean("enabled").notNull().default(true),
     escalationPolicyId: text("escalation_policy_id"),
+    oncallRotationId: text("oncall_rotation_id"),
     conditions: jsonb("conditions").$type<{
       // Trigger conditions
       consecutiveFailures?: number; // Alert after N consecutive failures

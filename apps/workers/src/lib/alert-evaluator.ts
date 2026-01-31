@@ -75,6 +75,7 @@ interface AlertPolicyWithConditions {
   name: string;
   enabled: boolean;
   escalationPolicyId?: string | null;
+  oncallRotationId?: string | null;
   conditions: {
     consecutiveFailures?: number;
     failuresInWindow?: {
@@ -374,24 +375,40 @@ async function queueNotifications(
 
   if (!monitor[0]) return;
 
-  const channels = await db
-    .select()
-    .from(alertChannels)
-    .where(
-      and(
-        eq(alertChannels.organizationId, input.organizationId),
-        inArray(alertChannels.id, policy.channels),
-        eq(alertChannels.enabled, true)
-      )
+  // Get channel IDs from policy, ensuring we have an array
+  let channelIds = [...(policy.channels || [])];
+
+  // Resolve on-call user's email if oncallRotationId is configured
+  let oncallEmail: string | null = null;
+  if (policy.oncallRotationId) {
+    oncallEmail = await resolveOncallUserEmail(
+      policy.oncallRotationId,
+      input.organizationId
     );
+  }
+
+  // Get channels from the database
+  const channels = channelIds.length > 0
+    ? await db
+        .select()
+        .from(alertChannels)
+        .where(
+          and(
+            eq(alertChannels.organizationId, input.organizationId),
+            inArray(alertChannels.id, channelIds),
+            eq(alertChannels.enabled, true)
+          )
+        )
+    : [];
 
   const orgCredentials = await getOrgCredentials(input.organizationId);
 
   const APP_URL = getAppUrl();
+  const alertStatus = mapCheckStatusToAlertStatus(input.checkStatus);
+
+  // Queue notifications for regular channels
   for (const channel of channels) {
     const queue = getQueueForChannelType(channel.type as AlertChannelType, notificationQueues);
-
-    const alertStatus = mapCheckStatusToAlertStatus(input.checkStatus);
 
     const jobData = await buildNotificationJobData(channel, {
       alertHistoryId: alertRecord.id,
@@ -419,6 +436,38 @@ async function queueNotifications(
 
     console.log(
       `[Alert] Queued ${channel.type} notification for alert ${alertRecord.id}`
+    );
+  }
+
+  // Queue direct email notification to on-call user
+  if (oncallEmail) {
+    const oncallJobData = {
+      alertHistoryId: alertRecord.id,
+      to: oncallEmail,
+      subject: `[On-Call Alert] ${monitor[0].name} is ${alertStatus}`,
+      monitorName: monitor[0].name,
+      monitorUrl: monitor[0].url,
+      status: alertStatus,
+      message: input.errorMessage,
+      responseTime: input.responseTimeMs,
+      statusCode: input.statusCode,
+      dashboardUrl: `${APP_URL}/monitors/${input.monitorId}`,
+      timestamp: new Date().toISOString(),
+      isOncallNotification: true,
+    };
+
+    await emailQueue.add(`alert-${alertRecord.id}-oncall`, oncallJobData, {
+      removeOnComplete: 100,
+      removeOnFail: 100,
+      attempts: 5,
+      backoff: {
+        type: "exponential",
+        delay: 1000,
+      },
+    });
+
+    console.log(
+      `[Alert] Queued on-call email notification to ${oncallEmail} for alert ${alertRecord.id}`
     );
   }
 }
@@ -592,17 +641,31 @@ async function queueRecoveryNotifications(
 
   if (!monitor[0]) return;
 
-  // Get enabled channels
-  const channels = await db
-    .select()
-    .from(alertChannels)
-    .where(
-      and(
-        eq(alertChannels.organizationId, input.organizationId),
-        inArray(alertChannels.id, policy.channels),
-        eq(alertChannels.enabled, true)
-      )
+  // Get channel IDs from policy
+  const channelIds = policy.channels || [];
+
+  // Resolve on-call user's email if oncallRotationId is configured
+  let oncallEmail: string | null = null;
+  if (policy.oncallRotationId) {
+    oncallEmail = await resolveOncallUserEmail(
+      policy.oncallRotationId,
+      input.organizationId
     );
+  }
+
+  // Get enabled channels
+  const channels = channelIds.length > 0
+    ? await db
+        .select()
+        .from(alertChannels)
+        .where(
+          and(
+            eq(alertChannels.organizationId, input.organizationId),
+            inArray(alertChannels.id, channelIds),
+            eq(alertChannels.enabled, true)
+          )
+        )
+    : [];
 
   // Fetch org credentials for BYO integrations
   const orgCredentials = await getOrgCredentials(input.organizationId);
@@ -634,5 +697,102 @@ async function queueRecoveryNotifications(
     console.log(
       `[Alert] Queued recovery ${channel.type} notification for alert ${alertId}`
     );
+  }
+
+  // Queue recovery email to on-call user
+  if (oncallEmail) {
+    const oncallJobData = {
+      alertHistoryId: alertId,
+      to: oncallEmail,
+      subject: `[On-Call Recovery] ${monitor[0].name} has recovered`,
+      monitorName: monitor[0].name,
+      monitorUrl: monitor[0].url,
+      status: "recovered",
+      dashboardUrl: `${APP_URL}/monitors/${input.monitorId}`,
+      timestamp: new Date().toISOString(),
+      isOncallNotification: true,
+    };
+
+    await emailQueue.add(`recovery-${alertId}-oncall`, oncallJobData, {
+      removeOnComplete: 100,
+      removeOnFail: 100,
+      attempts: 5,
+      backoff: {
+        type: "exponential",
+        delay: 1000,
+      },
+    });
+
+    console.log(
+      `[Alert] Queued on-call recovery email notification to ${oncallEmail} for alert ${alertId}`
+    );
+  }
+}
+
+// Resolve current on-call user and get their email for direct notification
+async function resolveOncallUserEmail(
+  rotationId: string,
+  orgId: string
+): Promise<string | null> {
+  try {
+    const { enterpriseDb } = await import("@uni-status/enterprise/database");
+    const { oncallRotations } = await import(
+      "@uni-status/enterprise/database/schema"
+    );
+
+    const rotation = await enterpriseDb.query.oncallRotations.findFirst({
+      where: and(
+        eq(oncallRotations.id, rotationId),
+        eq(oncallRotations.organizationId, orgId),
+        eq(oncallRotations.active, true)
+      ),
+      with: { overrides: true },
+    });
+
+    if (!rotation || rotation.participants.length === 0) {
+      console.log("[Alert] On-call rotation has no participants");
+      return null;
+    }
+
+    const now = new Date();
+    const shiftMs = rotation.shiftDurationMinutes * 60 * 1000;
+
+    // Check for active override first
+    const activeOverride = rotation.overrides.find(
+      (o: { startAt: Date; endAt: Date }) => o.startAt <= now && o.endAt >= now
+    );
+
+    let currentUserId: string;
+    if (activeOverride) {
+      currentUserId = activeOverride.userId;
+    } else {
+      const elapsedMs = now.getTime() - rotation.rotationStart.getTime();
+      const currentShiftIndex = Math.floor(elapsedMs / shiftMs);
+      const participantIndex = currentShiftIndex % rotation.participants.length;
+      currentUserId = rotation.participants[participantIndex];
+    }
+
+    if (!currentUserId) {
+      console.log("[Alert] No current on-call user found");
+      return null;
+    }
+
+    // Get user's email from the users table
+    const { users } = await import("@uni-status/database/schema");
+    const user = await db
+      .select({ email: users.email })
+      .from(users)
+      .where(eq(users.id, currentUserId))
+      .limit(1);
+
+    if (user[0]?.email) {
+      console.log(`[Alert] Resolved on-call user: ${user[0].email}`);
+      return user[0].email;
+    }
+
+    return null;
+  } catch (error) {
+    console.log("[Alert] On-call resolution skipped - enterprise unavailable or error:", error);
+    return null;
   }
 }

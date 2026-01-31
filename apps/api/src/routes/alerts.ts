@@ -2,9 +2,11 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { nanoid } from "nanoid";
 import { db } from "@uni-status/database";
-import { alertChannels, alertPolicies, alertHistory, monitorAlertPolicies } from "@uni-status/database/schema";
+import { alertChannels, alertPolicies, alertHistory, monitorAlertPolicies, organizations } from "@uni-status/database/schema";
 import { createAlertChannelSchema, updateAlertChannelSchema, createAlertPolicySchema } from "@uni-status/shared/validators";
 import { SSE_CHANNELS } from "@uni-status/shared/constants";
+import { decryptConfigSecrets } from "@uni-status/shared/lib/crypto";
+import type { OrganizationCredentials } from "@uni-status/shared/types/credentials";
 import { requireOrganization, requireScope } from "../middleware/auth";
 import { publishEvent } from "../lib/redis";
 import { queueTestNotification } from "../lib/queues";
@@ -218,11 +220,32 @@ alertsRoutes.post("/channels/:id/test", async (c) => {
     throw new Error("Not found");
   }
 
-  const jobId = await queueTestNotification({
-    id: channel.id,
-    type: channel.type,
-    config: channel.config as Record<string, unknown>,
-  });
+  // Fetch org credentials for email notifications (BYO SMTP/Resend)
+  let orgCredentials: OrganizationCredentials | undefined;
+  if (channel.type === "email") {
+    const org = await db
+      .select({ settings: organizations.settings })
+      .from(organizations)
+      .where(eq(organizations.id, organizationId))
+      .limit(1);
+
+    if (org[0]?.settings?.credentials) {
+      try {
+        orgCredentials = await decryptConfigSecrets(org[0].settings.credentials);
+      } catch (error) {
+        console.error(`[Alert] Error decrypting org credentials for test:`, error);
+      }
+    }
+  }
+
+  const jobId = await queueTestNotification(
+    {
+      id: channel.id,
+      type: channel.type,
+      config: channel.config as Record<string, unknown>,
+    },
+    orgCredentials
+  );
 
   return c.json({
     success: true,

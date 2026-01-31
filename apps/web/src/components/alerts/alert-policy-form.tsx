@@ -16,10 +16,16 @@ import {
   CardTitle,
   Checkbox,
   Separator,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   cn,
 } from "@uni-status/ui";
+import { CalendarClock } from "lucide-react";
 import { ChannelTypeIcon, type AlertChannelType } from "./channel-type-icon";
-import type { AlertPolicy, AlertChannel, Monitor } from "@/lib/api-client";
+import type { AlertPolicy, AlertChannel, Monitor, OncallRotation } from "@/lib/api-client";
 
 const alertPolicyFormSchema = z.object({
   name: z.string().min(1, "Name is required").max(100),
@@ -37,16 +43,21 @@ const alertPolicyFormSchema = z.object({
     consecutiveSuccesses: z.number().min(1).max(10).optional(),
   }),
   cooldownMinutes: z.number().min(1).max(1440),
-  channelIds: z.array(z.string()).min(1, "At least one channel is required"),
+  channelIds: z.array(z.string()),
   monitorIds: z.array(z.string()).optional(),
-});
+  oncallRotationId: z.string().optional(),
+}).refine(
+  (data) => (data.channelIds && data.channelIds.length > 0) || data.oncallRotationId,
+  { message: "Either channels or on-call rotation must be provided", path: ["channelIds"] }
+);
 
 type AlertPolicyFormData = z.infer<typeof alertPolicyFormSchema>;
 
 interface AlertPolicyFormProps {
-  policy?: AlertPolicy & { channelIds?: string[]; monitorIds?: string[] };
+  policy?: AlertPolicy & { channelIds?: string[]; monitorIds?: string[]; oncallRotationId?: string };
   availableChannels: AlertChannel[];
   availableMonitors: Monitor[];
+  availableOncallRotations?: OncallRotation[];
   onSubmit: (data: AlertPolicyFormData) => Promise<void>;
   onCancel?: () => void;
   isSubmitting?: boolean;
@@ -56,6 +67,7 @@ export function AlertPolicyForm({
   policy,
   availableChannels,
   availableMonitors,
+  availableOncallRotations = [],
   onSubmit,
   onCancel,
   isSubmitting = false,
@@ -83,6 +95,7 @@ export function AlertPolicyForm({
       cooldownMinutes: policy?.cooldownMinutes ?? 15,
       channelIds: policy?.channelIds ?? [],
       monitorIds: policy?.monitorIds ?? [],
+      oncallRotationId: policy?.oncallRotationId ?? undefined,
     },
   });
 
@@ -91,6 +104,7 @@ export function AlertPolicyForm({
   const watchedCooldown = watch("cooldownMinutes");
   const watchedChannelIds = watch("channelIds");
   const watchedMonitorIds = watch("monitorIds");
+  const watchedOncallRotationId = watch("oncallRotationId");
 
   // Condition toggles
   const hasConsecutiveFailures = watchedConditions.consecutiveFailures !== undefined;
@@ -394,9 +408,12 @@ export function AlertPolicyForm({
       {/* Channels */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Notification Channels *</CardTitle>
+          <CardTitle className="text-base">
+            Notification Channels {availableOncallRotations.length === 0 && "*"}
+          </CardTitle>
           <CardDescription>
             Select channels to receive alerts
+            {availableOncallRotations.length > 0 && " (or use on-call routing below)"}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -444,6 +461,49 @@ export function AlertPolicyForm({
           )}
         </CardContent>
       </Card>
+
+      {/* On-Call Routing */}
+      {availableOncallRotations.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <CalendarClock className="h-4 w-4" />
+              On-Call Routing
+            </CardTitle>
+            <CardDescription>
+              Optionally route alerts to the current on-call person
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Select
+              value={watchedOncallRotationId || "none"}
+              onValueChange={(v) => setValue("oncallRotationId", v === "none" ? undefined : v)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select an on-call rotation" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No on-call routing</SelectItem>
+                {availableOncallRotations.map((rotation) => (
+                  <SelectItem
+                    key={rotation.id}
+                    value={rotation.id}
+                    disabled={!rotation.active}
+                  >
+                    {rotation.name}
+                    {!rotation.active && " (inactive)"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {watchedOncallRotationId
+                ? "Alerts will also be sent directly to the current on-call user via email"
+                : "Select a rotation to notify the person currently on-call"}
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Monitors */}
       <Card>

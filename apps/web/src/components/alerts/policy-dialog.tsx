@@ -8,14 +8,15 @@ import {
   DialogTitle,
 } from "@uni-status/ui";
 import { AlertPolicyForm } from "./alert-policy-form";
-import type { AlertPolicy, AlertChannel, Monitor } from "@/lib/api-client";
+import type { AlertPolicy, AlertChannel, Monitor, OncallRotation } from "@/lib/api-client";
 
 interface PolicyDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  policy?: AlertPolicy & { channelIds?: string[]; monitorIds?: string[] };
+  policy?: AlertPolicy & { channelIds?: string[]; monitorIds?: string[]; oncallRotationId?: string };
   availableChannels: AlertChannel[];
   availableMonitors: Monitor[];
+  availableOncallRotations?: OncallRotation[];
   onSubmit: (data: Parameters<typeof AlertPolicyForm>[0] extends { onSubmit: (data: infer T) => unknown } ? T : never) => Promise<void>;
   isSubmitting?: boolean;
 }
@@ -26,6 +27,7 @@ export function PolicyDialog({
   policy,
   availableChannels,
   availableMonitors,
+  availableOncallRotations = [],
   onSubmit,
   isSubmitting = false,
 }: PolicyDialogProps) {
@@ -48,6 +50,7 @@ export function PolicyDialog({
           policy={policy}
           availableChannels={availableChannels}
           availableMonitors={availableMonitors}
+          availableOncallRotations={availableOncallRotations}
           onSubmit={onSubmit}
           onCancel={() => onOpenChange(false)}
           isSubmitting={isSubmitting}

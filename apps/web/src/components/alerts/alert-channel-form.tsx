@@ -72,7 +72,7 @@ export function AlertChannelForm({
     const effectiveType = channel?.type as AlertChannelType ?? preSelectedType ?? "email";
 
     // Convert headers object to array for form
-    const initialHeaders = channel?.config.headers
+    const initialHeaders = channel?.config?.headers
         ? Object.entries(channel.config.headers).map(([key, value]) => ({ key, value }))
         : [];
 
@@ -90,16 +90,16 @@ export function AlertChannelForm({
             type: effectiveType,
             enabled: channel?.enabled ?? true,
             config: {
-                email: channel?.config.email ?? "",
-                webhookUrl: channel?.config.webhookUrl ?? "",
-                routingKey: channel?.config.routingKey ?? "",
-                url: channel?.config.url ?? "",
-                method: channel?.config.method ?? "POST",
+                email: channel?.config?.email ?? "",
+                webhookUrl: channel?.config?.webhookUrl ?? "",
+                routingKey: channel?.config?.routingKey ?? "",
+                url: channel?.config?.url ?? "",
+                method: channel?.config?.method ?? "POST",
                 headers: initialHeaders,
-                signingKey: channel?.config.signingKey ?? "",
-                phoneNumber: channel?.config.phoneNumber ?? "",
-                topic: channel?.config.topic ?? "",
-                server: channel?.config.server ?? "",
+                signingKey: channel?.config?.signingKey ?? "",
+                phoneNumber: channel?.config?.phoneNumber ?? "",
+                topic: channel?.config?.topic ?? "",
+                server: channel?.config?.server ?? "",
             },
         },
     });

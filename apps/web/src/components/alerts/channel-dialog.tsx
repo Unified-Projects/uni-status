@@ -53,6 +53,7 @@ export function ChannelDialog({
           </div>
         </DialogHeader>
         <AlertChannelForm
+          key={`${effectiveType}-${channel?.id || 'new'}`}
           type={effectiveType}
           channel={channel}
           onSubmit={onSubmit}
