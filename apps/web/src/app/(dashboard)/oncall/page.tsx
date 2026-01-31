@@ -16,6 +16,7 @@ import {
   MoreHorizontal,
   Pause,
   Play,
+  Bell,
 } from "lucide-react";
 import {
   Button,
@@ -45,6 +46,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
+  Checkbox,
 } from "@uni-status/ui";
 import { apiClient, type OncallRotation } from "@/lib/api-client";
 import { useDashboardStore } from "@/stores/dashboard-store";
@@ -84,6 +86,7 @@ const rotationFormSchema = z.object({
   shiftDurationMinutes: z.number().int().min(60).max(10080),
   participants: z.array(z.string()).min(1, "At least one participant is required"),
   handoffNotificationMinutes: z.number().int().min(5).max(1440),
+  handoffChannels: z.array(z.string()),
   active: z.boolean(),
 });
 
@@ -411,6 +414,16 @@ interface RotationFormProps {
 }
 
 function RotationForm({ rotation, onSubmit, isLoading, onCancel }: RotationFormProps) {
+  const organizationId = useDashboardStore((state) => state.currentOrganizationId);
+
+  // Fetch available alert channels for handoff notifications
+  const { data: channelsData } = useQuery({
+    queryKey: ["alertChannels", organizationId],
+    queryFn: () => apiClient.alerts.channels.list(undefined, organizationId ?? undefined),
+    enabled: !!organizationId,
+  });
+  const alertChannels = channelsData?.data ?? [];
+
   const {
     register,
     handleSubmit,
@@ -426,6 +439,7 @@ function RotationForm({ rotation, onSubmit, isLoading, onCancel }: RotationFormP
       shiftDurationMinutes: rotation?.shiftDurationMinutes || 720,
       participants: rotation?.participants || [],
       handoffNotificationMinutes: rotation?.handoffNotificationMinutes || 30,
+      handoffChannels: rotation?.handoffChannels || [],
       active: rotation?.active ?? true,
     },
   });
@@ -434,6 +448,7 @@ function RotationForm({ rotation, onSubmit, isLoading, onCancel }: RotationFormP
   const shiftDurationMinutes = watch("shiftDurationMinutes");
   const active = watch("active");
   const participants = watch("participants");
+  const handoffChannels = watch("handoffChannels");
 
   const onFormSubmit = (data: RotationFormData) => {
     onSubmit({
@@ -443,8 +458,18 @@ function RotationForm({ rotation, onSubmit, isLoading, onCancel }: RotationFormP
       shiftDurationMinutes: data.shiftDurationMinutes,
       participants: data.participants,
       handoffNotificationMinutes: data.handoffNotificationMinutes,
+      handoffChannels: data.handoffChannels,
       active: data.active,
     });
+  };
+
+  const toggleChannel = (channelId: string) => {
+    const current = handoffChannels || [];
+    if (current.includes(channelId)) {
+      setValue("handoffChannels", current.filter(id => id !== channelId));
+    } else {
+      setValue("handoffChannels", [...current, channelId]);
+    }
   };
 
   return (
@@ -546,6 +571,42 @@ function RotationForm({ rotation, onSubmit, isLoading, onCancel }: RotationFormP
             />
             <span className="text-sm text-muted-foreground">minutes before shift change</span>
           </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label className="flex items-center gap-2">
+            <Bell className="h-4 w-4" />
+            Handoff Notification Channels
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            Select alert channels to notify when shifts change
+          </p>
+          {alertChannels.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-2">
+              No alert channels configured. Create channels in the Alerts section.
+            </p>
+          ) : (
+            <div className="space-y-2 max-h-40 overflow-y-auto border rounded-md p-2">
+              {alertChannels.map((channel) => (
+                <div key={channel.id} className="flex items-center gap-2">
+                  <Checkbox
+                    id={`channel-${channel.id}`}
+                    checked={handoffChannels?.includes(channel.id) ?? false}
+                    onCheckedChange={() => toggleChannel(channel.id)}
+                  />
+                  <label
+                    htmlFor={`channel-${channel.id}`}
+                    className="text-sm flex items-center gap-2 cursor-pointer flex-1"
+                  >
+                    <Badge variant="outline" className="text-xs">
+                      {channel.type}
+                    </Badge>
+                    {channel.name}
+                  </label>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="flex items-center justify-between">

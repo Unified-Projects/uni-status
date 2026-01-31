@@ -4,6 +4,7 @@ import { enterpriseDb as db } from "../../database";
 import { oncallRotations, oncallOverrides } from "../../database/schema/oncall";
 import {
   createOncallRotationSchema,
+  updateOncallRotationSchema,
   createOncallOverrideSchema,
 } from "@uni-status/shared/validators";
 import { requireOrganization, requireScope } from "../middleware/auth";
@@ -73,7 +74,7 @@ oncallRoutes.patch("/rotations/:id", async (c) => {
   const { id } = c.req.param();
 
   const body = await c.req.json();
-  const validated = createOncallRotationSchema.partial().parse(body);
+  const validated = updateOncallRotationSchema.parse(body);
 
   const [rotation] = await db
     .update(oncallRotations)
