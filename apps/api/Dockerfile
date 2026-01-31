@@ -24,10 +24,9 @@ WORKDIR /app/apps/api
 EXPOSE 3001
 CMD ["pnpm", "dev"]
 
-# Production build - use bun for building
-FROM oven/bun:1.3.5-alpine AS builder
-RUN apk add --no-cache nodejs npm && npm install -g pnpm
-WORKDIR /app
+# Production build - use node for pnpm, copy bun for building
+FROM base AS builder
+COPY --from=bunbase /usr/local/bin/bun /usr/local/bin/bun
 COPY package.json pnpm-workspace.yaml ./
 COPY apps/api/package.json ./apps/api/
 COPY packages/database/package.json ./packages/database/

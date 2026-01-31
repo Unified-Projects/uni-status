@@ -26,10 +26,9 @@ COPY . .
 WORKDIR /app/apps/workers
 CMD ["pnpm", "dev"]
 
-# Production build - use bun for building
-FROM oven/bun:1.3.5-alpine AS builder
-RUN apk add --no-cache nodejs npm && npm install -g pnpm
-WORKDIR /app
+# Production build - use node for pnpm, copy bun for building
+FROM base AS builder
+COPY --from=bunbase /usr/local/bin/bun /usr/local/bin/bun
 COPY package.json pnpm-workspace.yaml ./
 COPY apps/workers/package.json ./apps/workers/
 COPY packages/database/package.json ./packages/database/
@@ -40,7 +39,6 @@ COPY packages/licensing/package.json ./packages/licensing/
 COPY enterprise/package.json ./enterprise/
 RUN pnpm install --shamefully-hoist
 COPY . .
-RUN pnpm build --filter=@uni-status/shared --filter=@uni-status/database
 WORKDIR /app/apps/workers
 RUN bun run build
 
