@@ -208,12 +208,12 @@ function SortableMonitorItem({
         className={cn(
           "h-2.5 w-2.5 rounded-full shrink-0",
           monitorStatus === "active"
-            ? "bg-green-500"
+            ? "bg-[var(--status-success-solid)]"
             : monitorStatus === "degraded"
-              ? "bg-yellow-500"
+              ? "bg-[var(--status-warning-solid)]"
               : monitorStatus === "down"
-                ? "bg-red-500"
-                : "bg-gray-400"
+                ? "bg-[var(--status-error-solid)]"
+                : "bg-gray-400 dark:bg-gray-500"
         )}
       />
 
@@ -419,12 +419,12 @@ export function MonitorPicker({
             className={cn(
               "h-2 w-2 rounded-full shrink-0",
               monitor.status === "active"
-                ? "bg-green-500"
+                ? "bg-[var(--status-success-solid)]"
                 : monitor.status === "degraded"
-                  ? "bg-yellow-500"
+                  ? "bg-[var(--status-warning-solid)]"
                   : monitor.status === "down"
-                    ? "bg-red-500"
-                    : "bg-gray-400"
+                    ? "bg-[var(--status-error-solid)]"
+                    : "bg-gray-400 dark:bg-gray-500"
             )}
           />
           <div className="flex-1 min-w-0">

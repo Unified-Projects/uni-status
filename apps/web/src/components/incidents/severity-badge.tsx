@@ -18,19 +18,19 @@ const severityConfig: Record<
   minor: {
     label: "Minor",
     variant: "default",
-    className: "bg-[var(--status-warning-text)] hover:opacity-80 text-white border-[var(--status-warning-text)]",
+    className: "bg-[var(--status-warning-solid)] hover:bg-[var(--status-warning-solid-hover)] text-white border-[var(--status-warning-solid)]",
     icon: AlertTriangle,
   },
   major: {
     label: "Major",
     variant: "default",
-    className: "bg-[var(--status-orange-text)] hover:opacity-80 text-white border-[var(--status-orange-text)]",
+    className: "bg-[var(--status-warning-text)] hover:opacity-80 text-white border-[var(--status-warning-text)]",
     icon: AlertCircle,
   },
   critical: {
     label: "Critical",
     variant: "destructive",
-    className: "bg-[var(--status-error-text)] hover:opacity-80 text-white border-[var(--status-error-text)]",
+    className: "bg-[var(--status-error-solid)] hover:bg-[var(--status-error-solid-hover)] text-white border-[var(--status-error-solid)]",
     icon: AlertOctagon,
   },
 };
@@ -47,25 +47,25 @@ const statusConfig: Record<
   investigating: {
     label: "Investigating",
     variant: "outline",
-    className: "border-[var(--status-warning-text)]/50 text-[var(--status-warning-text)] bg-[var(--status-warning-bg)]",
+    className: "border-[var(--status-warning-border)] text-[var(--status-warning-text)] bg-[var(--status-warning-bg)]",
     icon: Search,
   },
   identified: {
     label: "Identified",
     variant: "outline",
-    className: "border-[var(--status-orange-text)]/50 text-[var(--status-orange-text)] bg-[var(--status-orange-bg)]",
+    className: "border-[var(--status-error-border)] text-[var(--status-error-text)] bg-[var(--status-error-bg)]",
     icon: AlertCircle,
   },
   monitoring: {
     label: "Monitoring",
     variant: "outline",
-    className: "border-[var(--status-info-text)]/50 text-[var(--status-info-text)] bg-[var(--status-info-bg)]",
+    className: "border-[var(--status-info-border)] text-[var(--status-info-text)] bg-[var(--status-info-bg)]",
     icon: Eye,
   },
   resolved: {
     label: "Resolved",
     variant: "outline",
-    className: "border-[var(--status-success-text)]/50 text-[var(--status-success-text)] bg-[var(--status-success-bg)]",
+    className: "border-[var(--status-success-border)] text-[var(--status-success-text)] bg-[var(--status-success-bg)]",
     icon: CheckCircle,
   },
 };
@@ -177,9 +177,9 @@ export function SeverityIndicator({
   className,
 }: SeverityIndicatorProps) {
   const colors: Record<IncidentSeverity, string> = {
-    minor: "bg-[var(--status-warning-text)]",
-    major: "bg-[var(--status-orange-text)]",
-    critical: "bg-[var(--status-error-text)]",
+    minor: "bg-[var(--status-warning-solid)]",
+    major: "bg-[var(--status-warning-text)]",
+    critical: "bg-[var(--status-error-solid)]",
   };
 
   const sizes = {

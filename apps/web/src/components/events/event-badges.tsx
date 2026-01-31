@@ -26,12 +26,12 @@ const eventTypeConfig: Record<
 > = {
   incident: {
     label: "Incident",
-    className: "bg-red-100 text-red-700 border-red-200",
+    className: "bg-[var(--status-error-bg)] text-[var(--status-error-text)] border-[var(--status-error-border)]",
     icon: AlertCircle,
   },
   maintenance: {
     label: "Maintenance",
-    className: "bg-blue-100 text-blue-700 border-blue-200",
+    className: "bg-[var(--status-info-bg)] text-[var(--status-info-text)] border-[var(--status-info-border)]",
     icon: Wrench,
   },
 };
@@ -93,17 +93,17 @@ const severityConfig: Record<
 > = {
   minor: {
     label: "Minor",
-    className: "bg-yellow-500 hover:bg-yellow-500/80 text-white border-yellow-500",
+    className: "bg-[var(--status-warning-solid)] hover:bg-[var(--status-warning-solid-hover)] text-white border-[var(--status-warning-solid)]",
     icon: AlertTriangle,
   },
   major: {
     label: "Major",
-    className: "bg-orange-500 hover:bg-orange-500/80 text-white border-orange-500",
+    className: "bg-[var(--status-warning-text)] hover:opacity-80 text-white border-[var(--status-warning-text)]",
     icon: AlertCircle,
   },
   critical: {
     label: "Critical",
-    className: "bg-red-500 hover:bg-red-500/80 text-white border-red-500",
+    className: "bg-[var(--status-error-solid)] hover:bg-[var(--status-error-solid-hover)] text-white border-[var(--status-error-solid)]",
     icon: AlertOctagon,
   },
 };
@@ -128,7 +128,7 @@ export function EventSeverityBadge({
       <Badge
         variant="outline"
         className={cn(
-          "bg-blue-100 text-blue-700 border-blue-200",
+          "bg-[var(--status-info-bg)] text-[var(--status-info-text)] border-[var(--status-info-border)]",
           size === "sm" ? "text-xs px-1.5 py-0.5" : size === "lg" ? "text-sm px-3 py-1" : "text-xs px-2.5 py-0.5",
           "inline-flex items-center gap-1",
           className
@@ -182,22 +182,22 @@ const incidentStatusConfig: Record<
 > = {
   investigating: {
     label: "Investigating",
-    className: "border-yellow-500 text-yellow-600 bg-yellow-50",
+    className: "border-[var(--status-warning-border)] text-[var(--status-warning-text)] bg-[var(--status-warning-bg)]",
     icon: Search,
   },
   identified: {
     label: "Identified",
-    className: "border-orange-500 text-orange-600 bg-orange-50",
+    className: "border-[var(--status-error-border)] text-[var(--status-error-text)] bg-[var(--status-error-bg)]",
     icon: AlertCircle,
   },
   monitoring: {
     label: "Monitoring",
-    className: "border-blue-500 text-blue-600 bg-blue-50",
+    className: "border-[var(--status-info-border)] text-[var(--status-info-text)] bg-[var(--status-info-bg)]",
     icon: Eye,
   },
   resolved: {
     label: "Resolved",
-    className: "border-green-500 text-green-600 bg-green-50",
+    className: "border-[var(--status-success-border)] text-[var(--status-success-text)] bg-[var(--status-success-bg)]",
     icon: CheckCircle,
   },
 };
@@ -212,17 +212,17 @@ const maintenanceStatusConfig: Record<
 > = {
   scheduled: {
     label: "Scheduled",
-    className: "border-blue-500 text-blue-600 bg-blue-50",
+    className: "border-[var(--status-info-border)] text-[var(--status-info-text)] bg-[var(--status-info-bg)]",
     icon: CalendarDays,
   },
   active: {
     label: "In Progress",
-    className: "border-yellow-500 text-yellow-600 bg-yellow-50",
+    className: "border-[var(--status-warning-border)] text-[var(--status-warning-text)] bg-[var(--status-warning-bg)]",
     icon: Play,
   },
   completed: {
     label: "Completed",
-    className: "border-green-500 text-green-600 bg-green-50",
+    className: "border-[var(--status-success-border)] text-[var(--status-success-text)] bg-[var(--status-success-bg)]",
     icon: CheckCircle,
   },
 };
@@ -295,16 +295,16 @@ export function EventIndicator({
   className,
 }: EventIndicatorProps) {
   const getColor = () => {
-    if (type === "maintenance") return "bg-blue-500";
+    if (type === "maintenance") return "bg-[var(--status-info-solid)]";
     switch (severity) {
       case "minor":
-        return "bg-yellow-500";
+        return "bg-[var(--status-warning-solid)]";
       case "major":
-        return "bg-orange-500";
+        return "bg-[var(--status-warning-text)]";
       case "critical":
-        return "bg-red-500";
+        return "bg-[var(--status-error-solid)]";
       default:
-        return "bg-yellow-500";
+        return "bg-[var(--status-warning-solid)]";
     }
   };
 

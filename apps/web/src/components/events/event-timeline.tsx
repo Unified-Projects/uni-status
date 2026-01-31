@@ -25,30 +25,30 @@ const incidentStatusConfig: Record<
 > = {
   investigating: {
     icon: Search,
-    color: "text-yellow-600",
-    bgColor: "bg-yellow-100",
-    borderColor: "border-yellow-400",
+    color: "text-[var(--status-warning-text)]",
+    bgColor: "bg-[var(--status-warning-bg)]",
+    borderColor: "border-[var(--status-warning-border)]",
     label: "Investigating",
   },
   identified: {
     icon: AlertCircle,
-    color: "text-orange-600",
-    bgColor: "bg-orange-100",
-    borderColor: "border-orange-400",
+    color: "text-[var(--status-error-text)]",
+    bgColor: "bg-[var(--status-error-bg)]",
+    borderColor: "border-[var(--status-error-border)]",
     label: "Identified",
   },
   monitoring: {
     icon: Eye,
-    color: "text-blue-600",
-    bgColor: "bg-blue-100",
-    borderColor: "border-blue-400",
+    color: "text-[var(--status-info-text)]",
+    bgColor: "bg-[var(--status-info-bg)]",
+    borderColor: "border-[var(--status-info-border)]",
     label: "Monitoring",
   },
   resolved: {
     icon: CheckCircle,
-    color: "text-green-600",
-    bgColor: "bg-green-100",
-    borderColor: "border-green-400",
+    color: "text-[var(--status-success-text)]",
+    bgColor: "bg-[var(--status-success-bg)]",
+    borderColor: "border-[var(--status-success-border)]",
     label: "Resolved",
   },
 };
@@ -65,23 +65,23 @@ const maintenanceStatusConfig: Record<
 > = {
   scheduled: {
     icon: CalendarDays,
-    color: "text-blue-600",
-    bgColor: "bg-blue-100",
-    borderColor: "border-blue-400",
+    color: "text-[var(--status-info-text)]",
+    bgColor: "bg-[var(--status-info-bg)]",
+    borderColor: "border-[var(--status-info-border)]",
     label: "Scheduled",
   },
   active: {
     icon: Play,
-    color: "text-yellow-600",
-    bgColor: "bg-yellow-100",
-    borderColor: "border-yellow-400",
+    color: "text-[var(--status-warning-text)]",
+    bgColor: "bg-[var(--status-warning-bg)]",
+    borderColor: "border-[var(--status-warning-border)]",
     label: "In Progress",
   },
   completed: {
     icon: CheckCircle,
-    color: "text-green-600",
-    bgColor: "bg-green-100",
-    borderColor: "border-green-400",
+    color: "text-[var(--status-success-text)]",
+    bgColor: "bg-[var(--status-success-bg)]",
+    borderColor: "border-[var(--status-success-border)]",
     label: "Completed",
   },
 };
@@ -167,21 +167,21 @@ export function EventTimeline({
             className={cn(
               "relative z-10 flex h-8 w-8 items-center justify-center rounded-full border-2",
               type === "incident"
-                ? "bg-gray-100 border-gray-300"
-                : "bg-blue-100 border-blue-300"
+                ? "bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-600"
+                : "bg-[var(--status-info-bg)] border-[var(--status-info-border)]"
             )}
           >
             {type === "incident" ? (
-              <Clock className="h-4 w-4 text-gray-600" />
+              <Clock className="h-4 w-4 text-gray-600 dark:text-gray-400" />
             ) : (
-              <Wrench className="h-4 w-4 text-blue-600" />
+              <Wrench className="h-4 w-4 text-[var(--status-info-text)]" />
             )}
           </div>
           <div className="flex-1">
             <span
               className={cn(
                 "font-semibold",
-                type === "incident" ? "text-gray-600" : "text-blue-600"
+                type === "incident" ? "text-gray-600 dark:text-gray-400" : "text-[var(--status-info-text)]"
               )}
             >
               {type === "incident" ? "Incident Created" : "Maintenance Scheduled"}
@@ -308,11 +308,11 @@ export function EventsFeedTimeline({ events, className }: EventsFeedTimelineProp
                 const isIncident = event.type === "incident";
                 const color = isIncident
                   ? event.severity === "critical"
-                    ? "border-red-400 bg-red-100"
+                    ? "border-[var(--status-error-border)] bg-[var(--status-error-bg)]"
                     : event.severity === "major"
-                    ? "border-orange-400 bg-orange-100"
-                    : "border-yellow-400 bg-yellow-100"
-                  : "border-blue-400 bg-blue-100";
+                    ? "border-[var(--status-error-border)] bg-[var(--status-error-bg)]"
+                    : "border-[var(--status-warning-border)] bg-[var(--status-warning-bg)]"
+                  : "border-[var(--status-info-border)] bg-[var(--status-info-bg)]";
 
                 return (
                   <div key={`${event.type}-${event.id}`} className="relative flex gap-4">
@@ -325,7 +325,7 @@ export function EventsFeedTimeline({ events, className }: EventsFeedTimelineProp
                       {isIncident ? (
                         <AlertCircle className="h-4 w-4 text-current" />
                       ) : (
-                        <Wrench className="h-4 w-4 text-blue-600" />
+                        <Wrench className="h-4 w-4 text-[var(--status-info-text)]" />
                       )}
                     </div>
                     <div className="flex-1 pb-2">
@@ -334,7 +334,7 @@ export function EventsFeedTimeline({ events, className }: EventsFeedTimelineProp
                         <span
                           className={cn(
                             "text-xs px-1.5 py-0.5 rounded",
-                            isIncident ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"
+                            isIncident ? "bg-[var(--status-error-bg)] text-[var(--status-error-text)]" : "bg-[var(--status-info-bg)] text-[var(--status-info-text)]"
                           )}
                         >
                           {event.type}

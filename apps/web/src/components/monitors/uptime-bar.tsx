@@ -50,12 +50,12 @@ export interface UptimeBarProps {
 }
 
 const statusColors: Record<UptimeStatus, string> = {
-  success: "bg-green-500",
-  degraded: "bg-yellow-500",
-  down: "bg-red-500",
-  unknown: "bg-gray-300",
-  maintenance: "bg-blue-400",
-  incident: "bg-purple-500",
+  success: "bg-[var(--status-success-solid)]",
+  degraded: "bg-[var(--status-warning-solid)]",
+  down: "bg-[var(--status-error-solid)]",
+  unknown: "bg-gray-300 dark:bg-gray-600",
+  maintenance: "bg-[var(--status-info-solid)]",
+  incident: "bg-[var(--status-error-solid)]",
 };
 
 export function UptimeBar({
@@ -206,9 +206,9 @@ interface UptimeBarSegmentProps {
 }
 
 const severityColors: Record<IncidentSeverity, string> = {
-  minor: "text-yellow-500",
-  major: "text-orange-500",
-  critical: "text-red-600",
+  minor: "text-[var(--status-warning-solid)]",
+  major: "text-[var(--status-warning-text)]",
+  critical: "text-[var(--status-error-solid)]",
 };
 
 function UptimeBarSegment({
@@ -290,10 +290,10 @@ function UptimeBarSegment({
                 <div className="text-xs text-muted-foreground space-y-0.5">
                   <div>{data.successCount ?? 0} successful</div>
                   {(data.degradedCount ?? 0) > 0 && (
-                    <div className="text-yellow-600">{data.degradedCount} degraded (slow)</div>
+                    <div className="text-[var(--status-warning-solid)]">{data.degradedCount} degraded (slow)</div>
                   )}
                   {(data.failureCount ?? 0) > 0 && (
-                    <div className="text-red-500">{data.failureCount} failed</div>
+                    <div className="text-[var(--status-error-solid)]">{data.failureCount} failed</div>
                   )}
                   <div className="text-muted-foreground/70">{data.totalCount} total checks</div>
                 </div>
@@ -340,10 +340,10 @@ export function UptimeCompact({ uptimePercentage, className }: UptimeCompactProp
   }
 
   const getColor = (uptime: number) => {
-    if (uptime >= 99.9) return "text-green-600";
-    if (uptime >= 99) return "text-green-500";
-    if (uptime >= 95) return "text-yellow-500";
-    return "text-red-500";
+    if (uptime >= 99.9) return "text-[var(--status-success-text)]";
+    if (uptime >= 99) return "text-[var(--status-success-solid)]";
+    if (uptime >= 95) return "text-[var(--status-warning-solid)]";
+    return "text-[var(--status-error-solid)]";
   };
 
   return (

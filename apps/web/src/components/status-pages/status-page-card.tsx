@@ -80,7 +80,7 @@ export function StatusPageCard({
               className={cn(
                 "gap-1",
                 statusPage.published
-                  ? "bg-green-500 hover:bg-green-500/80"
+                  ? "bg-[var(--status-success-solid)] hover:bg-[var(--status-success-solid-hover)]"
                   : ""
               )}
             >
@@ -228,7 +228,7 @@ function StatusPageCardCompact({
         <Badge
           variant={statusPage.published ? "default" : "secondary"}
           className={cn(
-            statusPage.published ? "bg-green-500 hover:bg-green-500/80" : ""
+            statusPage.published ? "bg-[var(--status-success-solid)] hover:bg-[var(--status-success-solid-hover)]" : ""
           )}
         >
           {statusPage.published ? "Published" : "Draft"}

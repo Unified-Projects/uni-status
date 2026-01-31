@@ -422,12 +422,12 @@ export function MaintenanceForm({ maintenance, mode }: MaintenanceFormProps) {
                     className={cn(
                       "text-xs px-2 py-0.5 rounded",
                       monitor.status === "active"
-                        ? "bg-green-100 text-green-700"
+                        ? "bg-[var(--status-success-bg)] text-[var(--status-success-text)]"
                         : monitor.status === "degraded"
-                          ? "bg-yellow-100 text-yellow-700"
+                          ? "bg-[var(--status-warning-bg)] text-[var(--status-warning-text)]"
                           : monitor.status === "down"
-                            ? "bg-red-100 text-red-700"
-                            : "bg-gray-100 text-gray-700"
+                            ? "bg-[var(--status-error-bg)] text-[var(--status-error-text)]"
+                            : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"
                     )}
                   >
                     {monitor.status}
