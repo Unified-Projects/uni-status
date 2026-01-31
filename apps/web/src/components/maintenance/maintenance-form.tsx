@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -27,7 +28,7 @@ import {
 } from "@/hooks/use-maintenance-windows";
 import { useMonitors } from "@/hooks/use-monitors";
 import type { MaintenanceWindow } from "@/lib/api-client";
-import { Calendar, Clock, Repeat, Bell } from "lucide-react";
+import { Calendar, Clock, Repeat, Bell, AlertCircle } from "lucide-react";
 
 const maintenanceFormSchema = z.object({
   name: z.string().min(1, "Name is required").max(255),
@@ -40,7 +41,7 @@ const maintenanceFormSchema = z.object({
   recurrenceInterval: z.number().int().positive().optional(),
   notifyOnStart: z.boolean().optional().default(true),
   notifyOnEnd: z.boolean().optional().default(true),
-  notifyBeforeStart: z.number().int().positive().optional(),
+  notifyBeforeStart: z.number().int().nonnegative().optional(),
 }).refine(
   (data) => new Date(data.endsAt) > new Date(data.startsAt),
   {
@@ -110,17 +111,20 @@ function getDefaultEndTime(): string {
 
 export function MaintenanceForm({ maintenance, mode }: MaintenanceFormProps) {
   const router = useRouter();
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const { data: monitorsResponse, isLoading: monitorsLoading } = useMonitors();
   const monitors = monitorsResponse?.data;
   const createMaintenanceWindow = useCreateMaintenanceWindow();
   const updateMaintenanceWindow = useUpdateMaintenanceWindow();
+
+  const isSubmitting = createMaintenanceWindow.isPending || updateMaintenanceWindow.isPending;
 
   const {
     register,
     handleSubmit,
     watch,
     setValue,
-    formState: { errors, isSubmitting },
+    formState: { errors },
   } = useForm<MaintenanceFormData>({
     resolver: zodResolver(maintenanceFormSchema),
     defaultValues: {
@@ -160,6 +164,8 @@ export function MaintenanceForm({ maintenance, mode }: MaintenanceFormProps) {
   };
 
   const onSubmit = async (data: MaintenanceFormData) => {
+    setSubmitError(null);
+
     const recurrenceType = data.recurrenceType ?? "none";
     const payload = {
       name: data.name,
@@ -181,17 +187,31 @@ export function MaintenanceForm({ maintenance, mode }: MaintenanceFormProps) {
       },
     };
 
-    if (mode === "create") {
-      const newWindow = await createMaintenanceWindow.mutateAsync(payload);
-      router.push(`/maintenance-windows/${newWindow.id}`);
-    } else if (maintenance) {
-      await updateMaintenanceWindow.mutateAsync({ id: maintenance.id, data: payload });
-      router.push(`/maintenance-windows/${maintenance.id}`);
+    try {
+      if (mode === "create") {
+        const newWindow = await createMaintenanceWindow.mutateAsync(payload);
+        router.push(`/maintenance-windows/${newWindow.id}`);
+      } else if (maintenance) {
+        await updateMaintenanceWindow.mutateAsync({ id: maintenance.id, data: payload });
+        router.push(`/maintenance-windows/${maintenance.id}`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to save maintenance window";
+      setSubmitError(message);
+      console.error("Maintenance form submission error:", error);
     }
   };
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      {/* Error Display */}
+      {submitError && (
+        <div className="flex items-center gap-2 p-4 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>{submitError}</span>
+        </div>
+      )}
+
       {/* Basic Information */}
       <Card>
         <CardHeader>
