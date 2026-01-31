@@ -26,6 +26,7 @@ import {
   cn,
 } from "@uni-status/ui";
 import { useCreateStatusPage, useUpdateStatusPage } from "@/hooks/use-status-pages";
+import { useStatusPageThemes } from "@/hooks/use-status-page-themes";
 import { useLicenseStatus } from "@/hooks/use-license-status";
 import type { StatusPage } from "@/lib/api-client";
 import { getAssetUrl } from "@/lib/api";
@@ -1005,61 +1006,12 @@ export function StatusPageForm({ statusPage, mode }: StatusPageFormProps) {
       </Card>
 
       {/* Appearance */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Appearance</CardTitle>
-          <CardDescription>
-            Customise the look of your status page. Background and text colours automatically adapt to light/dark mode.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="primaryColor">Accent Colour</Label>
-            <p className="text-sm text-muted-foreground">
-              Used for buttons, links, and highlights. Leave empty to use the default blue.
-            </p>
-            <div className="flex gap-2">
-              <Input
-                id="primaryColor"
-                placeholder="#3B82F6"
-                {...register("theme.primaryColor")}
-                className="flex-1 max-w-[200px]"
-              />
-              <input
-                type="color"
-                value={watch("theme.primaryColor") || "#3B82F6"}
-                onChange={(e) => setValue("theme.primaryColor", e.target.value)}
-                className="h-10 w-10 rounded border cursor-pointer"
-              />
-              {watch("theme.primaryColor") && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setValue("theme.primaryColor", "")}
-                >
-                  Clear
-                </Button>
-              )}
-            </div>
-          </div>
-
-          <Separator />
-
-          <div className="space-y-2">
-            <Label htmlFor="customCss">Custom CSS</Label>
-            <textarea
-              id="customCss"
-              placeholder="/* Add custom styles here */"
-              {...register("theme.customCss")}
-              className="min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
-            />
-            <p className="text-xs text-muted-foreground">
-              Add custom CSS for advanced customisation. Has access to all CSS variables.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      <AppearanceSection
+        watchedPrimaryColor={watch("theme.primaryColor")}
+        watchedCustomCss={watch("theme.customCss")}
+        setValue={setValue}
+        register={register}
+      />
 
       {/* SEO */}
       <Card>
@@ -1198,5 +1150,162 @@ export function StatusPageForm({ statusPage, mode }: StatusPageFormProps) {
         </Button>
       </div>
     </form>
+  );
+}
+
+// Appearance Section Component
+interface AppearanceSectionProps {
+  watchedPrimaryColor: string | undefined;
+  watchedCustomCss: string | undefined;
+  setValue: ReturnType<typeof useForm<StatusPageFormData>>["setValue"];
+  register: ReturnType<typeof useForm<StatusPageFormData>>["register"];
+}
+
+function AppearanceSection({
+  watchedPrimaryColor,
+  watchedCustomCss,
+  setValue,
+  register,
+}: AppearanceSectionProps) {
+  const { data: themes, isLoading: themesLoading } = useStatusPageThemes();
+  const [useTheme, setUseTheme] = useState(false);
+  const [selectedThemeId, setSelectedThemeId] = useState<string | null>(null);
+
+  const handleThemeSelect = (themeId: string) => {
+    const theme = themes?.find((t) => t.id === themeId);
+    if (theme) {
+      setSelectedThemeId(themeId);
+      setValue("theme.primaryColor", theme.colors.primary, { shouldDirty: true });
+    }
+  };
+
+  const handleUseCustomColors = () => {
+    setUseTheme(false);
+    setSelectedThemeId(null);
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Appearance</CardTitle>
+        <CardDescription>
+          Customise the look of your status page. Background and text colours automatically adapt to light/dark mode.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Theme Selector */}
+        {themes && themes.length > 0 && (
+          <>
+            <div className="space-y-3">
+              <Label>Colour Theme</Label>
+              <p className="text-sm text-muted-foreground">
+                Choose a saved theme or use custom colours
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                <button
+                  type="button"
+                  onClick={handleUseCustomColors}
+                  className={cn(
+                    "p-3 rounded-lg border-2 text-left transition-colors",
+                    !selectedThemeId
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-muted-foreground/50"
+                  )}
+                >
+                  <div className="flex gap-1 mb-1.5">
+                    <div className="w-4 h-4 rounded-full bg-gradient-to-br from-blue-500 to-purple-500" />
+                    <div className="w-4 h-4 rounded-full bg-gray-200" />
+                  </div>
+                  <p className="text-xs font-medium">Custom Colours</p>
+                </button>
+                {themes.map((theme) => (
+                  <button
+                    key={theme.id}
+                    type="button"
+                    onClick={() => handleThemeSelect(theme.id)}
+                    className={cn(
+                      "p-3 rounded-lg border-2 text-left transition-colors",
+                      selectedThemeId === theme.id
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:border-muted-foreground/50"
+                    )}
+                  >
+                    <div className="flex gap-1 mb-1.5">
+                      <div
+                        className="w-4 h-4 rounded-full"
+                        style={{ backgroundColor: theme.colors.primary }}
+                      />
+                      <div
+                        className="w-4 h-4 rounded-full"
+                        style={{ backgroundColor: theme.colors.success }}
+                      />
+                      <div
+                        className="w-4 h-4 rounded-full"
+                        style={{ backgroundColor: theme.colors.surface }}
+                      />
+                    </div>
+                    <p className="text-xs font-medium truncate">{theme.name}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <Separator />
+          </>
+        )}
+
+        {/* Custom Color Options */}
+        <div className="space-y-2">
+          <Label htmlFor="primaryColor">Accent Colour</Label>
+          <p className="text-sm text-muted-foreground">
+            Used for buttons, links, and highlights. Leave empty to use the default blue.
+          </p>
+          <div className="flex gap-2">
+            <Input
+              id="primaryColor"
+              placeholder="#3B82F6"
+              {...register("theme.primaryColor")}
+              className="flex-1 max-w-[200px]"
+            />
+            <input
+              type="color"
+              value={watchedPrimaryColor || "#3B82F6"}
+              onChange={(e) => {
+                setValue("theme.primaryColor", e.target.value, { shouldDirty: true });
+                setSelectedThemeId(null);
+              }}
+              className="h-10 w-10 rounded border cursor-pointer"
+            />
+            {watchedPrimaryColor && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setValue("theme.primaryColor", "", { shouldDirty: true });
+                  setSelectedThemeId(null);
+                }}
+              >
+                Clear
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <Separator />
+
+        <div className="space-y-2">
+          <Label htmlFor="customCss">Custom CSS</Label>
+          <textarea
+            id="customCss"
+            placeholder="/* Add custom styles here */"
+            {...register("theme.customCss")}
+            className="min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
+          />
+          <p className="text-xs text-muted-foreground">
+            Add custom CSS for advanced customisation. Has access to all CSS variables.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

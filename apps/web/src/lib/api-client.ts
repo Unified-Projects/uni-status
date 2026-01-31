@@ -208,6 +208,34 @@ export interface CrowdsourcedSettings {
   updatedAt?: string;
 }
 
+export interface StatusPageThemeColors {
+  primary: string;
+  secondary?: string;
+  background: string;
+  backgroundDark?: string;
+  text: string;
+  textDark?: string;
+  surface: string;
+  surfaceDark?: string;
+  border?: string;
+  borderDark?: string;
+  success: string;
+  warning: string;
+  error: string;
+  info?: string;
+}
+
+export interface StatusPageTheme {
+  id: string;
+  organizationId: string;
+  name: string;
+  description: string | null;
+  colors: StatusPageThemeColors;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface BadgeTemplateInput {
   name: string;
   description?: string;
@@ -938,6 +966,30 @@ export const apiClient = {
       organizationId?: string
     ) =>
       unwrap(apiPatch<CrowdsourcedSettings>(`/api/v1/status-pages/${id}/crowdsourced`, data, { organizationId })),
+  },
+
+  statusPageThemes: {
+    list: (organizationId?: string) =>
+      unwrap(apiGet<StatusPageTheme[]>("/api/v1/status-page-themes", { organizationId })),
+
+    get: (id: string, organizationId?: string) =>
+      unwrap(apiGet<StatusPageTheme>(`/api/v1/status-page-themes/${id}`, { organizationId })),
+
+    create: (
+      data: { name: string; description?: string; colors: StatusPageThemeColors; isDefault?: boolean },
+      organizationId?: string
+    ) =>
+      unwrap(apiPost<StatusPageTheme>("/api/v1/status-page-themes", data, { organizationId })),
+
+    update: (
+      id: string,
+      data: Partial<{ name: string; description?: string; colors: StatusPageThemeColors; isDefault?: boolean }>,
+      organizationId?: string
+    ) =>
+      unwrap(apiPatch<StatusPageTheme>(`/api/v1/status-page-themes/${id}`, data, { organizationId })),
+
+    delete: (id: string, organizationId?: string) =>
+      unwrap(apiDelete<{ deleted: boolean }>(`/api/v1/status-page-themes/${id}`, { organizationId })),
   },
 
   badgeTemplates: {
@@ -2537,6 +2589,11 @@ export const queryKeys = {
     detail: (id: string) => [...queryKeys.statusPages.details(), id] as const,
     subscribers: (id: string) => [...queryKeys.statusPages.detail(id), "subscribers"] as const,
     crowdsourced: (id: string) => [...queryKeys.statusPages.detail(id), "crowdsourced"] as const,
+  },
+  statusPageThemes: {
+    all: ["statusPageThemes"] as const,
+    list: () => [...queryKeys.statusPageThemes.all, "list"] as const,
+    detail: (id: string) => [...queryKeys.statusPageThemes.all, "detail", id] as const,
   },
   badgeTemplates: {
     all: ["badgeTemplates"] as const,

@@ -11,6 +11,7 @@ import {
   LayoutGrid,
   List,
   X,
+  Palette,
 } from "lucide-react";
 import {
   Button,
@@ -37,6 +38,7 @@ import {
   type StatusPagePublishedFilter,
 } from "@/stores/dashboard-store";
 import { StatusPageCard } from "@/components/status-pages";
+import { ThemeManager } from "@/components/status-pages/theme-manager";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
@@ -51,6 +53,7 @@ const PUBLISHED_OPTIONS: { value: StatusPagePublishedFilter; label: string }[] =
 
 export default function StatusPagesPage() {
   const router = useRouter();
+  const [view, setView] = useState<"pages" | "themes">("pages");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [pageToDelete, setPageToDelete] = useState<string | null>(null);
 
@@ -110,10 +113,15 @@ export default function StatusPagesPage() {
     resetPage();
   }, [statusPageFilters.published, statusPageFilters.search, resetPage]);
 
+  // If viewing themes, render the theme manager
+  if (view === "themes") {
+    return <ThemeManager onBack={() => setView("pages")} />;
+  }
+
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <PageHeader />
+        <PageHeader onManageThemes={() => setView("themes")} />
         <LoadingState variant="card" count={6} />
       </div>
     );
@@ -122,7 +130,7 @@ export default function StatusPagesPage() {
   if (error) {
     return (
       <div className="space-y-6">
-        <PageHeader />
+        <PageHeader onManageThemes={() => setView("themes")} />
         <ErrorState error={error} onRetry={() => refetch()} />
       </div>
     );
@@ -130,7 +138,7 @@ export default function StatusPagesPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader />
+      <PageHeader onManageThemes={() => setView("themes")} />
 
       {/* Filters Bar */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -330,7 +338,11 @@ export default function StatusPagesPage() {
   );
 }
 
-function PageHeader() {
+interface PageHeaderProps {
+  onManageThemes: () => void;
+}
+
+function PageHeader({ onManageThemes }: PageHeaderProps) {
   return (
     <div className="flex items-center justify-between">
       <div>
@@ -339,12 +351,18 @@ function PageHeader() {
           Public status pages to keep your users informed
         </p>
       </div>
-      <Link href="/status-pages/new">
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          Create Status Page
+      <div className="flex items-center gap-2">
+        <Button variant="outline" onClick={onManageThemes}>
+          <Palette className="mr-2 h-4 w-4" />
+          Manage Themes
         </Button>
-      </Link>
+        <Link href="/status-pages/new">
+          <Button>
+            <Plus className="mr-2 h-4 w-4" />
+            Create Status Page
+          </Button>
+        </Link>
+      </div>
     </div>
   );
 }
