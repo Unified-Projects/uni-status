@@ -743,6 +743,35 @@ export const createStatusPageSchema = z.object({
 
 export const updateStatusPageSchema = createStatusPageSchema.partial();
 
+// Status Page Theme validators
+const hexColorSchema = z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Must be a valid hex color (e.g., #3B82F6)");
+
+export const statusPageThemeColorsSchema = z.object({
+  primary: hexColorSchema,
+  secondary: hexColorSchema.optional(),
+  background: hexColorSchema,
+  backgroundDark: hexColorSchema.optional(),
+  text: hexColorSchema,
+  textDark: hexColorSchema.optional(),
+  surface: hexColorSchema,
+  surfaceDark: hexColorSchema.optional(),
+  border: hexColorSchema.optional(),
+  borderDark: hexColorSchema.optional(),
+  success: hexColorSchema,
+  warning: hexColorSchema,
+  error: hexColorSchema,
+  info: hexColorSchema.optional(),
+});
+
+export const createStatusPageThemeSchema = z.object({
+  name: z.string().min(1, "Name is required").max(100),
+  description: z.string().max(500).optional(),
+  colors: statusPageThemeColorsSchema,
+  isDefault: z.boolean().default(false),
+});
+
+export const updateStatusPageThemeSchema = createStatusPageThemeSchema.partial();
+
 // Alert validators
 export const alertChannelTypeSchema = z.enum([
   "email", "slack", "discord", "teams", "pagerduty", "webhook", "sms", "ntfy", "irc", "twitter"
@@ -839,10 +868,14 @@ export const createAlertPolicySchema = z.object({
   description: z.string().max(500).optional(),
   enabled: z.boolean().default(true),
   conditions: alertConditionsSchema,
-  channels: z.array(idSchema).min(1),
+  channels: z.array(idSchema).min(0).default([]),
   cooldownMinutes: z.number().min(1).max(1440).default(15),
   escalationPolicyId: idSchema.optional(),
-});
+  oncallRotationId: idSchema.optional(),
+}).refine(
+  (data) => (data.channels && data.channels.length > 0) || data.oncallRotationId,
+  { message: "Either channels or on-call rotation must be provided" }
+);
 
 // Organization validators
 export const organizationPlanSchema = z.enum(["free", "pro", "enterprise"]);
@@ -941,6 +974,19 @@ export const createOncallRotationSchema = z.object({
   handoffNotificationMinutes: z.number().int().min(5).max(1440).default(30),
   handoffChannels: z.array(idSchema).optional(),
   active: z.boolean().default(true),
+});
+
+// Update schema without defaults - prevents Zod from overwriting fields with defaults on partial updates
+export const updateOncallRotationSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  description: z.string().max(500).optional(),
+  timezone: z.string().optional(),
+  rotationStart: z.string().datetime().optional(),
+  shiftDurationMinutes: z.number().int().min(60).max(10080).optional(),
+  participants: z.array(idSchema).optional(),
+  handoffNotificationMinutes: z.number().int().min(5).max(1440).optional(),
+  handoffChannels: z.array(idSchema).optional(),
+  active: z.boolean().optional(),
 });
 
 export const createOncallOverrideSchema = z.object({
@@ -1243,6 +1289,9 @@ export type CreateIncidentDocumentInput = z.infer<typeof createIncidentDocumentS
 export type UpdateIncidentDocumentInput = z.infer<typeof updateIncidentDocumentSchema>;
 export type CreateStatusPageInput = z.infer<typeof createStatusPageSchema>;
 export type UpdateStatusPageInput = z.infer<typeof updateStatusPageSchema>;
+export type StatusPageThemeColors = z.infer<typeof statusPageThemeColorsSchema>;
+export type CreateStatusPageThemeInput = z.infer<typeof createStatusPageThemeSchema>;
+export type UpdateStatusPageThemeInput = z.infer<typeof updateStatusPageThemeSchema>;
 export type CreateAlertChannelInput = z.infer<typeof createAlertChannelSchema>;
 export type CreateAlertPolicyInput = z.infer<typeof createAlertPolicySchema>;
 export type CreateOrganizationInput = z.infer<typeof createOrganizationSchema>;
