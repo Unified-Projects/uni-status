@@ -1314,6 +1314,38 @@ function AppearanceSection({
   const { data: themes, isLoading: themesLoading } = useStatusPageThemes();
   const [useTheme, setUseTheme] = useState(false);
   const [selectedThemeId, setSelectedThemeId] = useState<string | null>(null);
+  const [initialDetectionDone, setInitialDetectionDone] = useState(false);
+
+  // Detect currently applied theme from customCss on initial load
+  useEffect(() => {
+    if (initialDetectionDone || !themes || themes.length === 0) return;
+
+    // Try to detect theme from customCss comment (e.g., "/* Theme: Theme Name */")
+    if (watchedCustomCss) {
+      const themeNameMatch = watchedCustomCss.match(/\/\* Theme: (.+?) \*\//);
+      if (themeNameMatch) {
+        const themeName = themeNameMatch[1];
+        const matchedTheme = themes.find((t) => t.name === themeName);
+        if (matchedTheme) {
+          setSelectedThemeId(matchedTheme.id);
+          setInitialDetectionDone(true);
+          return;
+        }
+      }
+    }
+
+    // Fallback: try to match by primary color
+    if (watchedPrimaryColor) {
+      const matchedTheme = themes.find(
+        (t) => t.colors.primary.toLowerCase() === watchedPrimaryColor.toLowerCase()
+      );
+      if (matchedTheme) {
+        setSelectedThemeId(matchedTheme.id);
+      }
+    }
+
+    setInitialDetectionDone(true);
+  }, [themes, watchedCustomCss, watchedPrimaryColor, initialDetectionDone]);
 
   const handleThemeSelect = (themeId: string) => {
     const theme = themes?.find((t) => t.id === themeId);
