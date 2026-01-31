@@ -246,6 +246,52 @@ export const subscribersRelations = relations(subscribers, ({ one }) => ({
   }),
 }));
 
+// Status Page Themes (reusable color themes for status pages)
+export const statusPageThemes = pgTable(
+  "status_page_themes",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    colors: jsonb("colors").$type<{
+      primary: string;
+      secondary?: string;
+      background: string;
+      backgroundDark?: string;
+      text: string;
+      textDark?: string;
+      surface: string;
+      surfaceDark?: string;
+      border?: string;
+      borderDark?: string;
+      success: string;
+      warning: string;
+      error: string;
+      info?: string;
+    }>().notNull(),
+    isDefault: boolean("is_default").notNull().default(false),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    orgIdIdx: index("status_page_themes_org_id_idx").on(table.organizationId),
+    uniqueNamePerOrg: unique("status_page_themes_name_org_unique").on(
+      table.organizationId,
+      table.name
+    ),
+  })
+);
+
+export const statusPageThemesRelations = relations(statusPageThemes, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [statusPageThemes.organizationId],
+    references: [organizations.id],
+  }),
+}));
+
 // Type exports
 export type StatusPage = typeof statusPages.$inferSelect;
 export type NewStatusPage = typeof statusPages.$inferInsert;
@@ -254,3 +300,5 @@ export type NewStatusPageMonitor = typeof statusPageMonitors.$inferInsert;
 export type StatusPageGroup = typeof statusPageGroups.$inferSelect;
 export type Subscriber = typeof subscribers.$inferSelect;
 export type NewSubscriber = typeof subscribers.$inferInsert;
+export type StatusPageTheme = typeof statusPageThemes.$inferSelect;
+export type NewStatusPageTheme = typeof statusPageThemes.$inferInsert;
