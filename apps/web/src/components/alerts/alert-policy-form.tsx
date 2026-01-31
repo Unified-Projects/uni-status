@@ -436,6 +436,7 @@ export function AlertPolicyForm({
                 >
                   <Checkbox
                     checked={watchedChannelIds.includes(channel.id)}
+                    onClick={(e) => e.stopPropagation()}
                     onCheckedChange={() => toggleChannel(channel.id)}
                   />
                   <ChannelTypeIcon
@@ -549,6 +550,7 @@ export function AlertPolicyForm({
                 >
                   <Checkbox
                     checked={watchedMonitorIds?.includes(monitor.id)}
+                    onClick={(e) => e.stopPropagation()}
                     onCheckedChange={() => toggleMonitor(monitor.id)}
                   />
                   <div className="flex-1 min-w-0">

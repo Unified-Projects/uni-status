@@ -26,7 +26,7 @@ COPY . .
 WORKDIR /app/apps/workers
 CMD ["pnpm", "dev"]
 
-# Production build - use node for pnpm, copy bun for building
+# Production build - use node for pnpm, install dependencies
 FROM base AS builder
 COPY --from=bunbase /usr/local/bin/bun /usr/local/bin/bun
 COPY package.json pnpm-workspace.yaml ./
@@ -39,10 +39,8 @@ COPY packages/licensing/package.json ./packages/licensing/
 COPY enterprise/package.json ./enterprise/
 RUN pnpm install --shamefully-hoist
 COPY . .
-WORKDIR /app/apps/workers
-RUN bun run build
 
-# Production
+# Production - run source directly (Bun handles TypeScript/JSX natively)
 FROM oven/bun:1.3.5-alpine AS production
 WORKDIR /app
 
@@ -57,7 +55,10 @@ RUN addgroup -g 1001 -S appgroup && \
     adduser -u 1001 -S appuser -G appgroup && \
     chown -R appuser:appgroup /app
 
-COPY --from=builder --chown=appuser:appgroup /app/apps/workers/dist ./dist
+# Copy source and dependencies (no bundling needed - Bun runs TS/JSX directly)
+COPY --from=builder --chown=appuser:appgroup /app/apps/workers/src ./apps/workers/src
+COPY --from=builder --chown=appuser:appgroup /app/apps/workers/package.json ./apps/workers/
+COPY --from=builder --chown=appuser:appgroup /app/apps/workers/tsconfig.json ./apps/workers/
 COPY --from=builder --chown=appuser:appgroup /app/node_modules ./node_modules
 COPY --from=builder --chown=appuser:appgroup /app/packages ./packages
 
@@ -69,7 +70,9 @@ RUN mkdir -p /app/reports && \
 
 USER appuser
 
+WORKDIR /app/apps/workers
+
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
   CMD ps aux | grep -v grep | grep -q "bun" || exit 1
 
-CMD ["bun", "run", "dist/index.js"]
+CMD ["bun", "run", "src/index.ts"]
