@@ -148,6 +148,11 @@ function buildEmailComponent(job: EmailNotificationJob): React.ReactElement {
 export async function processEmailNotification(
   job: Job<EmailNotificationJob>
 ): Promise<{ success: boolean; to: string | string[] }> {
+  if (!job.data) {
+    console.error(`[Email] Job ${job.id} has no data`);
+    throw new Error("Email job data is missing");
+  }
+
   const {
     to,
     subject,

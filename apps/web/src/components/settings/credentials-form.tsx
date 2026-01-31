@@ -317,7 +317,7 @@ function CredentialConfigDialog({
           password: smtpForm.password || undefined,
           fromAddress: smtpForm.fromAddress || smtpCreds?.fromAddress,
           fromName: smtpForm.fromName || smtpCreds?.fromName,
-          secure: smtpForm.secure,
+          secure: smtpForm.secure || smtpCreds?.secure || false,
           enabled: smtpForm.enabled,
         };
         break;
@@ -350,7 +350,7 @@ function CredentialConfigDialog({
           defaultPort: parseInt(ircForm.defaultPort) || ircCreds?.defaultPort || 6667,
           defaultNickname: ircForm.defaultNickname || ircCreds?.defaultNickname,
           defaultPassword: ircForm.defaultPassword || undefined,
-          useSsl: ircForm.useSsl,
+          useSsl: ircForm.useSsl || ircCreds?.useSsl || false,
           enabled: ircForm.enabled,
         };
         break;
@@ -468,7 +468,7 @@ function CredentialConfigDialog({
                   <div className="flex items-center gap-2">
                     <Switch
                       id="smtp-secure"
-                      checked={smtpForm.secure}
+                      checked={smtpForm.secure || smtpCreds?.secure || false}
                       onCheckedChange={(checked) => setSmtpForm((prev) => ({ ...prev, secure: checked }))}
                     />
                     <Label htmlFor="smtp-secure">Use TLS/SSL</Label>
@@ -664,7 +664,7 @@ function CredentialConfigDialog({
                   <div className="flex items-center gap-2">
                     <Switch
                       id="irc-ssl"
-                      checked={ircForm.useSsl}
+                      checked={ircForm.useSsl || ircCreds?.useSsl || false}
                       onCheckedChange={(checked) => setIrcForm((prev) => ({ ...prev, useSsl: checked }))}
                     />
                     <Label htmlFor="irc-ssl">Use SSL</Label>
