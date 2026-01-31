@@ -664,6 +664,7 @@ export const statusPageThemeSchema = z.object({
   name: z.string(),
   primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   customCss: z.string().max(10000).optional(),
+  colorMode: z.enum(["system", "light", "dark"]).optional(),
 });
 
 export const statusPageSettingsSchema = z.object({
