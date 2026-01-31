@@ -127,6 +127,7 @@ export interface StatusPage {
     backgroundColor?: string;
     textColor?: string;
     customCss?: string;
+    colorMode?: "system" | "light" | "dark";
   };
   settings: {
     showUptimePercentage?: boolean;
