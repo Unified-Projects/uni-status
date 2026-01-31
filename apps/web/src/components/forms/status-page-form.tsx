@@ -217,6 +217,7 @@ const statusPageFormSchema = z.object({
     name: z.string(),
     primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional().or(z.literal("")),
     customCss: z.string().max(10000).optional(),
+    colorMode: z.enum(["system", "light", "dark"]).optional(),
   }),
   settings: z.object({
     showUptimePercentage: z.boolean(),
@@ -314,6 +315,7 @@ export function StatusPageForm({ statusPage, mode }: StatusPageFormProps) {
         name: statusPage?.theme?.name ?? "default",
         primaryColor: statusPage?.theme?.primaryColor ?? "",
         customCss: statusPage?.theme?.customCss ?? "",
+        colorMode: statusPage?.theme?.colorMode ?? "system",
       },
       settings: {
         showUptimePercentage: statusPage?.settings?.showUptimePercentage ?? true,
@@ -436,6 +438,7 @@ export function StatusPageForm({ statusPage, mode }: StatusPageFormProps) {
         name: data.theme.name,
         primaryColor: data.theme.primaryColor || undefined,
         customCss: data.theme.customCss || undefined,
+        colorMode: data.theme.colorMode || "system",
       },
       settings: {
         showUptimePercentage: data.settings.showUptimePercentage,
@@ -452,6 +455,12 @@ export function StatusPageForm({ statusPage, mode }: StatusPageFormProps) {
         graphTooltipMetrics: data.settings.graphTooltipMetrics,
       },
       template: data.template,
+      seo: {
+        title: data.seoTitle || undefined,
+        description: data.seoDescription || undefined,
+        ogImage: data.useOgTemplate ? undefined : (normalizeAssetForSubmit(data.ogImageUrl, statusPage?.ogImageUrl) || undefined),
+        ogTemplate: data.useOgTemplate ? data.ogTemplate : undefined,
+      },
     };
 
     if (mode === "create") {
@@ -1154,6 +1163,7 @@ export function StatusPageForm({ statusPage, mode }: StatusPageFormProps) {
       <AppearanceSection
         watchedPrimaryColor={watch("theme.primaryColor")}
         watchedCustomCss={watch("theme.customCss")}
+        watchedColorMode={watch("theme.colorMode")}
         setValue={setValue}
         register={register}
       />
@@ -1302,6 +1312,7 @@ export function StatusPageForm({ statusPage, mode }: StatusPageFormProps) {
 interface AppearanceSectionProps {
   watchedPrimaryColor: string | undefined;
   watchedCustomCss: string | undefined;
+  watchedColorMode: "system" | "light" | "dark" | undefined;
   setValue: ReturnType<typeof useForm<StatusPageFormData>>["setValue"];
   register: ReturnType<typeof useForm<StatusPageFormData>>["register"];
 }
@@ -1309,6 +1320,7 @@ interface AppearanceSectionProps {
 function AppearanceSection({
   watchedPrimaryColor,
   watchedCustomCss,
+  watchedColorMode,
   setValue,
   register,
 }: AppearanceSectionProps) {
@@ -1439,6 +1451,31 @@ function AppearanceSection({
             <Separator />
           </>
         )}
+
+        {/* Color Mode Setting */}
+        <div className="space-y-2">
+          <Label>Colour Mode</Label>
+          <p className="text-sm text-muted-foreground">
+            Force the status page to use light or dark mode, or follow the visitor's system preference
+          </p>
+          <Select
+            value={watchedColorMode || "system"}
+            onValueChange={(value: "system" | "light" | "dark") =>
+              setValue("theme.colorMode", value, { shouldDirty: true })
+            }
+          >
+            <SelectTrigger className="w-full max-w-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="system">System (Default)</SelectItem>
+              <SelectItem value="light">Light Mode</SelectItem>
+              <SelectItem value="dark">Dark Mode</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <Separator />
 
         {/* Custom Color Options */}
         <div className="space-y-2">
