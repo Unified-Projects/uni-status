@@ -34,6 +34,7 @@ export const statusPages = pgTable(
       backgroundColor?: string;
       textColor?: string;
       customCss?: string;
+      colorMode?: "system" | "light" | "dark";
     }>().default({ name: "default" }),
     settings: jsonb("settings").$type<{
       showUptimePercentage?: boolean;
