@@ -46,6 +46,150 @@ import {
   type OGTemplateId,
 } from "@uni-status/shared";
 
+// Color manipulation helpers for generating status color variants
+function hexToHsl(hex: string): { h: number; s: number; l: number } | null {
+  const normalized = hex.replace("#", "");
+  if (![3, 6].includes(normalized.length)) return null;
+  const full = normalized.length === 3 ? normalized.split("").map((c) => c + c).join("") : normalized;
+  const num = Number.parseInt(full, 16);
+  if (Number.isNaN(num)) return null;
+  const r = ((num >> 16) & 255) / 255;
+  const g = ((num >> 8) & 255) / 255;
+  const b = (num & 255) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  let h = 0;
+  let s = 0;
+  const l = (max + min) / 2;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+      case g: h = (b - r) / d + 2; break;
+      default: h = (r - g) / d + 4; break;
+    }
+    h /= 6;
+  }
+  return { h: h * 360, s: s * 100, l: l * 100 };
+}
+
+function hslToHex(h: number, s: number, l: number): string {
+  s /= 100;
+  l /= 100;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => {
+    const k = (n + h / 30) % 12;
+    const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+    return Math.round(255 * color).toString(16).padStart(2, "0");
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+
+function generateStatusColorVariants(baseHex: string): {
+  light: { solid: string; solidHover: string; bg: string; bgSubtle: string; text: string; border: string; icon: string };
+  dark: { solid: string; solidHover: string; bg: string; bgSubtle: string; text: string; border: string; icon: string };
+} {
+  const hsl = hexToHsl(baseHex);
+  if (!hsl) {
+    // Fallback if color parsing fails
+    return {
+      light: { solid: baseHex, solidHover: baseHex, bg: baseHex, bgSubtle: baseHex, text: baseHex, border: baseHex, icon: baseHex },
+      dark: { solid: baseHex, solidHover: baseHex, bg: baseHex, bgSubtle: baseHex, text: baseHex, border: baseHex, icon: baseHex },
+    };
+  }
+  const { h, s } = hsl;
+  return {
+    light: {
+      solid: baseHex,
+      solidHover: hslToHex(h, s, 40),
+      bg: hslToHex(h, Math.min(s, 80), 90),
+      bgSubtle: hslToHex(h, Math.min(s, 60), 96),
+      text: hslToHex(h, Math.min(s, 70), 25),
+      border: hslToHex(h, Math.min(s, 70), 80),
+      icon: hslToHex(h, s, 40),
+    },
+    dark: {
+      solid: baseHex,
+      solidHover: hslToHex(h, s, 65),
+      bg: hslToHex(h, Math.min(s, 60), 18),
+      bgSubtle: hslToHex(h, Math.min(s, 50), 8),
+      text: hslToHex(h, Math.min(s, 70), 75),
+      border: hslToHex(h, Math.min(s, 60), 25),
+      icon: hslToHex(h, s, 65),
+    },
+  };
+}
+
+function generateThemeCustomCss(themeName: string, colors: { success: string; warning: string; error: string; info?: string; primary?: string }): string {
+  const success = generateStatusColorVariants(colors.success);
+  const warning = generateStatusColorVariants(colors.warning);
+  const error = generateStatusColorVariants(colors.error);
+  const info = generateStatusColorVariants(colors.info || colors.primary || "#3b82f6");
+
+  return `/* Theme: ${themeName} */
+:root {
+  --status-success-solid: ${success.light.solid};
+  --status-success-solid-hover: ${success.light.solidHover};
+  --status-success-bg: ${success.light.bg};
+  --status-success-bg-subtle: ${success.light.bgSubtle};
+  --status-success-text: ${success.light.text};
+  --status-success-border: ${success.light.border};
+  --status-success-icon: ${success.light.icon};
+  --status-warning-solid: ${warning.light.solid};
+  --status-warning-solid-hover: ${warning.light.solidHover};
+  --status-warning-bg: ${warning.light.bg};
+  --status-warning-bg-subtle: ${warning.light.bgSubtle};
+  --status-warning-text: ${warning.light.text};
+  --status-warning-border: ${warning.light.border};
+  --status-warning-icon: ${warning.light.icon};
+  --status-error-solid: ${error.light.solid};
+  --status-error-solid-hover: ${error.light.solidHover};
+  --status-error-bg: ${error.light.bg};
+  --status-error-bg-subtle: ${error.light.bgSubtle};
+  --status-error-text: ${error.light.text};
+  --status-error-border: ${error.light.border};
+  --status-error-icon: ${error.light.icon};
+  --status-info-solid: ${info.light.solid};
+  --status-info-solid-hover: ${info.light.solidHover};
+  --status-info-bg: ${info.light.bg};
+  --status-info-bg-subtle: ${info.light.bgSubtle};
+  --status-info-text: ${info.light.text};
+  --status-info-border: ${info.light.border};
+  --status-info-icon: ${info.light.icon};
+}
+.dark {
+  --status-success-solid: ${success.dark.solid};
+  --status-success-solid-hover: ${success.dark.solidHover};
+  --status-success-bg: ${success.dark.bg};
+  --status-success-bg-subtle: ${success.dark.bgSubtle};
+  --status-success-text: ${success.dark.text};
+  --status-success-border: ${success.dark.border};
+  --status-success-icon: ${success.dark.icon};
+  --status-warning-solid: ${warning.dark.solid};
+  --status-warning-solid-hover: ${warning.dark.solidHover};
+  --status-warning-bg: ${warning.dark.bg};
+  --status-warning-bg-subtle: ${warning.dark.bgSubtle};
+  --status-warning-text: ${warning.dark.text};
+  --status-warning-border: ${warning.dark.border};
+  --status-warning-icon: ${warning.dark.icon};
+  --status-error-solid: ${error.dark.solid};
+  --status-error-solid-hover: ${error.dark.solidHover};
+  --status-error-bg: ${error.dark.bg};
+  --status-error-bg-subtle: ${error.dark.bgSubtle};
+  --status-error-text: ${error.dark.text};
+  --status-error-border: ${error.dark.border};
+  --status-error-icon: ${error.dark.icon};
+  --status-info-solid: ${info.dark.solid};
+  --status-info-solid-hover: ${info.dark.solidHover};
+  --status-info-bg: ${info.dark.bg};
+  --status-info-bg-subtle: ${info.dark.bgSubtle};
+  --status-info-text: ${info.dark.text};
+  --status-info-border: ${info.dark.border};
+  --status-info-icon: ${info.dark.icon};
+}`;
+}
+
 const statusPageFormSchema = z.object({
   name: z.string().min(1, "Name is required").max(100),
   slug: z
@@ -1176,6 +1320,16 @@ function AppearanceSection({
     if (theme) {
       setSelectedThemeId(themeId);
       setValue("theme.primaryColor", theme.colors.primary, { shouldDirty: true });
+
+      // Generate complete CSS to override all status color variants
+      const statusCss = generateThemeCustomCss(theme.name, {
+        success: theme.colors.success,
+        warning: theme.colors.warning,
+        error: theme.colors.error,
+        info: theme.colors.info,
+        primary: theme.colors.primary,
+      });
+      setValue("theme.customCss", statusCss, { shouldDirty: true });
     }
   };
 
@@ -1273,7 +1427,7 @@ function AppearanceSection({
                 setValue("theme.primaryColor", e.target.value, { shouldDirty: true });
                 setSelectedThemeId(null);
               }}
-              className="h-10 w-10 rounded border cursor-pointer"
+              className="h-10 w-10 cursor-pointer appearance-none rounded-md border border-input bg-transparent p-0.5 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded [&::-webkit-color-swatch]:border-none [&::-moz-color-swatch]:rounded [&::-moz-color-swatch]:border-none"
             />
             {watchedPrimaryColor && (
               <Button
