@@ -72,6 +72,12 @@ const HISTORY_STATUS_OPTIONS: { value: AlertHistoryStatus | "all"; label: string
 ];
 
 export default function AlertsPage() {
+  type EditableAlertPolicy = AlertPolicy & {
+    channelIds?: string[];
+    monitorIds?: string[];
+    oncallRotationId?: string;
+  };
+
   // Dialog states
   const [typeSelectorOpen, setTypeSelectorOpen] = useState(false);
   const [selectedChannelType, setSelectedChannelType] = useState<AlertChannelType | null>(null);
@@ -82,7 +88,7 @@ export default function AlertsPage() {
 
   // Selected items for editing/deleting
   const [selectedChannel, setSelectedChannel] = useState<AlertChannel | undefined>();
-  const [selectedPolicy, setSelectedPolicy] = useState<AlertPolicy | undefined>();
+  const [selectedPolicy, setSelectedPolicy] = useState<EditableAlertPolicy | undefined>();
   const [channelToDelete, setChannelToDelete] = useState<string | null>(null);
   const [policyToDelete, setPolicyToDelete] = useState<string | null>(null);
 
@@ -197,10 +203,11 @@ export default function AlertsPage() {
 
   const handleEditPolicy = (policy: AlertPolicy) => {
     // Transform channels to channelIds for the form
-    const policyWithIds = {
+    const policyWithIds: EditableAlertPolicy = {
       ...policy,
       channelIds: policy.channels ?? [],
       monitorIds: policy.monitorIds ?? [],
+      oncallRotationId: policy.oncallRotationId ?? undefined,
     };
     setSelectedPolicy(policyWithIds);
     setPolicyDialogOpen(true);
