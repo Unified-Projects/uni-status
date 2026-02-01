@@ -16,6 +16,7 @@ import {
 import satori from "satori";
 import { Resvg } from "@resvg/resvg-js";
 import type { ReactNode } from "react";
+import { getAppUrl } from "@uni-status/shared/config";
 
 export const ogRoutes = new OpenAPIHono();
 
@@ -59,19 +60,42 @@ function isDarkColor(color: string): boolean {
   return luminance < 0.5;
 }
 
-async function loadImageDataUri(url: string): Promise<string | null> {
-  if (url.startsWith("data:")) return url;
-  try {
-    const response = await fetch(url);
-    if (!response.ok) return null;
-    const contentType = response.headers.get("content-type") || "image/png";
-    const buffer = await response.arrayBuffer();
-    const base64 = Buffer.from(buffer).toString("base64");
-    return `data:${contentType};base64,${base64}`;
-  } catch (error) {
-    console.warn("[OG] Failed to load image:", error);
-    return null;
+function buildImageUrlCandidates(url: string, baseUrls: string[]): string[] {
+  if (!url) return [];
+  if (url.startsWith("data:")) return [url];
+  if (url.startsWith("http://") || url.startsWith("https://")) return [url];
+
+  const candidates = new Set<string>();
+  for (const base of baseUrls) {
+    if (!base) continue;
+    try {
+      candidates.add(new URL(url, base).toString());
+    } catch {
+      // Ignore invalid base/url combinations
+    }
   }
+
+  return Array.from(candidates);
+}
+
+async function loadImageDataUri(url: string, baseUrls: string[]): Promise<string | null> {
+  const candidates = buildImageUrlCandidates(url, baseUrls);
+  for (const candidate of candidates) {
+    if (candidate.startsWith("data:")) {
+      return candidate;
+    }
+    try {
+      const response = await fetch(candidate);
+      if (!response.ok) continue;
+      const contentType = response.headers.get("content-type") || "image/png";
+      const buffer = await response.arrayBuffer();
+      const base64 = Buffer.from(buffer).toString("base64");
+      return `data:${contentType};base64,${base64}`;
+    } catch (error) {
+      console.warn("[OG] Failed to load image:", error);
+    }
+  }
+  return null;
 }
 
 async function loadFont(): Promise<ArrayBuffer> {
@@ -95,6 +119,7 @@ interface StatusPageData {
   name: string;
   slug: string;
   logo: string | null;
+  orgLogo?: string | null;
   theme: {
     primaryColor?: string;
     backgroundColor?: string;
@@ -169,7 +194,8 @@ async function getStatusPageData(slug: string): Promise<StatusPageData | null> {
   return {
     name: page.name,
     slug: page.slug,
-    logo: page.logo ?? page.organization?.logo ?? null,
+    logo: page.logo ?? null,
+    orgLogo: page.organization?.logo ?? null,
     theme,
     monitors: linkedMonitors.map((lm) => ({
       name: lm.displayName || lm.monitor?.name || "Monitor",
@@ -204,6 +230,14 @@ function generateOGImageElement(
 
   const monitorCount = data.monitors.length;
   const operationalCount = data.monitors.filter((m) => m.status === "active").length;
+  const incidentCount = data.activeIncidents.length;
+  const incidentBySeverity = data.activeIncidents.reduce(
+    (acc, incident) => {
+      acc[incident.severity] += 1;
+      return acc;
+    },
+    { minor: 0, major: 0, critical: 0 }
+  );
 
   // SVG icons as path data
   const checkIcon = "M20 6L9 17l-5-5";
@@ -231,6 +265,7 @@ function generateOGImageElement(
 
   const logoSizeLg = 96;
   const logoSizeMd = 72;
+  const logoSizeHero = 168;
 
   const renderLogo = (size: number, rounded: boolean): ReactNode => {
     if (!template.config.showLogo) return null;
@@ -418,16 +453,25 @@ function generateOGImageElement(
   }
 
   if (template.config.layout === "centered") {
+    const monitorPreview = data.monitors.slice(0, 2);
+    const incidentBadges = [
+      incidentBySeverity.critical
+        ? { label: `${incidentBySeverity.critical} Critical`, color: OG_STATUS_COLORS.major_outage.bg }
+        : null,
+      incidentBySeverity.major
+        ? { label: `${incidentBySeverity.major} Major`, color: OG_STATUS_COLORS.partial_outage.bg }
+        : null,
+      incidentBySeverity.minor
+        ? { label: `${incidentBySeverity.minor} Minor`, color: OG_STATUS_COLORS.degraded.bg }
+        : null,
+    ].filter(Boolean) as Array<{ label: string; color: string }>;
+
     return (
       <div
         style={{
           width: "100%",
           height: "100%",
           display: "flex",
-          background: `linear-gradient(135deg, ${hexToRgba(primaryColor, 0.18)}, ${hexToRgba(
-            statusInfo.bg,
-            0.18
-          )})`,
           backgroundColor: bgColor,
           position: "relative",
         }}
@@ -447,79 +491,177 @@ function generateOGImageElement(
             display: "flex",
             width: "100%",
             height: "100%",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "28px",
+            flexDirection: "row",
+            alignItems: "stretch",
+            justifyContent: "space-between",
             padding: "60px",
+            gap: "40px",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: "20px",
-              padding: "52px 70px",
-              borderRadius: "36px",
-              backgroundColor: surfaceColor,
-              border: `1px solid ${surfaceBorder}`,
-              boxShadow: `0 30px 80px ${primaryGlow}`,
-            }}
-          >
+          <div style={{ display: "flex", flexDirection: "column", gap: "22px", flex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "18px" }}>
+              {renderLogo(logoSizeMd, true)}
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                <div
+                  style={{
+                    fontSize: "46px",
+                    fontWeight: titleWeight,
+                    color: textColor,
+                  }}
+                >
+                  {data.name}
+                </div>
+                {template.config.showStatusIndicator && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
+                      padding: "10px 18px",
+                      borderRadius: "9999px",
+                      backgroundColor: statusInfo.bg,
+                      boxShadow: `0 18px 40px ${statusGlow}`,
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "12px",
+                        height: "12px",
+                        borderRadius: "50%",
+                        backgroundColor: "white",
+                      }}
+                    />
+                    <div style={{ fontSize: "18px", fontWeight: 600, color: "white" }}>
+                      {statusInfo.label}
+                    </div>
+                  </div>
+                )}
+                {template.config.showMonitorCount && (
+                  <div style={{ fontSize: "18px", color: mutedText }}>
+                    {`${operationalCount}/${monitorCount} systems operational`}
+                  </div>
+                )}
+              </div>
+            </div>
             <div
               style={{
                 display: "flex",
-                alignItems: "center",
-                gap: "18px",
+                flexDirection: "column",
+                gap: "12px",
+                padding: "16px 20px",
+                borderRadius: "20px",
+                backgroundColor: surfaceColor,
+                border: `1px solid ${surfaceBorder}`,
               }}
             >
-              {renderLogo(logoSizeMd, true)}
-              <div
-                style={{
-                  fontSize: "52px",
-                  fontWeight: titleWeight,
-                  color: textColor,
-                  textAlign: "center",
-                }}
-              >
-                {data.name}
+              <div style={{ fontSize: "16px", fontWeight: 600, color: textColor }}>Incidents</div>
+              {incidentCount > 0 ? (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                  {incidentBadges.map((badge) => (
+                    <div
+                      key={badge.label}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        padding: "6px 12px",
+                        borderRadius: "9999px",
+                        backgroundColor: badge.color,
+                      }}
+                    >
+                      <div style={{ fontSize: "12px", fontWeight: 600, color: "white" }}>
+                        {badge.label}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: "14px", color: mutedText }}>No active incidents</div>
+              )}
+            </div>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "12px",
+                padding: "16px 20px",
+                borderRadius: "20px",
+                backgroundColor: surfaceColor,
+                border: `1px solid ${surfaceBorder}`,
+              }}
+            >
+              <div style={{ fontSize: "16px", fontWeight: 600, color: textColor }}>Systems</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                {monitorPreview.map((monitor, index) => {
+                  const info = monitorStatusInfo(monitor.status);
+                  return (
+                    <div
+                      key={`${monitor.name}-${index}`}
+                      style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <div
+                          style={{
+                            width: "10px",
+                            height: "10px",
+                            borderRadius: "50%",
+                            backgroundColor: info.color,
+                          }}
+                        />
+                        <div style={{ fontSize: "16px", color: textColor }}>{monitor.name}</div>
+                      </div>
+                      <div style={{ fontSize: "14px", color: mutedText }}>{info.label}</div>
+                    </div>
+                  );
+                })}
+                {monitorCount > monitorPreview.length && (
+                  <div style={{ fontSize: "14px", color: mutedText }}>
+                    {`+${monitorCount - monitorPreview.length} more services`}
+                  </div>
+                )}
               </div>
             </div>
+          </div>
+          <div
+            style={{
+              width: "280px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
             {template.config.showStatusIndicator && (
               <div
                 style={{
+                  width: "200px",
+                  height: "200px",
+                  borderRadius: "50%",
+                  backgroundColor: statusInfo.bg,
+                  boxShadow: `0 0 60px ${statusGlow}`,
                   display: "flex",
                   alignItems: "center",
-                  gap: "16px",
-                  padding: "14px 28px",
-                  borderRadius: "9999px",
-                  backgroundColor: statusInfo.bg,
-                  boxShadow: `0 18px 40px ${statusGlow}`,
+                  justifyContent: "center",
                 }}
               >
-                <div
-                  style={{
-                    width: "22px",
-                    height: "22px",
-                    borderRadius: "50%",
-                    backgroundColor: "white",
-                  }}
-                />
-                <div
-                  style={{
-                    fontSize: "26px",
-                    fontWeight: 600,
-                    color: "white",
-                  }}
+                <svg
+                  width="96"
+                  height="96"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="white"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                 >
-                  {statusInfo.label}
-                </div>
-              </div>
-            )}
-            {template.config.showMonitorCount && (
-              <div style={{ fontSize: "20px", color: mutedText }}>
-                {`${operationalCount} of ${monitorCount} systems operational`}
+                  {overallStatus === "operational" ? (
+                    <path d={checkIcon} />
+                  ) : (
+                    <>
+                      <circle cx="12" cy="12" r="10" />
+                      <path d={alertIcon} />
+                    </>
+                  )}
+                </svg>
               </div>
             )}
           </div>
@@ -633,43 +775,60 @@ function generateOGImageElement(
             padding: "60px",
           }}
         >
-          {template.config.showLogo && (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-              {renderLogo(logoSizeLg, false)}
+          {template.config.showStatusIndicator && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "12px",
+                padding: "10px 22px",
+                borderRadius: "9999px",
+                backgroundColor: statusInfo.bg,
+                boxShadow: `0 18px 40px ${statusGlow}`,
+              }}
+            >
+              <div
+                style={{
+                  width: "12px",
+                  height: "12px",
+                  borderRadius: "50%",
+                  backgroundColor: "white",
+                }}
+              />
+              <div style={{ fontSize: "18px", fontWeight: 600, color: "white" }}>
+                {statusInfo.label}
+              </div>
             </div>
           )}
-          <div
-            style={{
-              width: "160px",
-              height: "160px",
-              borderRadius: "50%",
-              backgroundColor: statusInfo.bg,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              boxShadow: `0 0 60px ${statusGlow}`,
-            }}
-          >
-            <svg
-              width="80"
-              height="80"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="white"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+          {template.config.showLogo && (
+            <div
+              style={{
+                width: `${logoSizeHero}px`,
+                height: `${logoSizeHero}px`,
+                borderRadius: "50%",
+                backgroundColor: surfaceColor,
+                border: `2px solid ${surfaceBorder}`,
+                boxShadow: `0 30px 80px ${primaryGlow}`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                overflow: "hidden",
+              }}
             >
-              {overallStatus === "operational" ? (
-                <path d={checkIcon} />
+              {data.logo ? (
+                <img
+                  src={data.logo}
+                  width={logoSizeHero - 28}
+                  height={logoSizeHero - 28}
+                  style={{ borderRadius: "32px" }}
+                />
               ) : (
-                <>
-                  <circle cx="12" cy="12" r="10" />
-                  <path d={alertIcon} />
-                </>
+                <div style={{ fontSize: "80px", fontWeight: 700, color: primaryColor }}>
+                  {monogram}
+                </div>
               )}
-            </svg>
-          </div>
+            </div>
+          )}
           <div
             style={{
               fontSize: "64px",
@@ -679,25 +838,36 @@ function generateOGImageElement(
           >
             {data.name}
           </div>
-          {template.config.showStatusIndicator && (
-            <div
-              style={{
-                fontSize: "32px",
-                fontWeight: 600,
-                color: statusInfo.bg,
-              }}
-            >
-              {statusInfo.label}
-            </div>
-          )}
         </div>
       </div>
     );
   }
 
   if (template.config.layout === "grid") {
-    const visibleMonitors = data.monitors.slice(0, 6);
+    const maxGridCards = 8;
+    const visibleMonitors = data.monitors.slice(0, maxGridCards);
     const remainingMonitors = Math.max(data.monitors.length - visibleMonitors.length, 0);
+    const gridItemCount = visibleMonitors.length + (remainingMonitors > 0 ? 1 : 0);
+
+    let gridColumns = 3;
+    if (gridItemCount <= 3) {
+      gridColumns = Math.max(gridItemCount, 1);
+    } else if (gridItemCount <= 4) {
+      gridColumns = 2;
+    } else if (gridItemCount <= 6) {
+      gridColumns = 3;
+    } else {
+      gridColumns = 4;
+    }
+
+    const gridGap = 16;
+    const contentWidth = 1200 - 80;
+    const contentHeight = 630 - 80;
+    const headerHeight = 120;
+    const gridHeight = Math.max(contentHeight - headerHeight, 200);
+    const gridRows = Math.max(Math.ceil(gridItemCount / gridColumns), 1);
+    const gridCardWidth = Math.floor((contentWidth - gridGap * (gridColumns - 1)) / gridColumns);
+    const gridCardHeight = Math.floor((gridHeight - gridGap * (gridRows - 1)) / gridRows);
 
     return (
       <div
@@ -725,25 +895,19 @@ function generateOGImageElement(
             width: "100%",
             height: "100%",
             padding: "40px",
-            gap: "32px",
+            flexDirection: "column",
+            gap: "24px",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "24px",
-              flex: 1,
-            }}
-          >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "18px" }}>
               {renderLogo(logoSizeMd, true)}
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                <div style={{ fontSize: "40px", fontWeight: titleWeight, color: textColor }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <div style={{ fontSize: "38px", fontWeight: titleWeight, color: textColor }}>
                   {data.name}
                 </div>
                 {template.config.showMonitorCount && (
-                  <div style={{ fontSize: "18px", color: mutedText }}>
+                  <div style={{ fontSize: "16px", color: mutedText }}>
                     {`${operationalCount}/${monitorCount} systems operational`}
                   </div>
                 )}
@@ -754,8 +918,8 @@ function generateOGImageElement(
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: "12px",
-                  padding: "12px 20px",
+                  gap: "10px",
+                  padding: "10px 18px",
                   borderRadius: "9999px",
                   backgroundColor: surfaceColor,
                   border: `1px solid ${surfaceBorder}`,
@@ -763,13 +927,13 @@ function generateOGImageElement(
               >
                 <div
                   style={{
-                    width: "12px",
-                    height: "12px",
+                    width: "10px",
+                    height: "10px",
                     borderRadius: "50%",
                     backgroundColor: statusInfo.bg,
                   }}
                 />
-                <div style={{ fontSize: "18px", fontWeight: 600, color: textColor }}>
+                <div style={{ fontSize: "16px", fontWeight: 600, color: textColor }}>
                   {statusInfo.label}
                 </div>
               </div>
@@ -779,8 +943,7 @@ function generateOGImageElement(
             style={{
               display: "flex",
               flexWrap: "wrap",
-              gap: "16px",
-              flex: 1,
+              gap: `${gridGap}px`,
               alignContent: "flex-start",
             }}
           >
@@ -790,7 +953,8 @@ function generateOGImageElement(
                 <div
                   key={`${monitor.name}-${index}`}
                   style={{
-                    width: "260px",
+                    width: `${gridCardWidth}px`,
+                    height: `${gridCardHeight}px`,
                     padding: "16px 18px",
                     borderRadius: "16px",
                     backgroundColor: surfaceColor,
@@ -798,6 +962,7 @@ function generateOGImageElement(
                     display: "flex",
                     flexDirection: "column",
                     gap: "10px",
+                    justifyContent: "space-between",
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -818,15 +983,16 @@ function generateOGImageElement(
               );
             })}
             {remainingMonitors > 0 && (
-              <div
-                style={{
-                  width: "260px",
-                  padding: "16px 18px",
-                  borderRadius: "16px",
-                  backgroundColor: surfaceColor,
-                  border: `1px dashed ${surfaceBorder}`,
-                  display: "flex",
-                  alignItems: "center",
+                <div
+                  style={{
+                    width: `${gridCardWidth}px`,
+                    height: `${gridCardHeight}px`,
+                    padding: "16px 18px",
+                    borderRadius: "16px",
+                    backgroundColor: surfaceColor,
+                    border: `1px dashed ${surfaceBorder}`,
+                    display: "flex",
+                    alignItems: "center",
                   justifyContent: "center",
                 }}
               >
@@ -1011,7 +1177,20 @@ ogRoutes.get("/:slug", async (c) => {
     const font = await loadFont();
 
     // Resolve logo to a data URI if present so OG generation doesn't fail on bad URLs
-    const logoData = data.logo ? await loadImageDataUri(data.logo) : null;
+    const requestOrigin = (() => {
+      try {
+        return new URL(c.req.url).origin;
+      } catch {
+        return "";
+      }
+    })();
+    const baseUrls = [requestOrigin, getAppUrl()];
+    const logoCandidates = [data.logo, data.orgLogo].filter(Boolean) as string[];
+    let logoData: string | null = null;
+    for (const candidate of logoCandidates) {
+      logoData = await loadImageDataUri(candidate, baseUrls);
+      if (logoData) break;
+    }
     const element = generateOGImageElement(
       { ...data, logo: logoData },
       templateId

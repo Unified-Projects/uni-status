@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, type CSSProperties } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -44,6 +44,76 @@ function getApiUrl(): string {
     // If URL parsing fails, use default
   }
   return DEFAULT_API_URL;
+}
+
+const DEFAULT_PRIMARY = "#3b82f6";
+
+function hexToHsl(hex: string): { h: number; s: number; l: number } | null {
+  const cleaned = hex.replace("#", "");
+  if (cleaned.length !== 6) return null;
+  const r = parseInt(cleaned.substring(0, 2), 16) / 255;
+  const g = parseInt(cleaned.substring(2, 4), 16) / 255;
+  const b = parseInt(cleaned.substring(4, 6), 16) / 255;
+
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  let h = 0;
+  let s = 0;
+  const l = (max + min) / 2;
+  const d = max - min;
+
+  if (d !== 0) {
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r:
+        h = (g - b) / d + (g < b ? 6 : 0);
+        break;
+      case g:
+        h = (b - r) / d + 2;
+        break;
+      case b:
+        h = (r - g) / d + 4;
+        break;
+    }
+    h /= 6;
+  }
+
+  return {
+    h: Math.round(h * 360),
+    s: Math.round(s * 100),
+    l: Math.round(l * 100),
+  };
+}
+
+const hslToString = (hsl: { h: number; s: number; l: number }) =>
+  `${hsl.h} ${hsl.s}% ${hsl.l}%`;
+
+const getContrastingText = (hex: string): string => {
+  const cleaned = hex.replace("#", "");
+  const r = parseInt(cleaned.substring(0, 2), 16);
+  const g = parseInt(cleaned.substring(2, 4), 16);
+  const b = parseInt(cleaned.substring(4, 6), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.6 ? "#111827" : "#ffffff";
+};
+
+function buildThemeStyles(theme?: { primaryColor?: string }): CSSProperties {
+  if (!theme) return {};
+  const styles: CSSProperties & Record<string, string> = {};
+  const primaryHex = theme.primaryColor || DEFAULT_PRIMARY;
+  const primaryHsl = hexToHsl(primaryHex);
+  if (primaryHsl) {
+    const primaryString = hslToString(primaryHsl);
+    styles["--primary"] = primaryString;
+    styles["--ring"] = primaryString;
+
+    const primaryForeground = hexToHsl(getContrastingText(primaryHex));
+    if (primaryForeground) {
+      styles["--primary-foreground"] = hslToString(primaryForeground);
+    }
+  }
+
+  return styles;
 }
 
 interface EventsResponse {
@@ -106,10 +176,14 @@ async function fetchPublicEvents(
 interface StatusPageResponse {
   success: boolean;
   data?: {
-    statusPage: {
-      id: string;
+    id: string;
+    name: string;
+    slug: string;
+    theme?: {
       name: string;
-      slug: string;
+      primaryColor?: string;
+      customCss?: string;
+      colorMode?: "system" | "light" | "dark";
     };
     monitors: Array<{
       id: string;
@@ -164,6 +238,17 @@ export default function PublicEventsPage() {
     enabled: !!slug,
     staleTime: 60000,
   });
+
+  const themeStyles = useMemo(
+    () => buildThemeStyles(statusPageData?.data?.theme),
+    [statusPageData?.data?.theme]
+  );
+
+  useEffect(() => {
+    const colorMode = statusPageData?.data?.theme?.colorMode;
+    if (!colorMode || colorMode === "system") return;
+    document.documentElement.classList.toggle("dark", colorMode === "dark");
+  }, [statusPageData?.data?.theme?.colorMode]);
 
   // Extract available monitors and regions
   const availableMonitors = useMemo(() => {
@@ -275,7 +360,10 @@ export default function PublicEventsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background" style={themeStyles}>
+      {statusPageData?.data?.theme?.customCss && (
+        <style dangerouslySetInnerHTML={{ __html: statusPageData.data.theme.customCss }} />
+      )}
       <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8">
