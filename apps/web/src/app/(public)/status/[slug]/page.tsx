@@ -394,7 +394,7 @@ export async function generateMetadata({
   let ogImageUrl: string | undefined;
   if (data.seo.ogImage) {
     // Custom OG image takes priority
-    ogImageUrl = normalizeAssetUrl(data.seo.ogImage);
+    ogImageUrl = normalizeAssetUrl(data.seo.ogImage, ogBaseUrl);
   } else if (ogBaseUrl) {
     // Use dynamic OG image route with configured or default template
     const template = data.seo.ogTemplate || "classic";
@@ -452,7 +452,7 @@ export async function generateMetadata({
   };
 
   // Only set icons if a custom favicon is configured, otherwise inherit from parent
-  const faviconUrl = normalizeAssetUrl(data.favicon);
+  const faviconUrl = normalizeAssetUrl(data.favicon, ogBaseUrl);
   if (faviconUrl) {
     metadata.icons = { icon: faviconUrl };
   }
