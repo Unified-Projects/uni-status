@@ -78,7 +78,7 @@
   },
   "dependencies": {
     "@uni-status/licensing": "workspace:*",
-    "zod": "^4.3.5"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "typescript": "^5.7.2"
