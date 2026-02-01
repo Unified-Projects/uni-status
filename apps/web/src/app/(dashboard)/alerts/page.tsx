@@ -200,7 +200,7 @@ export default function AlertsPage() {
     const policyWithIds = {
       ...policy,
       channelIds: policy.channels ?? [],
-      monitorIds: [] as string[], // TODO: Load monitor IDs if/when the API supports it
+      monitorIds: policy.monitorIds ?? [],
     };
     setSelectedPolicy(policyWithIds);
     setPolicyDialogOpen(true);
@@ -234,6 +234,7 @@ export default function AlertsPage() {
       conditions: data.conditions,
       cooldownMinutes: data.cooldownMinutes,
       channels: data.channelIds,
+      monitorIds: data.monitorIds ?? [],
       oncallRotationId: data.oncallRotationId,
     };
 

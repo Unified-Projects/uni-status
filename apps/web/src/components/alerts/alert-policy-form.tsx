@@ -102,8 +102,8 @@ export function AlertPolicyForm({
   const watchedEnabled = watch("enabled");
   const watchedConditions = watch("conditions");
   const watchedCooldown = watch("cooldownMinutes");
-  const watchedChannelIds = watch("channelIds");
-  const watchedMonitorIds = watch("monitorIds");
+  const watchedChannelIds = watch("channelIds") ?? [];
+  const watchedMonitorIds = watch("monitorIds") ?? [];
   const watchedOncallRotationId = watch("oncallRotationId");
 
   // Condition toggles

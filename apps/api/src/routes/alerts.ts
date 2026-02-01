@@ -273,11 +273,19 @@ alertsRoutes.get("/policies", async (c) => {
     orderBy: [desc(alertPolicies.createdAt)],
     limit,
     offset,
+    with: {
+      monitorLinks: {
+        columns: { monitorId: true },
+      },
+    },
   });
 
   return c.json({
     success: true,
-    data: result,
+    data: result.map(({ monitorLinks, ...policy }) => ({
+      ...policy,
+      monitorIds: monitorLinks?.map((link) => link.monitorId) ?? [],
+    })),
     meta: {
       total,
       limit,
@@ -317,20 +325,39 @@ alertsRoutes.post("/policies", async (c) => {
 
   const body = await c.req.json();
   const validated = createAlertPolicySchema.parse(body);
+  const { monitorIds, ...policyData } = validated;
 
   const id = nanoid();
   const now = new Date();
 
-  const [policy] = await db
-    .insert(alertPolicies)
-    .values({
-      id,
-      organizationId,
-      ...validated,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .returning();
+  const [policy] = await db.transaction(async (tx) => {
+    const [createdPolicy] = await tx
+      .insert(alertPolicies)
+      .values({
+        id,
+        organizationId,
+        ...policyData,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+
+    if (!createdPolicy) return [];
+
+    const uniqueMonitorIds = Array.from(new Set(monitorIds ?? []));
+    if (uniqueMonitorIds.length > 0) {
+      await tx.insert(monitorAlertPolicies).values(
+        uniqueMonitorIds.map((monitorId) => ({
+          id: nanoid(),
+          monitorId,
+          policyId: createdPolicy.id,
+          createdAt: now,
+        }))
+      );
+    }
+
+    return [createdPolicy];
+  });
 
   if (!policy) {
     throw new HTTPException(500, { message: "Failed to create alert policy" });
@@ -368,6 +395,7 @@ alertsRoutes.patch("/policies/:id", async (c) => {
 
   const body = await c.req.json();
   const validated = updateAlertPolicySchema.parse(body);
+  const { monitorIds, ...policyData } = validated;
   const now = new Date();
 
   // Get existing policy for audit
@@ -379,19 +407,43 @@ alertsRoutes.patch("/policies/:id", async (c) => {
     throw new Error("Not found");
   }
 
-  const [policy] = await db
-    .update(alertPolicies)
-    .set({
-      ...validated,
-      updatedAt: now,
-    })
-    .where(
-      and(
-        eq(alertPolicies.id, id),
-        eq(alertPolicies.organizationId, organizationId)
+  const [policy] = await db.transaction(async (tx) => {
+    const [updatedPolicy] = await tx
+      .update(alertPolicies)
+      .set({
+        ...policyData,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(alertPolicies.id, id),
+          eq(alertPolicies.organizationId, organizationId)
+        )
       )
-    )
-    .returning();
+      .returning();
+
+    if (!updatedPolicy) return [];
+
+    if (monitorIds !== undefined) {
+      await tx
+        .delete(monitorAlertPolicies)
+        .where(eq(monitorAlertPolicies.policyId, updatedPolicy.id));
+
+      const uniqueMonitorIds = Array.from(new Set(monitorIds));
+      if (uniqueMonitorIds.length > 0) {
+        await tx.insert(monitorAlertPolicies).values(
+          uniqueMonitorIds.map((monitorId) => ({
+            id: nanoid(),
+            monitorId,
+            policyId: updatedPolicy.id,
+            createdAt: now,
+          }))
+        );
+      }
+    }
+
+    return [updatedPolicy];
+  });
 
   if (!policy) {
     throw new HTTPException(500, { message: "Failed to update alert policy" });

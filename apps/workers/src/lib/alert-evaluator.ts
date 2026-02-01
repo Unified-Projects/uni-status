@@ -10,7 +10,7 @@ import {
   checkResults,
   organizations,
 } from "@uni-status/database/schema";
-import { eq, and, gte, desc, inArray, asc } from "drizzle-orm";
+import { eq, and, gte, desc, inArray, asc, isNull } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { connection, queuePrefix, publishEvent } from "./redis";
 import { QUEUE_NAMES } from "@uni-status/shared/constants";
@@ -94,7 +94,7 @@ export async function evaluateAlerts(input: EvaluateAlertInput): Promise<void> {
 
   try {
     // 1. Get all alert policies linked to this monitor
-    const policies = await getLinkedPolicies(monitorId);
+    const policies = await getLinkedPolicies(monitorId, organizationId);
 
     if (policies.length === 0) {
       return; // No policies linked, nothing to evaluate
@@ -167,7 +167,8 @@ export async function evaluateAlerts(input: EvaluateAlertInput): Promise<void> {
 }
 
 async function getLinkedPolicies(
-  monitorId: string
+  monitorId: string,
+  organizationId: string
 ): Promise<AlertPolicyWithConditions[]> {
   const links = await db
     .select({
@@ -176,16 +177,42 @@ async function getLinkedPolicies(
     .from(monitorAlertPolicies)
     .where(eq(monitorAlertPolicies.monitorId, monitorId));
 
-  if (links.length === 0) return [];
-
   const policyIds = links.map((l) => l.policyId);
 
-  const policies = await db
-    .select()
-    .from(alertPolicies)
-    .where(inArray(alertPolicies.id, policyIds));
+  const linkedPolicies = policyIds.length > 0
+    ? await db
+        .select()
+        .from(alertPolicies)
+        .where(inArray(alertPolicies.id, policyIds))
+    : [];
 
-  return policies as AlertPolicyWithConditions[];
+  const globalPolicies = await db
+    .select({
+      policy: alertPolicies,
+    })
+    .from(alertPolicies)
+    .leftJoin(
+      monitorAlertPolicies,
+      eq(alertPolicies.id, monitorAlertPolicies.policyId)
+    )
+    .where(
+      and(
+        eq(alertPolicies.organizationId, organizationId),
+        isNull(monitorAlertPolicies.policyId)
+      )
+    );
+
+  const merged = [
+    ...linkedPolicies,
+    ...globalPolicies.map((row) => row.policy),
+  ];
+
+  const uniquePolicies = new Map<string, AlertPolicyWithConditions>();
+  for (const policy of merged) {
+    uniquePolicies.set(policy.id, policy as AlertPolicyWithConditions);
+  }
+
+  return Array.from(uniquePolicies.values());
 }
 
 async function evaluateConditions(

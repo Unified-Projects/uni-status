@@ -279,6 +279,8 @@ export interface AlertPolicy {
   name: string;
   description: string | null;
   enabled: boolean;
+  escalationPolicyId?: string | null;
+  oncallRotationId?: string | null;
   conditions: {
     consecutiveFailures?: number;
     failuresInWindow?: {
@@ -289,6 +291,7 @@ export interface AlertPolicy {
     consecutiveSuccesses?: number;
   };
   channels: string[];
+  monitorIds?: string[];
   cooldownMinutes: number;
   createdAt: string;
   updatedAt: string;
