@@ -7,8 +7,8 @@ import {
   siPagerduty as pagerdutyIcon,
   siX as xIcon,
 } from "simple-icons";
-// simple-icons v15 removed Slack and Microsoft Teams icons, so we use v12 for both
-import { siSlack as slackIcon, siMicrosoftteams as microsoftteamsIcon } from "simple-icons-v12";
+// simple-icons v15 removed Slack icon, so we use v12
+import { siSlack as slackIcon } from "simple-icons-v12";
 import { cn } from "@uni-status/ui";
 
 function BrandIcon({ icon, className }: { icon: SimpleIcon; className?: string }) {
@@ -27,7 +27,6 @@ function BrandIcon({ icon, className }: { icon: SimpleIcon; className?: string }
 
 const SlackIcon = ({ className }: { className?: string }) => <BrandIcon icon={slackIcon} className={className} />;
 const DiscordIcon = ({ className }: { className?: string }) => <BrandIcon icon={discordIcon} className={className} />;
-const TeamsIcon = ({ className }: { className?: string }) => <BrandIcon icon={microsoftteamsIcon} className={className} />;
 const PagerDutyIcon = ({ className }: { className?: string }) => <BrandIcon icon={pagerdutyIcon} className={className} />;
 const TwitterIcon = ({ className }: { className?: string }) => <BrandIcon icon={xIcon} className={className} />;
 
@@ -73,7 +72,7 @@ const channelTypeConfig: Record<AlertChannelType, ChannelTypeConfig> = {
     bgColor: "bg-indigo-100",
   },
   teams: {
-    icon: TeamsIcon,
+    icon: MessageSquare,
     label: "Microsoft Teams",
     color: "text-[#6264A7]",
     bgColor: "bg-violet-100",

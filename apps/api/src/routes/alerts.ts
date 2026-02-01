@@ -3,7 +3,7 @@ import { HTTPException } from "hono/http-exception";
 import { nanoid } from "nanoid";
 import { db } from "@uni-status/database";
 import { alertChannels, alertPolicies, alertHistory, monitorAlertPolicies, organizations } from "@uni-status/database/schema";
-import { createAlertChannelSchema, updateAlertChannelSchema, createAlertPolicySchema } from "@uni-status/shared/validators";
+import { createAlertChannelSchema, updateAlertChannelSchema, createAlertPolicySchema, updateAlertPolicySchema } from "@uni-status/shared/validators";
 import { SSE_CHANNELS } from "@uni-status/shared/constants";
 import { decryptConfigSecrets } from "@uni-status/shared/lib/crypto";
 import type { OrganizationCredentials } from "@uni-status/shared/types/credentials";
@@ -367,7 +367,7 @@ alertsRoutes.patch("/policies/:id", async (c) => {
   const { id } = c.req.param();
 
   const body = await c.req.json();
-  const validated = createAlertPolicySchema.partial().parse(body);
+  const validated = updateAlertPolicySchema.parse(body);
   const now = new Date();
 
   // Get existing policy for audit

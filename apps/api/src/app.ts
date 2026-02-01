@@ -41,6 +41,7 @@ import { deploymentsRoutes } from "./routes/deployments";
 import { probesRoutes } from "./routes/probes";
 import { uploadsRoutes } from "./routes/uploads";
 import { feedsRoutes } from "./routes/feeds";
+import { ogRoutes } from "./routes/og";
 import { certificatesRoutes } from "./routes/certificates";
 import { regionsRoutes } from "./routes/regions";
 import { remoteWriteRoutes } from "./routes/remote-write";
@@ -204,6 +205,7 @@ app.route("/api/graphql", graphqlRoutes);
 app.route("/api/public", publicRoutes);
 app.route("/api/public/embeds", embedsRoutes);
 app.route("/api/public/feeds", feedsRoutes);
+app.route("/api/og", ogRoutes);
 app.route("/api/public/regions", regionsRoutes);
 // Token-based Prometheus remote write ingestion (bypasses user auth, uses org token)
 app.route("/api/prom/remote-write", remoteWriteRoutes);

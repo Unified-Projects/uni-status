@@ -436,8 +436,10 @@ export function AlertPolicyForm({
                 >
                   <Checkbox
                     checked={watchedChannelIds.includes(channel.id)}
-                    onClick={(e) => e.stopPropagation()}
-                    onCheckedChange={() => toggleChannel(channel.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleChannel(channel.id);
+                    }}
                   />
                   <ChannelTypeIcon
                     type={channel.type as AlertChannelType}
@@ -550,8 +552,10 @@ export function AlertPolicyForm({
                 >
                   <Checkbox
                     checked={watchedMonitorIds?.includes(monitor.id)}
-                    onClick={(e) => e.stopPropagation()}
-                    onCheckedChange={() => toggleMonitor(monitor.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleMonitor(monitor.id);
+                    }}
                   />
                   <div className="flex-1 min-w-0">
                     <span className="font-medium truncate block">

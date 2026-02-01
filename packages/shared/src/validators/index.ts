@@ -878,6 +878,18 @@ export const createAlertPolicySchema = z.object({
   { message: "Either channels or on-call rotation must be provided" }
 );
 
+// Update schema for PATCH - all fields optional, no refinement (can't use .partial() with refine)
+export const updateAlertPolicySchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  description: z.string().max(500).optional(),
+  enabled: z.boolean().optional(),
+  conditions: alertConditionsSchema.optional(),
+  channels: z.array(idSchema).optional(),
+  cooldownMinutes: z.number().min(1).max(1440).optional(),
+  escalationPolicyId: idSchema.optional(),
+  oncallRotationId: idSchema.optional(),
+});
+
 // Organization validators
 export const organizationPlanSchema = z.enum(["free", "pro", "enterprise"]);
 export const memberRoleSchema = z.enum(["owner", "admin", "member", "viewer"]);
@@ -1295,6 +1307,7 @@ export type CreateStatusPageThemeInput = z.infer<typeof createStatusPageThemeSch
 export type UpdateStatusPageThemeInput = z.infer<typeof updateStatusPageThemeSchema>;
 export type CreateAlertChannelInput = z.infer<typeof createAlertChannelSchema>;
 export type CreateAlertPolicyInput = z.infer<typeof createAlertPolicySchema>;
+export type UpdateAlertPolicyInput = z.infer<typeof updateAlertPolicySchema>;
 export type CreateOrganizationInput = z.infer<typeof createOrganizationSchema>;
 export type InviteMemberInput = z.infer<typeof inviteMemberSchema>;
 export type PaginationInput = z.infer<typeof paginationSchema>;

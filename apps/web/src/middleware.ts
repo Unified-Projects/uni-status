@@ -100,9 +100,9 @@ export async function middleware(request: NextRequest) {
   }
 
   // This is a custom domain - handle API proxying
-  // Proxy /api/public and /api/v1/assets requests to internal API
-  // This is needed for client-side fetches and asset loading on custom domains
-  if (pathname.startsWith("/api/public/") || pathname.startsWith("/api/v1/assets/")) {
+  // Proxy /api/public, /api/v1/assets, and /api/og requests to internal API
+  // This is needed for client-side fetches, asset loading, and OG images on custom domains
+  if (pathname.startsWith("/api/public/") || pathname.startsWith("/api/v1/assets/") || pathname.startsWith("/api/og/")) {
     const apiUrl = INTERNAL_API_URL.replace(/\/$/, "");
     const targetUrl = `${apiUrl}${pathname}${request.nextUrl.search}`;
     // Rewrite to internal API
@@ -110,19 +110,6 @@ export async function middleware(request: NextRequest) {
     const response = NextResponse.rewrite(url);
     addSecurityHeaders(response);
     return response;
-  }
-
-  // Handle /api/og/ route for custom domains - rewrite to the system app
-  // The OG image generation runs on the Next.js web server, not the internal API
-  if (pathname.startsWith("/api/og/")) {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.UNI_STATUS_URL;
-    if (appUrl) {
-      const targetUrl = `${appUrl}${pathname}${request.nextUrl.search}`;
-      const url = new URL(targetUrl);
-      const response = NextResponse.rewrite(url);
-      addSecurityHeaders(response);
-      return response;
-    }
   }
 
   // Skip other internal paths and static files on custom domains
@@ -216,8 +203,8 @@ export const config = {
      *
      * The negative lookahead (?!api/(?!public/|v1/assets/|og/)) means:
      * - Exclude paths starting with api/ UNLESS they continue with public/, v1/assets/, or og/
-     * - This allows api/public/*, api/v1/assets/*, and api/og/* through for custom domain proxying
-     * - Other api/* paths are still excluded (handled by Next.js API routes)
+     * - This allows api/public/*, api/v1/assets/*, and api/og/* through for custom domain proxying to the API backend
+     * - Other api/* paths are still excluded (handled by Next.js API routes like /api/auth)
      */
     "/((?!api/(?!public/|v1/assets/|og/)|_next/static|_next/image|uploads|reports|favicon.ico|robots.txt|sitemap.xml|health).*)",
   ],
