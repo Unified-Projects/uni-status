@@ -352,6 +352,55 @@ const monitorFormSchema = z.object({
       compareToleranceMs: z.number().min(1).max(60000).optional(),
       requireStatusMatch: z.boolean().optional(),
     }).optional(),
+    // External Status Provider configuration
+    externalStatus: z.object({
+      pollIntervalSeconds: z.number().min(60).max(3600).optional(),
+      aws: z.object({
+        regions: z.array(z.string()).optional(),
+        services: z.array(z.string()).optional(),
+      }).optional(),
+      gcp: z.object({
+        zones: z.array(z.string()).optional(),
+        products: z.array(z.string()).optional(),
+      }).optional(),
+      azure: z.object({
+        regions: z.array(z.string()).optional(),
+        services: z.array(z.string()).optional(),
+      }).optional(),
+      cloudflare: z.object({
+        components: z.array(z.string()).optional(),
+      }).optional(),
+      okta: z.object({
+        cell: z.string().optional(),
+      }).optional(),
+      auth0: z.object({
+        region: z.string().optional(),
+      }).optional(),
+      stripe: z.object({
+        components: z.array(z.string()).optional(),
+      }).optional(),
+      twilio: z.object({
+        components: z.array(z.string()).optional(),
+      }).optional(),
+      statuspage: z.object({
+        baseUrl: z.string().optional(),
+        components: z.array(z.string()).optional(),
+      }).optional(),
+      custom: z.object({
+        statusUrl: z.string().optional(),
+        jsonPath: z.string().optional(),
+        statusMapping: z.record(z.string(), z.string()).optional(),
+      }).optional(),
+    }).optional(),
+    // Aggregate Monitor configuration
+    aggregate: z.object({
+      thresholdMode: z.enum(["absolute", "percentage"]).optional(),
+      degradedThresholdCount: z.number().int().min(1).optional(),
+      downThresholdCount: z.number().int().min(1).optional(),
+      degradedThresholdPercent: z.number().min(1).max(100).optional(),
+      downThresholdPercent: z.number().min(1).max(100).optional(),
+      countDegradedAsDown: z.boolean().optional(),
+    }).optional(),
   }).optional(),
 });
 
@@ -508,6 +557,15 @@ export function MonitorForm({ monitor, mode }: MonitorFormProps) {
         seo: undefined,
       },
       ...existingConfig.pagespeed,
+    },
+    externalStatus: {
+      pollIntervalSeconds: 300,
+      ...existingConfig.externalStatus,
+    },
+    aggregate: {
+      thresholdMode: "absolute",
+      countDegradedAsDown: false,
+      ...existingConfig.aggregate,
     },
   };
 
@@ -770,6 +828,7 @@ export function MonitorForm({ monitor, mode }: MonitorFormProps) {
     const isPrometheusPromqlSubmit = submittedType === "prometheus_promql";
     const isPrometheusRemoteWriteSubmit = submittedType === "prometheus_remote_write";
     const isPrometheusSubmit = isPrometheusBlackboxSubmit || isPrometheusPromqlSubmit || isPrometheusRemoteWriteSubmit;
+    const isExternalStatusSubmit = submittedType.startsWith("external_");
 
     // Build config object conditionally based on monitor type
     const config: Record<string, unknown> = {};
@@ -1282,6 +1341,127 @@ export function MonitorForm({ monitor, mode }: MonitorFormProps) {
         if (Object.keys(headersObj).length > 0) cdnConfig.originHeaders = headersObj;
       }
       config.cdn = cdnConfig;
+    }
+
+    // External Status provider config
+    if (isExternalStatusSubmit && data.config?.externalStatus) {
+      const extConfig: Record<string, unknown> = {};
+      const ext = data.config.externalStatus;
+
+      // Poll interval is common to all external status types
+      if (ext.pollIntervalSeconds !== undefined && !Number.isNaN(ext.pollIntervalSeconds)) {
+        extConfig.pollIntervalSeconds = ext.pollIntervalSeconds;
+      }
+
+      // AWS config
+      if (submittedType === "external_aws" && ext.aws) {
+        const awsConfig: Record<string, unknown> = {};
+        if (ext.aws.regions?.length) awsConfig.regions = ext.aws.regions;
+        if (ext.aws.services?.length) awsConfig.services = ext.aws.services;
+        if (Object.keys(awsConfig).length > 0) extConfig.aws = awsConfig;
+      }
+
+      // GCP config
+      if (submittedType === "external_gcp" && ext.gcp) {
+        const gcpConfig: Record<string, unknown> = {};
+        if (ext.gcp.zones?.length) gcpConfig.zones = ext.gcp.zones;
+        if (ext.gcp.products?.length) gcpConfig.products = ext.gcp.products;
+        if (Object.keys(gcpConfig).length > 0) extConfig.gcp = gcpConfig;
+      }
+
+      // Azure config
+      if (submittedType === "external_azure" && ext.azure) {
+        const azureConfig: Record<string, unknown> = {};
+        if (ext.azure.regions?.length) azureConfig.regions = ext.azure.regions;
+        if (ext.azure.services?.length) azureConfig.services = ext.azure.services;
+        if (Object.keys(azureConfig).length > 0) extConfig.azure = azureConfig;
+      }
+
+      // Cloudflare config
+      if (submittedType === "external_cloudflare" && ext.cloudflare) {
+        const cloudflareConfig: Record<string, unknown> = {};
+        if (ext.cloudflare.components?.length) cloudflareConfig.components = ext.cloudflare.components;
+        if (Object.keys(cloudflareConfig).length > 0) extConfig.cloudflare = cloudflareConfig;
+      }
+
+      // Okta config
+      if (submittedType === "external_okta" && ext.okta) {
+        const oktaConfig: Record<string, unknown> = {};
+        if (ext.okta.cell) oktaConfig.cell = ext.okta.cell;
+        if (Object.keys(oktaConfig).length > 0) extConfig.okta = oktaConfig;
+      }
+
+      // Auth0 config
+      if (submittedType === "external_auth0" && ext.auth0) {
+        const auth0Config: Record<string, unknown> = {};
+        if (ext.auth0.region) auth0Config.region = ext.auth0.region;
+        if (Object.keys(auth0Config).length > 0) extConfig.auth0 = auth0Config;
+      }
+
+      // Stripe config
+      if (submittedType === "external_stripe" && ext.stripe) {
+        const stripeConfig: Record<string, unknown> = {};
+        if (ext.stripe.components?.length) stripeConfig.components = ext.stripe.components;
+        if (Object.keys(stripeConfig).length > 0) extConfig.stripe = stripeConfig;
+      }
+
+      // Twilio config
+      if (submittedType === "external_twilio" && ext.twilio) {
+        const twilioConfig: Record<string, unknown> = {};
+        if (ext.twilio.components?.length) twilioConfig.components = ext.twilio.components;
+        if (Object.keys(twilioConfig).length > 0) extConfig.twilio = twilioConfig;
+      }
+
+      // Statuspage.io config
+      if (submittedType === "external_statuspage" && ext.statuspage) {
+        const statuspageConfig: Record<string, unknown> = {};
+        if (ext.statuspage.baseUrl) statuspageConfig.baseUrl = ext.statuspage.baseUrl;
+        if (ext.statuspage.components?.length) statuspageConfig.components = ext.statuspage.components;
+        if (Object.keys(statuspageConfig).length > 0) extConfig.statuspage = statuspageConfig;
+      }
+
+      // Custom status endpoint config
+      if (submittedType === "external_custom" && ext.custom) {
+        const customConfig: Record<string, unknown> = {};
+        if (ext.custom.statusUrl) customConfig.statusUrl = ext.custom.statusUrl;
+        if (ext.custom.jsonPath) customConfig.jsonPath = ext.custom.jsonPath;
+        if (ext.custom.statusMapping && Object.keys(ext.custom.statusMapping).length > 0) {
+          customConfig.statusMapping = ext.custom.statusMapping;
+        }
+        if (Object.keys(customConfig).length > 0) extConfig.custom = customConfig;
+      }
+
+      if (Object.keys(extConfig).length > 0) {
+        config.externalStatus = extConfig;
+      }
+    }
+
+    // Aggregate monitor config
+    const isAggregateSubmit = submittedType === "aggregate";
+    if (isAggregateSubmit && data.config?.aggregate) {
+      const aggConfig: Record<string, unknown> = {};
+      const agg = data.config.aggregate;
+
+      if (agg.thresholdMode) aggConfig.thresholdMode = agg.thresholdMode;
+      if (agg.degradedThresholdCount !== undefined && !Number.isNaN(agg.degradedThresholdCount)) {
+        aggConfig.degradedThresholdCount = agg.degradedThresholdCount;
+      }
+      if (agg.downThresholdCount !== undefined && !Number.isNaN(agg.downThresholdCount)) {
+        aggConfig.downThresholdCount = agg.downThresholdCount;
+      }
+      if (agg.degradedThresholdPercent !== undefined && !Number.isNaN(agg.degradedThresholdPercent)) {
+        aggConfig.degradedThresholdPercent = agg.degradedThresholdPercent;
+      }
+      if (agg.downThresholdPercent !== undefined && !Number.isNaN(agg.downThresholdPercent)) {
+        aggConfig.downThresholdPercent = agg.downThresholdPercent;
+      }
+      if (agg.countDegradedAsDown !== undefined) {
+        aggConfig.countDegradedAsDown = agg.countDegradedAsDown;
+      }
+
+      if (Object.keys(aggConfig).length > 0) {
+        config.aggregate = aggConfig;
+      }
     }
 
     // Determine threshold - default to 1000ms for HTTP types if not set

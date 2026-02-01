@@ -112,6 +112,19 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
+  // Handle /api/og/ route for custom domains - rewrite to the system app
+  // The OG image generation runs on the Next.js web server, not the internal API
+  if (pathname.startsWith("/api/og/")) {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.UNI_STATUS_URL;
+    if (appUrl) {
+      const targetUrl = `${appUrl}${pathname}${request.nextUrl.search}`;
+      const url = new URL(targetUrl);
+      const response = NextResponse.rewrite(url);
+      addSecurityHeaders(response);
+      return response;
+    }
+  }
+
   // Skip other internal paths and static files on custom domains
   if (
     pathname.startsWith("/api") ||
@@ -195,17 +208,17 @@ export const config = {
   matcher: [
     /*
      * Match all request paths except for:
-     * - api routes (except api/public/ and api/v1/assets/ which need proxying for custom domains)
+     * - api routes (except api/public/, api/v1/assets/, and api/og/ which need proxying for custom domains)
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - static files (uploads, reports, etc.)
      * - public files (favicon.ico, etc.)
      *
-     * The negative lookahead (?!api/(?!public/|v1/assets/)) means:
-     * - Exclude paths starting with api/ UNLESS they continue with public/ or v1/assets/
-     * - This allows api/public/* and api/v1/assets/* through for custom domain proxying
+     * The negative lookahead (?!api/(?!public/|v1/assets/|og/)) means:
+     * - Exclude paths starting with api/ UNLESS they continue with public/, v1/assets/, or og/
+     * - This allows api/public/*, api/v1/assets/*, and api/og/* through for custom domain proxying
      * - Other api/* paths are still excluded (handled by Next.js API routes)
      */
-    "/((?!api/(?!public/|v1/assets/)|_next/static|_next/image|uploads|reports|favicon.ico|robots.txt|sitemap.xml|health).*)",
+    "/((?!api/(?!public/|v1/assets/|og/)|_next/static|_next/image|uploads|reports|favicon.ico|robots.txt|sitemap.xml|health).*)",
   ],
 };

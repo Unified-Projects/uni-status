@@ -125,7 +125,7 @@ export function AlertPolicyForm({
   };
 
   const toggleChannel = (channelId: string) => {
-    const current = watchedChannelIds;
+    const current = watchedChannelIds || [];
     if (current.includes(channelId)) {
       setValue(
         "channelIds",

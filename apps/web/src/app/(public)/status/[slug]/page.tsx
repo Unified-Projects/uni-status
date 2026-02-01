@@ -383,19 +383,22 @@ export async function generateMetadata({
   const onCustomDomain = isCustomDomain(hostname);
 
   // Build canonical base URL
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || `https://${hostname.split(":")[0]}`;
   const canonicalBaseUrl = onCustomDomain
     ? `https://${hostname.split(":")[0]}` // Use custom domain (strip port)
     : `${appUrl}/status/${slug}`; // Use system URL with path
 
-  // Determine OG image URL - use template if set, otherwise custom image
-  // OG images are served from system URL (Next.js edge routes)
+  // Determine OG image URL - use template if set, otherwise custom image, otherwise default to classic template
+  // For custom domains, OG images need to be served from the custom domain (middleware proxies to system)
+  const ogBaseUrl = onCustomDomain ? `https://${hostname.split(":")[0]}` : appUrl;
   let ogImageUrl: string | undefined;
-  if (data.seo.ogTemplate) {
-    // Use dynamic OG image route
-    ogImageUrl = `${appUrl}/api/og/${slug}?template=${data.seo.ogTemplate}`;
-  } else if (data.seo.ogImage) {
+  if (data.seo.ogImage) {
+    // Custom OG image takes priority
     ogImageUrl = normalizeAssetUrl(data.seo.ogImage);
+  } else if (ogBaseUrl) {
+    // Use dynamic OG image route with configured or default template
+    const template = data.seo.ogTemplate || "classic";
+    ogImageUrl = `${ogBaseUrl}/api/og/${slug}?template=${template}`;
   }
 
   // Build feed URLs for auto-discovery using canonical base URL
@@ -412,13 +415,31 @@ export async function generateMetadata({
       description,
       type: "website",
       url: canonicalBaseUrl,
-      images: ogImageUrl ? [ogImageUrl] : undefined,
+      images: ogImageUrl
+        ? [
+            {
+              url: ogImageUrl,
+              width: 1200,
+              height: 630,
+              alt: title,
+            },
+          ]
+        : undefined,
     },
     twitter: {
       card: "summary_large_image",
       title,
       description,
-      images: ogImageUrl ? [ogImageUrl] : undefined,
+      images: ogImageUrl
+        ? [
+            {
+              url: ogImageUrl,
+              width: 1200,
+              height: 630,
+              alt: title,
+            },
+          ]
+        : undefined,
     },
     alternates: {
       canonical: canonicalBaseUrl,

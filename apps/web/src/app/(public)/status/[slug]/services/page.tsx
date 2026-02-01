@@ -496,9 +496,15 @@ export default function PublicServicesPage() {
           </div>
         ) : (
           <div className="space-y-8">
-            {Object.entries(groupedServices).map(([groupName, services]) => (
+            {Object.entries(groupedServices).map(([groupName, services]) => {
+              // Hide header when groupBy is "none", or when all services are ungrouped (single "Ungrouped" group)
+              const groupKeys = Object.keys(groupedServices);
+              const hideHeader = groupBy === "none" ||
+                (groupBy === "group" && groupKeys.length === 1 && groupKeys[0] === "Ungrouped");
+
+              return (
               <div key={groupName}>
-                {groupBy !== "none" && (
+                {!hideHeader && (
                   <div className="flex items-center gap-2 mb-4">
                     <h2 className="text-lg font-semibold">{groupName}</h2>
                     <Badge variant="secondary">{services.length}</Badge>
@@ -515,7 +521,8 @@ export default function PublicServicesPage() {
                   ))}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

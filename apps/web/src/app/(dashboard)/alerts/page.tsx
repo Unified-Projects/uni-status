@@ -196,7 +196,13 @@ export default function AlertsPage() {
   };
 
   const handleEditPolicy = (policy: AlertPolicy) => {
-    setSelectedPolicy(policy);
+    // Transform channels to channelIds for the form
+    const policyWithIds = {
+      ...policy,
+      channelIds: policy.channels ?? [],
+      monitorIds: [] as string[], // TODO: Load monitor IDs if/when the API supports it
+    };
+    setSelectedPolicy(policyWithIds);
     setPolicyDialogOpen(true);
   };
 
@@ -219,11 +225,22 @@ export default function AlertsPage() {
     });
   };
 
-  const handlePolicySubmit = async (data: { name: string; description?: string; enabled: boolean; conditions: { consecutiveFailures?: number; failuresInWindow?: { count: number; windowMinutes: number }; degradedDuration?: number; consecutiveSuccesses?: number }; cooldownMinutes: number; channelIds: string[]; monitorIds?: string[] }) => {
+  const handlePolicySubmit = async (data: { name: string; description?: string; enabled: boolean; conditions: { consecutiveFailures?: number; failuresInWindow?: { count: number; windowMinutes: number }; degradedDuration?: number; consecutiveSuccesses?: number }; cooldownMinutes: number; channelIds: string[]; monitorIds?: string[]; oncallRotationId?: string }) => {
+    // Transform form data to API format (channelIds -> channels)
+    const apiData = {
+      name: data.name,
+      description: data.description,
+      enabled: data.enabled,
+      conditions: data.conditions,
+      cooldownMinutes: data.cooldownMinutes,
+      channels: data.channelIds,
+      oncallRotationId: data.oncallRotationId,
+    };
+
     if (selectedPolicy) {
-      await updatePolicy.mutateAsync({ id: selectedPolicy.id, data });
+      await updatePolicy.mutateAsync({ id: selectedPolicy.id, data: apiData });
     } else {
-      await createPolicy.mutateAsync({ ...data, channels: data.channelIds, monitors: data.monitorIds } as unknown as Parameters<typeof createPolicy.mutateAsync>[0]);
+      await createPolicy.mutateAsync(apiData as unknown as Parameters<typeof createPolicy.mutateAsync>[0]);
     }
     setPolicyDialogOpen(false);
     setSelectedPolicy(undefined);
