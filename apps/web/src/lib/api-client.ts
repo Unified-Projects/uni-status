@@ -1903,7 +1903,7 @@ export const apiClient = {
 
     export: (type: EventType, id: string, format: "ics" | "json", organizationId?: string) => {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
-      return `${baseUrl}/api/v1/events/${type}/${id}/export?format=${format}`;
+      return `${baseUrl}/v1/events/${type}/${id}/export?format=${format}`;
     },
   },
 

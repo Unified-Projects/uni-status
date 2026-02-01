@@ -274,8 +274,17 @@ embedsRoutes.get("/status-pages/:slug/status.json", async (c) => {
 
 embedsRoutes.get("/status-pages/:slug/widget.js", async (c) => {
   const { slug } = c.req.param();
-  // Normalize API URL - remove trailing /api if present to avoid double prefix
-  const apiUrl = getAppUrl();
+
+  // Get the status page to check for custom domain
+  const page = await db.query.statusPages.findFirst({
+    where: eq(statusPages.slug, slug),
+  });
+
+  // Determine the base URL for API requests
+  // Use custom domain if configured, otherwise fall back to system URL
+  const baseUrl = page?.customDomain
+    ? `https://${page.customDomain.replace(/^https?:\/\//, "").replace(/\/$/, "")}`
+    : getAppUrl();
 
   // Self-contained JavaScript widget
   const widgetScript = `
@@ -434,7 +443,7 @@ embedsRoutes.get("/status-pages/:slug/widget.js", async (c) => {
   }
 
   function fetchStatus() {
-    var url = '${apiUrl}/api/public/embeds/status-pages/${slug}/status.json';
+    var url = '${baseUrl}/api/public/embeds/status-pages/${slug}/status.json';
     url += '?showMonitors=' + config.showMonitors;
     url += '&showIncidents=' + config.showIncidents;
 

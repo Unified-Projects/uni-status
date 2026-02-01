@@ -55,34 +55,7 @@ export default function EditMaintenanceWindowPage({
     );
   }
 
-  // Check if maintenance is completed
   const isCompleted = maintenance.computedStatus === "completed";
-
-  if (isCompleted) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <Link href={`/maintenance-windows/${id}`}>
-            <Button variant="ghost" size="sm">
-              <ChevronLeft className="mr-1 h-4 w-4" />
-              Back
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-3xl font-bold">Edit Maintenance Window</h1>
-          </div>
-        </div>
-        <div className="rounded-lg border bg-muted/50 p-6 text-center">
-          <p className="text-muted-foreground">
-            Completed maintenance windows cannot be edited.
-          </p>
-          <Link href={`/maintenance-windows/${id}`}>
-            <Button variant="link">Return to details</Button>
-          </Link>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -96,7 +69,9 @@ export default function EditMaintenanceWindowPage({
         <div>
           <h1 className="text-3xl font-bold">Edit Maintenance Window</h1>
           <p className="text-muted-foreground">
-            Update the maintenance window details
+            {isCompleted
+              ? "Update historical maintenance record"
+              : "Update the maintenance window details"}
           </p>
         </div>
       </div>

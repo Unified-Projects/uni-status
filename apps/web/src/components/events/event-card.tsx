@@ -89,10 +89,12 @@ export function EventCard({
             </Link>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <EventSeverityBadge
-              severity={event.severity as IncidentSeverity | "maintenance"}
-              size="sm"
-            />
+            {event.type === "incident" && (
+              <EventSeverityBadge
+                severity={event.severity as IncidentSeverity | "maintenance"}
+                size="sm"
+              />
+            )}
             {showActions && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -119,7 +121,7 @@ export function EventCard({
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuSeparator />
-                  {onEdit && !isResolved && (
+                  {onEdit && (event.type === "maintenance" || !isResolved) && (
                     <DropdownMenuItem onClick={onEdit}>
                       <Pencil className="mr-2 h-4 w-4" />
                       Edit
@@ -284,10 +286,12 @@ function EventCardCompact({
           status={event.status as IncidentStatus | MaintenanceStatus}
           size="sm"
         />
-        <EventSeverityBadge
-          severity={event.severity as IncidentSeverity | "maintenance"}
-          size="sm"
-        />
+        {event.type === "incident" && (
+          <EventSeverityBadge
+            severity={event.severity as IncidentSeverity | "maintenance"}
+            size="sm"
+          />
+        )}
       </div>
     </Link>
   );

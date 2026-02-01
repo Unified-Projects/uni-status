@@ -163,7 +163,9 @@ export default function EventDetailPage() {
             <h1 className="text-2xl font-bold">{event.title}</h1>
             <div className="flex items-center gap-2">
               <EventTypeBadge type={event.type} />
-              <EventSeverityBadge severity={event.severity as any} />
+              {event.type === "incident" && (
+                <EventSeverityBadge severity={event.severity as any} />
+              )}
               <EventStatusBadge
                 type={event.type}
                 status={event.status as any}
@@ -231,11 +233,11 @@ export default function EventDetailPage() {
                 </Button>
               </Link>
             )}
-            {event.type === "maintenance" && !isResolved && (
+            {event.type === "maintenance" && (
               <Link href={`/maintenance-windows/${event.id}`}>
                 <Button>
                   <ExternalLink className="mr-2 h-4 w-4" />
-                  Manage Maintenance
+                  {isResolved ? "View Maintenance" : "Manage Maintenance"}
                 </Button>
               </Link>
             )}

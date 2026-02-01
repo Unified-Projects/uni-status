@@ -1306,7 +1306,7 @@ export function MonitorForm({ monitor, mode }: MonitorFormProps) {
 
     const payload = {
       name: data.name,
-      description: data.description || undefined,
+      description: data.description?.trim() ?? "",
       url: data.url,
       type: data.type,
       method: isHttpSubmit ? data.method : "GET",

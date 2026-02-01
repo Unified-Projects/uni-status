@@ -101,13 +101,21 @@ export function EmbedCodeGenerator({
     // Normalize API URL - remove trailing /api if present to avoid double prefix
     const normalizedApiUrl = apiUrl.replace(/\/api\/?$/, '');
 
-    const baseApiUrl = isMonitorEmbed
-      ? `${normalizedApiUrl}/api/public/embeds/monitors/${monitorId}`
-      : `${normalizedApiUrl}/api/public/embeds/status-pages/${slug}`;
+    // Determine the base URL for embed resources
+    // If canonicalUrl is provided and is a custom domain (doesn't contain /status/),
+    // use it as the base for embed URLs so the custom domain serves the badges
+    // Otherwise fall back to the internal API URL
+    const isCustomDomain = canonicalUrl && !canonicalUrl.includes('/status/');
+    const embedBaseUrl = isCustomDomain ? canonicalUrl : normalizedApiUrl;
 
+    const baseApiUrl = isMonitorEmbed
+      ? `${embedBaseUrl}/api/public/embeds/monitors/${monitorId}`
+      : `${embedBaseUrl}/api/public/embeds/status-pages/${slug}`;
+
+    // Use canonical URL for app embeds (cards/iframes) when custom domain is set
     const baseAppUrl = isMonitorEmbed
       ? `${appUrl}/embed/monitors/${monitorId}`
-      : `${appUrl}/embed/status/${slug}`;
+      : `${isCustomDomain ? canonicalUrl : appUrl}/embed/status/${slug}`;
 
     switch (embedType) {
       case "badge": {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle, Skeleton, cn } from "@uni-status/ui";
 import { RefreshCw } from "lucide-react";
 import type { BadgeTemplateConfig } from "@uni-status/shared/types";
@@ -41,6 +41,12 @@ export function EmbedPreview({
     ? `${normalizedApiUrl}/api/public/embeds/monitors/${monitorId}`
     : `${normalizedApiUrl}/api/public/embeds/status-pages/${slug}`;
 
+  // Serialize templateConfig for stable dependency comparison
+  // This ensures the effect runs when any config property changes
+  const templateConfigKey = useMemo(() => {
+    return options.templateConfig ? JSON.stringify(options.templateConfig) : null;
+  }, [options.templateConfig]);
+
   useEffect(() => {
     async function fetchPreview() {
       setLoading(true);
@@ -73,14 +79,15 @@ export function EmbedPreview({
             }
           }
 
+          // Add cache-busting param to ensure fresh preview when config changes
           const url = `${baseUrl}/badge.svg?${badgeParams.toString()}`;
-          const response = await fetch(url);
+          const response = await fetch(url, { cache: "no-store" });
           if (!response.ok) throw new Error("Failed to load badge");
           const svg = await response.text();
           setContent(svg);
         } else if (type === "dot") {
           const url = `${baseUrl}/dot.svg?size=${options.size || 12}&animate=${options.animate || false}`;
-          const response = await fetch(url);
+          const response = await fetch(url, { cache: "no-store" });
           if (!response.ok) throw new Error("Failed to load dot");
           const svg = await response.text();
           setContent(svg);
@@ -96,7 +103,7 @@ export function EmbedPreview({
     }
 
     fetchPreview();
-  }, [type, baseUrl, options.label, options.style, options.size, options.animate, options.templateConfig]);
+  }, [type, baseUrl, options.label, options.style, options.size, options.animate, templateConfigKey]);
 
   const previewBgClass =
     options.theme === "dark"
