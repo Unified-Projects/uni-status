@@ -45,6 +45,10 @@ import { processCleanup } from "../processors/cleanup";
 import { processDeploymentCorrelation } from "../processors/deployment-correlator";
 import { processProbeJobDispatch, processProbeHealthCheck, processProbeResult } from "../processors/probe-dispatcher";
 import type { Queues } from "../queues";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "workers-index" });
+
 
 const notificationWorkerOpts = {
   connection,
@@ -408,11 +412,11 @@ export function createWorkers(queues: Queues) {
   // Add error handlers
   workers.forEach((worker) => {
     worker.on("failed", (job, err) => {
-      console.error(`Job ${job?.id} in ${worker.name} failed:`, err);
+      log.error(`Job ${job?.id} in ${worker.name} failed:`, err);
     });
 
     worker.on("completed", (job) => {
-      console.log(`Job ${job.id} in ${worker.name} completed`);
+      log.info(`Job ${job.id} in ${worker.name} completed`);
     });
   });
 
@@ -481,20 +485,20 @@ export async function loadEnterpriseWorkers(): Promise<Worker[]> {
     // Add error handlers
     workers.forEach((worker) => {
       worker.on("failed", (job, err) => {
-        console.error(`[Enterprise] Job ${job?.id} in ${worker.name} failed:`, err);
+        log.error(`[Enterprise] Job ${job?.id} in ${worker.name} failed:`, err);
       });
 
       worker.on("completed", (job) => {
-        console.log(`[Enterprise] Job ${job.id} in ${worker.name} completed`);
+        log.info(`[Enterprise] Job ${job.id} in ${worker.name} completed`);
       });
     });
 
-    console.log("[Enterprise] Workers loaded successfully");
+    log.info("[Enterprise] Workers loaded successfully");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND") {
-      console.log("[Enterprise] Package not installed, skipping enterprise workers");
+      log.info("[Enterprise] Package not installed, skipping enterprise workers");
     } else {
-      console.error("[Enterprise] Failed to load workers:", error);
+      log.error("[Enterprise] Failed to load workers:", error);
     }
   }
 

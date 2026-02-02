@@ -5,6 +5,9 @@ import { Queue } from "bullmq";
 import { connection, queuePrefix } from "./lib/redis";
 import { QUEUE_NAMES } from "@uni-status/shared/constants";
 import { shouldQueueCertificateCheck } from "./lib/certificate-scheduling";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: 'scheduler' });
 
 const POLL_INTERVAL = 10000; // 10 seconds
 const MAINTENANCE_POLL_INTERVAL = 30000; // 30 seconds for maintenance notifications
@@ -88,9 +91,7 @@ async function pollMonitors() {
     }
 
     if (monitorsInMaintenance.size > 0) {
-      console.log(
-        `${monitorsInMaintenance.size} monitor(s) in maintenance (${activeMaintenanceWindows.length} active window(s))`
-      );
+      log.info({ monitorsInMaintenance: monitorsInMaintenance.size, activeWindows: activeMaintenanceWindows.length }, 'Monitors in maintenance');
     }
 
     // Get monitors due for checking
@@ -108,10 +109,7 @@ async function pollMonitors() {
     );
 
     const skippedCount = allDueMonitors.length - dueMonitors.length;
-    console.log(
-      `Found ${allDueMonitors.length} monitors due for checking` +
-        (skippedCount > 0 ? ` (${skippedCount} skipped due to maintenance)` : "")
-    );
+    log.info({ total: allDueMonitors.length, skipped: skippedCount }, 'Monitors due for checking');
 
     for (const monitor of dueMonitors) {
       // Queue the check based on monitor type
@@ -165,7 +163,7 @@ async function pollMonitors() {
       }
     }
   } catch (error) {
-    console.error("Error polling monitors:", error);
+    log.error({ err: error }, 'Error polling monitors');
   }
 }
 
@@ -228,7 +226,7 @@ function getQueueForType(type: string): Queue | null {
     case "aggregate":
       return monitorAggregateQueue;
     default:
-      console.warn(`Unknown monitor type: ${type}`);
+      log.warn({ monitorType: type }, 'Unknown monitor type');
       return null;
   }
 }
@@ -292,7 +290,7 @@ async function pollMaintenanceNotifications() {
       return;
     }
 
-    console.log(`[Maintenance] Checking ${windows.length} maintenance window(s) for notifications`);
+    log.info({ windowCount: windows.length }, 'Checking maintenance windows for notifications');
 
     for (const window of windows) {
       const notifyConfig = (window.notifySubscribers as NotifySubscribersConfig) || {};
@@ -323,7 +321,7 @@ async function pollMaintenanceNotifications() {
       }
     }
   } catch (error) {
-    console.error("[Maintenance] Error polling maintenance notifications:", error);
+    log.error({ err: error }, 'Error polling maintenance notifications');
   }
 }
 
@@ -336,7 +334,7 @@ async function queueMaintenanceNotification(
   const affectedMonitorIds = (window.affectedMonitors as string[]) || [];
 
   if (affectedMonitorIds.length === 0) {
-    console.log(`[Maintenance] No affected monitors for window ${window.id}, skipping notification`);
+    log.info({ windowId: window.id }, 'No affected monitors, skipping notification');
     return;
   }
 
@@ -352,7 +350,7 @@ async function queueMaintenanceNotification(
   const statusPageIds = statusPageLinks.map((link) => link.statusPageId);
 
   if (statusPageIds.length === 0) {
-    console.log(`[Maintenance] No status pages found for affected monitors, skipping notification`);
+    log.info('No status pages found for affected monitors, skipping notification');
     // Still mark as sent to avoid re-checking
     await markNotificationSent(window.id, notificationType, now);
     return;
@@ -427,9 +425,7 @@ async function queueMaintenanceNotification(
     }
   }
 
-  console.log(
-    `[Maintenance] Queued ${notificationType} notifications for window "${window.name}" to ${totalSubscribers} subscriber(s)`
-  );
+  log.info({ notificationType, windowName: window.name, subscriberCount: totalSubscribers }, 'Queued maintenance notifications');
 
   // Mark this notification type as sent
   await markNotificationSent(window.id, notificationType, now);
@@ -467,7 +463,7 @@ async function markNotificationSent(
 // Poll for SLO calculations
 async function pollSloCalculations() {
   try {
-    console.log("[SLO] Running scheduled SLO calculations");
+    log.info('Running scheduled SLO calculations');
 
     // Queue a job to calculate all SLOs
     await sloCalculateQueue.add(
@@ -480,7 +476,7 @@ async function pollSloCalculations() {
       }
     );
   } catch (error) {
-    console.error("[SLO] Error polling SLO calculations:", error);
+    log.error({ err: error }, 'Error polling SLO calculations');
   }
 }
 
@@ -499,7 +495,7 @@ async function pollProbeHealth() {
     });
 
     if (staleProbes.length > 0) {
-      console.log(`[Probes] Marking ${staleProbes.length} probes as offline`);
+      log.info({ probeCount: staleProbes.length }, 'Marking probes as offline');
 
       for (const probe of staleProbes) {
         await db
@@ -510,11 +506,11 @@ async function pollProbeHealth() {
           })
           .where(eq(probes.id, probe.id));
 
-        console.log(`[Probes] Probe ${probe.name} (${probe.id}) marked offline`);
+        log.info({ probeName: probe.name, probeId: probe.id }, 'Probe marked offline');
       }
     }
   } catch (error) {
-    console.error("[Probes] Error polling probe health:", error);
+    log.error({ err: error }, 'Error polling probe health');
   }
 }
 
@@ -549,7 +545,7 @@ async function pollScheduledReports() {
       return;
     }
 
-    console.log(`[Reports] Found ${dueReports.length} scheduled report(s) due`);
+    log.info({ reportCount: dueReports.length }, 'Found scheduled reports due');
 
     for (const settings of dueReports) {
       // Calculate period based on frequency
@@ -598,10 +594,10 @@ async function pollScheduledReports() {
         })
         .where(eq(reportSettings.id, settings.id));
 
-      console.log(`[Reports] Queued report for settings ${settings.id}, next run: ${nextScheduledAt?.toISOString()}`);
+      log.info({ settingsId: settings.id, nextRun: nextScheduledAt?.toISOString() }, 'Queued report');
     }
   } catch (error) {
-    console.error("[Reports] Error polling scheduled reports:", error);
+    log.error({ err: error }, 'Error polling scheduled reports');
   }
 }
 
@@ -694,7 +690,7 @@ async function pollAggregation() {
       return;
     }
 
-    console.log(`[Aggregation] Queueing aggregation for ${allMonitors.length} monitors at ${previousHour.toISOString()}`);
+    log.info({ monitorCount: allMonitors.length, hour: previousHour.toISOString() }, 'Queueing aggregation');
 
     for (const monitor of allMonitors) {
       await aggregateQueue.add(
@@ -711,9 +707,9 @@ async function pollAggregation() {
       );
     }
 
-    console.log(`[Aggregation] Queued ${allMonitors.length} aggregation jobs`);
+    log.info({ jobCount: allMonitors.length }, 'Queued aggregation jobs');
   } catch (error) {
-    console.error("[Aggregation] Error polling aggregation:", error);
+    log.error({ err: error }, 'Error polling aggregation');
   }
 }
 
@@ -735,7 +731,7 @@ async function pollDailyAggregation() {
       return;
     }
 
-    console.log(`[Daily Aggregation] Queueing daily aggregation for ${allMonitors.length} monitors for ${dateStr}`);
+    log.info({ monitorCount: allMonitors.length, date: dateStr }, 'Queueing daily aggregation');
 
     for (const monitor of allMonitors) {
       await dailyAggregateQueue.add(
@@ -752,9 +748,9 @@ async function pollDailyAggregation() {
       );
     }
 
-    console.log(`[Daily Aggregation] Queued ${allMonitors.length} daily aggregation jobs`);
+    log.info({ jobCount: allMonitors.length }, 'Queued daily aggregation jobs');
   } catch (error) {
-    console.error("[Daily Aggregation] Error polling daily aggregation:", error);
+    log.error({ err: error }, 'Error polling daily aggregation');
   }
 }
 
@@ -776,7 +772,7 @@ async function pollCertificateChecks() {
       return;
     }
 
-    console.log(`[Certificates] Checking ${eligibleMonitors.length} HTTPS/SSL monitors for certificate updates`);
+    log.info({ monitorCount: eligibleMonitors.length }, 'Checking HTTPS/SSL monitors for certificate updates');
 
     for (const monitor of eligibleMonitors) {
       const sslConfig = (monitor.config as { ssl?: Record<string, unknown>; certificateTransparency?: Record<string, unknown> } | null)?.ssl || {};
@@ -829,16 +825,16 @@ async function pollCertificateChecks() {
       }
     }
 
-    console.log(`[Certificates] Queued ${httpsMonitors.length} certificate check jobs`);
+    log.info({ jobCount: httpsMonitors.length }, 'Queued certificate check jobs');
   } catch (error) {
-    console.error("[Certificates] Error polling certificate checks:", error);
+    log.error({ err: error }, 'Error polling certificate checks');
   }
 }
 
 
 export const scheduler = {
   start: () => {
-    console.log("Starting schedulers...");
+    log.info('Starting schedulers');
 
     // Monitor polling
     monitorIntervalId = setInterval(pollMonitors, POLL_INTERVAL);
@@ -876,14 +872,14 @@ export const scheduler = {
     // Run initial certificate check immediately
     pollCertificateChecks();
 
-    console.log("Monitor scheduler started (10s interval)");
-    console.log("Maintenance notification scheduler started (30s interval)");
-    console.log("SLO calculation scheduler started (5m interval)");
-    console.log("Probe health scheduler started (1m interval)");
-    console.log("Report schedule scheduler started (1m interval)");
-    console.log("Aggregation scheduler started (5m interval)");
-    console.log("Daily aggregation scheduler started (1h interval)");
-    console.log("Certificate check scheduler started (24h interval)");
+    log.info('Monitor scheduler started (10s interval)');
+    log.info('Maintenance notification scheduler started (30s interval)');
+    log.info('SLO calculation scheduler started (5m interval)');
+    log.info('Probe health scheduler started (1m interval)');
+    log.info('Report schedule scheduler started (1m interval)');
+    log.info('Aggregation scheduler started (5m interval)');
+    log.info('Daily aggregation scheduler started (1h interval)');
+    log.info('Certificate check scheduler started (24h interval)');
   },
 
   stop: () => {
@@ -919,6 +915,6 @@ export const scheduler = {
       clearInterval(certCheckIntervalId);
       certCheckIntervalId = null;
     }
-    console.log("All schedulers stopped");
+    log.info('All schedulers stopped');
   },
 };
