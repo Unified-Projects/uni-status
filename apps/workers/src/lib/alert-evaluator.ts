@@ -23,6 +23,10 @@ import {
   getQueueForChannelType,
   mapCheckStatusToAlertStatus,
 } from "./notification-builder";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "lib-alert-evaluator" });
+
 
 const queueOpts = { connection, prefix: queuePrefix };
 
@@ -116,6 +120,20 @@ export async function evaluateAlerts(input: EvaluateAlertInput): Promise<void> {
 
         if (!conditionMet) continue;
 
+        const unresolvedAlert = await getUnresolvedAlert(policy.id, monitorId);
+
+        if (unresolvedAlert) {
+          await updateExistingAlert(
+            unresolvedAlert.id,
+            unresolvedAlert.metadata,
+            input.checkResultId,
+            input.errorMessage,
+            input.responseTimeMs,
+            input.statusCode
+          );
+          continue;
+        }
+
         const inCooldown = await isInCooldown(
           policy.id,
           monitorId,
@@ -123,7 +141,7 @@ export async function evaluateAlerts(input: EvaluateAlertInput): Promise<void> {
         );
 
         if (inCooldown) {
-          console.log(
+          log.info(
             `[Alert] Skipping alert for monitor ${monitorId} - policy ${policy.id} is in cooldown`
           );
           continue;
@@ -153,7 +171,7 @@ export async function evaluateAlerts(input: EvaluateAlertInput): Promise<void> {
 
         await publishAlertEvent(alertRecord, organizationId);
 
-        console.log(
+        log.info(
           `[Alert] Triggered alert ${alertRecord.id} for monitor ${monitorId}`
         );
       } else if (isSuccess) {
@@ -162,7 +180,7 @@ export async function evaluateAlerts(input: EvaluateAlertInput): Promise<void> {
       }
     }
   } catch (error) {
-    console.error(`[Alert] Error evaluating alerts for ${monitorId}:`, error);
+    log.error(`[Alert] Error evaluating alerts for ${monitorId}:`, error);
   }
 }
 
@@ -321,19 +339,71 @@ async function isInCooldown(
 ): Promise<boolean> {
   const cooldownStart = new Date(Date.now() - cooldownMinutes * 60 * 1000);
 
-  const recentAlert = await db
+  const recentResolvedAlert = await db
     .select({ id: alertHistory.id })
     .from(alertHistory)
     .where(
       and(
         eq(alertHistory.policyId, policyId),
         eq(alertHistory.monitorId, monitorId),
-        gte(alertHistory.triggeredAt, cooldownStart)
+        eq(alertHistory.status, "resolved"),
+        gte(alertHistory.resolvedAt, cooldownStart)
       )
     )
     .limit(1);
 
-  return recentAlert.length > 0;
+  return recentResolvedAlert.length > 0;
+}
+
+async function getUnresolvedAlert(
+  policyId: string,
+  monitorId: string
+): Promise<{ id: string; metadata: any } | null> {
+  const unresolvedAlert = await db
+    .select({ id: alertHistory.id, metadata: alertHistory.metadata })
+    .from(alertHistory)
+    .where(
+      and(
+        eq(alertHistory.policyId, policyId),
+        eq(alertHistory.monitorId, monitorId),
+        eq(alertHistory.status, "triggered")
+      )
+    )
+    .orderBy(desc(alertHistory.triggeredAt))
+    .limit(1);
+
+  return unresolvedAlert[0] || null;
+}
+
+async function updateExistingAlert(
+  alertId: string,
+  currentMetadata: any,
+  checkResultId: string,
+  errorMessage?: string,
+  responseTimeMs?: number,
+  statusCode?: number
+): Promise<void> {
+  const failureCount = (currentMetadata.failureCount || 0) + 1;
+  const failureTimestamps = currentMetadata.failureTimestamps || [];
+  const now = new Date().toISOString();
+
+  await db
+    .update(alertHistory)
+    .set({
+      metadata: {
+        ...currentMetadata,
+        failureCount,
+        lastFailureAt: now,
+        failureTimestamps: [...failureTimestamps, now].slice(-20),
+        checkResultId,
+        errorMessage,
+        responseTimeMs,
+        statusCode,
+      },
+    })
+    .where(eq(alertHistory.id, alertId));
+
+  log.info(`[Alert] Updated alert ${alertId} - failure count: ${failureCount}`);
 }
 
 async function createAlertHistory(params: {
@@ -346,6 +416,7 @@ async function createAlertHistory(params: {
   pagespeedViolations?: PageSpeedViolation[] | null;
 }): Promise<{ id: string; organizationId: string; monitorId: string }> {
   const id = nanoid();
+  const now = new Date().toISOString();
 
   await db.insert(alertHistory).values({
     id,
@@ -357,6 +428,9 @@ async function createAlertHistory(params: {
     metadata: {
       checkResultId: params.checkResultId,
       errorMessage: params.errorMessage,
+      failureCount: 1,
+      lastFailureAt: now,
+      failureTimestamps: [now],
       ...(params.pagespeedScores && { pagespeedScores: params.pagespeedScores }),
       ...(params.pagespeedViolations && { pagespeedViolations: params.pagespeedViolations }),
     },
@@ -384,7 +458,7 @@ async function getOrgCredentials(organizationId: string): Promise<OrganizationCr
   try {
     return await decryptConfigSecrets(org[0].settings.credentials);
   } catch (error) {
-    console.error(`[Alert] Error decrypting org credentials:`, error);
+    log.error(`[Alert] Error decrypting org credentials:`, error);
     return null;
   }
 }
@@ -461,7 +535,7 @@ async function queueNotifications(
       },
     });
 
-    console.log(
+    log.info(
       `[Alert] Queued ${channel.type} notification for alert ${alertRecord.id}`
     );
   }
@@ -472,15 +546,19 @@ async function queueNotifications(
       alertHistoryId: alertRecord.id,
       to: oncallEmail,
       subject: `[On-Call Alert] ${monitor[0].name} is ${alertStatus}`,
-      monitorName: monitor[0].name,
-      monitorUrl: monitor[0].url,
-      status: alertStatus,
-      message: input.errorMessage,
-      responseTime: input.responseTimeMs,
-      statusCode: input.statusCode,
-      dashboardUrl: `${APP_URL}/monitors/${input.monitorId}`,
-      timestamp: new Date().toISOString(),
-      isOncallNotification: true,
+      emailType: "alert",
+      data: {
+        monitorName: monitor[0].name,
+        monitorUrl: monitor[0].url,
+        status: alertStatus,
+        message: input.errorMessage,
+        responseTime: input.responseTimeMs,
+        statusCode: input.statusCode,
+        dashboardUrl: `${APP_URL}/monitors/${input.monitorId}`,
+        timestamp: new Date().toISOString(),
+      },
+      orgSmtpCredentials: orgCredentials?.smtp,
+      orgResendCredentials: orgCredentials?.resend,
     };
 
     await emailQueue.add(`alert-${alertRecord.id}-oncall`, oncallJobData, {
@@ -493,7 +571,7 @@ async function queueNotifications(
       },
     });
 
-    console.log(
+    log.info(
       `[Alert] Queued on-call email notification to ${oncallEmail} for alert ${alertRecord.id}`
     );
   }
@@ -561,7 +639,7 @@ async function checkRecovery(
     })
     .where(eq(alertHistory.id, openAlert.id));
 
-  console.log(
+  log.info(
     `[Alert] Auto-resolved alert ${openAlert.id} for monitor ${monitorId}`
   );
 
@@ -636,7 +714,7 @@ async function scheduleEscalations(params: {
       );
     }
   } catch {
-    console.log("[Alert] Escalation scheduling skipped - enterprise package not available");
+    log.info("[Alert] Escalation scheduling skipped - enterprise package not available");
   }
 }
 
@@ -721,7 +799,7 @@ async function queueRecoveryNotifications(
       },
     });
 
-    console.log(
+    log.info(
       `[Alert] Queued recovery ${channel.type} notification for alert ${alertId}`
     );
   }
@@ -732,12 +810,16 @@ async function queueRecoveryNotifications(
       alertHistoryId: alertId,
       to: oncallEmail,
       subject: `[On-Call Recovery] ${monitor[0].name} has recovered`,
-      monitorName: monitor[0].name,
-      monitorUrl: monitor[0].url,
-      status: "recovered",
-      dashboardUrl: `${APP_URL}/monitors/${input.monitorId}`,
-      timestamp: new Date().toISOString(),
-      isOncallNotification: true,
+      emailType: "alert",
+      data: {
+        monitorName: monitor[0].name,
+        monitorUrl: monitor[0].url,
+        status: "recovered",
+        dashboardUrl: `${APP_URL}/monitors/${input.monitorId}`,
+        timestamp: new Date().toISOString(),
+      },
+      orgSmtpCredentials: orgCredentials?.smtp,
+      orgResendCredentials: orgCredentials?.resend,
     };
 
     await emailQueue.add(`recovery-${alertId}-oncall`, oncallJobData, {
@@ -750,7 +832,7 @@ async function queueRecoveryNotifications(
       },
     });
 
-    console.log(
+    log.info(
       `[Alert] Queued on-call recovery email notification to ${oncallEmail} for alert ${alertId}`
     );
   }
@@ -777,7 +859,7 @@ async function resolveOncallUserEmail(
     });
 
     if (!rotation || rotation.participants.length === 0) {
-      console.log("[Alert] On-call rotation has no participants");
+      log.info("[Alert] On-call rotation has no participants");
       return null;
     }
 
@@ -800,7 +882,7 @@ async function resolveOncallUserEmail(
     }
 
     if (!currentUserId) {
-      console.log("[Alert] No current on-call user found");
+      log.info("[Alert] No current on-call user found");
       return null;
     }
 
@@ -813,13 +895,13 @@ async function resolveOncallUserEmail(
       .limit(1);
 
     if (user[0]?.email) {
-      console.log(`[Alert] Resolved on-call user: ${user[0].email}`);
+      log.info(`[Alert] Resolved on-call user: ${user[0].email}`);
       return user[0].email;
     }
 
     return null;
   } catch (error) {
-    console.log("[Alert] On-call resolution skipped - enterprise unavailable or error:", error);
+    log.info("[Alert] On-call resolution skipped - enterprise unavailable or error:", error);
     return null;
   }
 }

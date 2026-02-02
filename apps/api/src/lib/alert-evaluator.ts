@@ -1,6 +1,9 @@
 import { Queue } from "bullmq";
 import { redis, queuePrefix } from "./redis";
 import { QUEUE_NAMES } from "@uni-status/shared/constants";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "alert-evaluator" });
 
 interface PageSpeedScores {
   performance?: number;
@@ -72,6 +75,6 @@ export async function evaluateAlerts(input: EvaluateAlertsInput): Promise<void> 
       }
     );
   } catch (error) {
-    console.error(`[Alert] Failed to queue alert evaluation for ${monitor.id}:`, error);
+    log.error({ err: error, monitorId: monitor.id, checkResultId: checkResult.id }, "Failed to queue alert evaluation");
   }
 }
