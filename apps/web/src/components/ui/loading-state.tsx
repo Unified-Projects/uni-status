@@ -147,19 +147,55 @@ function LoadingCard() {
   );
 }
 
-export function LoadingSpinner({ className }: { className?: string }) {
+export function LoadingSpinner({
+  className,
+  size = "default"
+}: {
+  className?: string;
+  size?: "sm" | "default" | "lg";
+}) {
+  const sizeClasses = {
+    sm: "h-4 w-4 border-2",
+    default: "h-8 w-8 border-4",
+    lg: "h-12 w-12 border-4"
+  };
+
   return (
     <div className={cn("flex items-center justify-center p-8", className)}>
-      <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      <div className={cn(
+        "animate-spin rounded-full border-primary border-t-transparent",
+        sizeClasses[size]
+      )} />
     </div>
   );
 }
 
-export function LoadingInline({ className }: { className?: string }) {
+export function LoadingInline({
+  className,
+  size = "default"
+}: {
+  className?: string;
+  size?: "sm" | "default";
+}) {
+  const spinnerSizes = {
+    sm: "h-3 w-3 border-2",
+    default: "h-4 w-4 border-2"
+  };
+
+  const textSizes = {
+    sm: "text-xs",
+    default: "text-sm"
+  };
+
   return (
     <div className={cn("flex items-center gap-2", className)}>
-      <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-      <span className="text-sm text-muted-foreground">Loading...</span>
+      <div className={cn(
+        "animate-spin rounded-full border-primary border-t-transparent",
+        spinnerSizes[size]
+      )} />
+      <span className={cn("text-muted-foreground", textSizes[size])}>
+        Loading...
+      </span>
     </div>
   );
 }

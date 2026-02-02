@@ -445,7 +445,7 @@ function CredentialConfigDialog({
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="smtp-from-address">From Address</Label>
+                    <Label htmlFor="smtp-from-address">Default Send From Email</Label>
                     <Input
                       id="smtp-from-address"
                       type="email"

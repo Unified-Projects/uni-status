@@ -257,6 +257,8 @@ export interface AlertChannel {
   type: "email" | "slack" | "discord" | "teams" | "pagerduty" | "webhook" | "sms" | "ntfy";
   config: {
     email?: string;
+    fromAddress?: string;
+    toAddresses?: string[];
     webhookUrl?: string;
     channel?: string;
     routingKey?: string;
@@ -1752,6 +1754,11 @@ export const apiClient = {
     },
   },
 
+  regions: {
+    list: () =>
+      unwrap(apiGet<{ regions: string[]; default: string; isEmpty: boolean }>("/api/v1/regions")),
+  },
+
   deployments: {
     webhooks: {
       list: (organizationId?: string) =>
@@ -2690,5 +2697,9 @@ export const queryKeys = {
     all: ["pendingApprovals"] as const,
     list: (status?: string) => [...queryKeys.pendingApprovals.all, "list", status] as const,
     myStatus: () => [...queryKeys.pendingApprovals.all, "myStatus"] as const,
+  },
+  regions: {
+    all: ["regions"] as const,
+    list: () => [...queryKeys.regions.all, "list"] as const,
   },
 };

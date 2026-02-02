@@ -12,6 +12,7 @@ import {
   Shield,
   Code,
 } from "lucide-react";
+import { getStatusIconSvg, type StatusIconType } from "@uni-status/shared/lib/status-icons";
 import {
   Badge,
   Button,
@@ -883,18 +884,11 @@ function escapeText(text: string) {
 }
 
 function renderStatusIcon(_color: string, status: PreviewStatus) {
-  if (status === "operational") {
-    return `<path d="M7.5 12l2 2 5-5" stroke="white" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="6" stroke="white" stroke-width="1.5" fill="none"/>`;
-  }
-  if (status === "degraded" || status === "partial_outage") {
-    return `<path d="M12 6.5v4M12 14.5h.01" stroke="white" stroke-width="1.5" stroke-linecap="round"/><path d="M5.5 17h13L12 5.5 5.5 17z" stroke="white" stroke-width="1.5" fill="none" stroke-linejoin="round"/>`;
-  }
-  if (status === "major_outage") {
-    return `<circle cx="12" cy="12" r="6" stroke="white" stroke-width="1.5" fill="none"/><path d="M9.5 9.5l5 5M14.5 9.5l-5 5" stroke="white" stroke-width="1.5" stroke-linecap="round"/>`;
-  }
-  if (status === "maintenance") {
-    return `<path d="M14.5 6.5a3.5 3.5 0 00-5 4.95l-4 4 1.4 1.4 4-4a3.5 3.5 0 004.6-6.35z" stroke="white" stroke-width="1.5" fill="none" stroke-linejoin="round"/>`;
-  }
-  return `<circle cx="12" cy="12" r="6" stroke="white" stroke-width="1.5" fill="none"/>`;
+  // Use shared icon utility for consistent icons
+  return getStatusIconSvg(status as StatusIconType, {
+    stroke: "white",
+    strokeWidth: 1.5,
+    fill: "none",
+  });
 }
 

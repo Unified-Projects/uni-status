@@ -26,7 +26,9 @@ const alertChannelFormSchema = z.object({
     type: z.enum(["email", "slack", "discord", "teams", "pagerduty", "webhook", "sms", "ntfy", "irc", "twitter"]),
     enabled: z.boolean(),
     config: z.object({
-        email: z.string().email("Invalid email address").optional().or(z.literal("")),
+        email: z.string().email("Invalid email address").optional().or(z.literal("")), // DEPRECATED - kept for backward compatibility
+        fromAddress: z.string().email("Invalid email address").optional().or(z.literal("")),
+        toAddresses: z.array(z.string().email("Invalid email address")).optional(),
         webhookUrl: z.string().url("Invalid URL").optional().or(z.literal("")),
         routingKey: z.string().optional(),
         url: z.string().url("Invalid URL").optional().or(z.literal("")),
@@ -41,6 +43,28 @@ const alertChannelFormSchema = z.object({
 });
 
 type AlertChannelFormData = z.infer<typeof alertChannelFormSchema>;
+
+// Form-specific type that ensures arrays are always present for useFieldArray
+type AlertChannelFormValues = {
+    name: string;
+    type: "email" | "slack" | "discord" | "teams" | "pagerduty" | "webhook" | "sms" | "ntfy" | "irc" | "twitter";
+    enabled: boolean;
+    config: {
+        email?: string | "";
+        fromAddress?: string | "";
+        toAddresses: string[];
+        webhookUrl?: string | "";
+        routingKey?: string;
+        url?: string | "";
+        method?: "GET" | "POST";
+        headers: { key: string; value: string }[];
+        signingKey?: string | "";
+        phoneNumber?: string;
+        topic?: string;
+        server?: string | "";
+        channel?: string;
+    };
+};
 
 interface AlertChannelFormProps {
     /** Pre-selected channel type (required for create, inferred from channel for edit) */
@@ -72,9 +96,16 @@ export function AlertChannelForm({
     const effectiveType = channel?.type as AlertChannelType ?? preSelectedType ?? "email";
 
     // Convert headers object to array for form
-    const initialHeaders = channel?.config?.headers
+    const initialHeaders: { key: string; value: string }[] = channel?.config?.headers
         ? Object.entries(channel.config.headers).map(([key, value]) => ({ key, value }))
         : [];
+
+    // Handle backward compatibility for email addresses
+    const initialToAddresses: string[] = channel?.config?.toAddresses
+        ? channel.config.toAddresses
+        : channel?.config?.email
+            ? [channel.config.email]
+            : [""];
 
     const {
         register,
@@ -83,14 +114,16 @@ export function AlertChannelForm({
         setValue,
         control,
         formState: { errors },
-    } = useForm<AlertChannelFormData>({
-        resolver: zodResolver(alertChannelFormSchema),
+    } = useForm<AlertChannelFormValues>({
+        resolver: zodResolver(alertChannelFormSchema) as any,
         defaultValues: {
             name: channel?.name ?? "",
             type: effectiveType,
             enabled: channel?.enabled ?? true,
             config: {
                 email: channel?.config?.email ?? "",
+                fromAddress: channel?.config?.fromAddress ?? "",
+                toAddresses: initialToAddresses,
                 webhookUrl: channel?.config?.webhookUrl ?? "",
                 routingKey: channel?.config?.routingKey ?? "",
                 url: channel?.config?.url ?? "",
@@ -104,7 +137,12 @@ export function AlertChannelForm({
         },
     });
 
-    const { fields, append, remove } = useFieldArray({
+    const { fields: toAddressFields, append: appendToAddress, remove: removeToAddress } = useFieldArray<AlertChannelFormValues>({
+        control,
+        name: "config.toAddresses" as any,
+    }) as any;
+
+    const { fields, append, remove } = useFieldArray<AlertChannelFormValues>({
         control,
         name: "config.headers",
     });
@@ -112,7 +150,7 @@ export function AlertChannelForm({
     const watchedType = watch("type");
     const watchedEnabled = watch("enabled");
 
-    const handleFormSubmit = async (data: AlertChannelFormData) => {
+    const handleFormSubmit = async (data: AlertChannelFormValues) => {
         // Convert headers array back to object for API
         const headersObj = data.config.headers?.reduce(
             (acc, { key, value }) => {
@@ -206,18 +244,70 @@ export function AlertChannelForm({
 
                     {/* Email Config */}
                     {watchedType === "email" && (
-                        <div className="space-y-2">
-                            <Label htmlFor="config.email">Email Address *</Label>
-                            <Input
-                                id="config.email"
-                                type="email"
-                                placeholder="alerts@example.com"
-                                {...register("config.email")}
-                            />
-                            {errors.config?.email && (
-                                <p className="text-sm text-destructive">{errors.config.email.message}</p>
-                            )}
-                        </div>
+                        <>
+                            <div className="space-y-2">
+                                <Label htmlFor="config.fromAddress">From Address (Sender) *</Label>
+                                <Input
+                                    id="config.fromAddress"
+                                    type="email"
+                                    placeholder="alerts@yourdomain.com"
+                                    {...register("config.fromAddress")}
+                                />
+                                {errors.config?.fromAddress && (
+                                    <p className="text-sm text-destructive">{errors.config.fromAddress.message}</p>
+                                )}
+                                <p className="text-xs text-muted-foreground">
+                                    Email address that alerts will be sent FROM. Uses your SMTP credentials.
+                                </p>
+                            </div>
+
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <Label>To Addresses (Recipients) *</Label>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => appendToAddress("")}
+                                    >
+                                        <Plus className="mr-1 h-3 w-3" />
+                                        Add Recipient
+                                    </Button>
+                                </div>
+                                {toAddressFields.length > 0 ? (
+                                    <div className="space-y-2">
+                                        {toAddressFields.map((field: any, index: number) => (
+                                            <div key={field.id} className="flex items-center gap-2">
+                                                <Input
+                                                    type="email"
+                                                    placeholder="recipient@example.com"
+                                                    {...register(`config.toAddresses.${index}`)}
+                                                />
+                                                {toAddressFields.length > 1 && (
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => removeToAddress(index)}
+                                                    >
+                                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        ))}
+                                        {errors.config?.toAddresses && (
+                                            <p className="text-sm text-destructive">
+                                                {errors.config.toAddresses.message || "At least one valid email address is required"}
+                                            </p>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-muted-foreground">
+                                        No recipients configured
+                                    </p>
+                                )}
+                            </div>
+                        </>
                     )}
 
                     {/* Slack/Discord/Teams Config */}

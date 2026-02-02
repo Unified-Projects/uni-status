@@ -1,3 +1,14 @@
+// Currently only English (en) is supported
+// To add more languages:
+// 1. Add translations to TRANSLATIONS object below
+// 2. Update default supportedLocales in packages/database/src/schema/status-pages.ts
+// 3. Add RTL languages to rtlLocales array if needed
+
+// Supported translation structure:
+// es: { /* Spanish translations */ },
+// fr: { /* French translations */ },
+// ar: { /* Arabic translations */ },
+
 type TranslationValue = string | TranslationRecord;
 export interface TranslationRecord {
   [key: string]: TranslationValue;

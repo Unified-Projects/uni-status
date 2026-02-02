@@ -540,6 +540,7 @@ export function MonitorForm({ monitor, mode }: MonitorFormProps) {
     dns: defaultDnsConfig,
     cdn: defaultCdnConfig,
     ssl: {
+      enabled: existingConfig.ssl?.enabled ?? true,
       expiryWarningDays: 30,
       expiryErrorDays: 7,
       checkChain: true,
@@ -868,6 +869,7 @@ export function MonitorForm({ monitor, mode }: MonitorFormProps) {
     // SSL config
     if (isSslTypeSubmit) {
       const sslConfig: Record<string, unknown> = {
+        enabled: data.config?.ssl?.enabled ?? true,
         expiryWarningDays: data.config?.ssl?.expiryWarningDays ?? 30,
         expiryErrorDays: data.config?.ssl?.expiryErrorDays ?? 7,
         checkChain: data.config?.ssl?.checkChain ?? true,

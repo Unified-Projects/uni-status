@@ -643,7 +643,7 @@ export default function MonitorDetailPage() {
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium">
-                    Uptime ({uptimeDays}{effectiveGranularity === "day" ? "d" : effectiveGranularity === "hour" ? "h" : "m"})
+                    Uptime
                   </CardTitle>
                 </CardHeader>
                 <CardContent>

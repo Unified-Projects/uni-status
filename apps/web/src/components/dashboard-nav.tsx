@@ -427,7 +427,7 @@ export function DashboardNav({ user }: DashboardNavProps) {
       {/* Mobile Sidebar Drawer */}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 w-72 bg-background border-r transform transition-transform duration-300 ease-in-out lg:hidden flex flex-col",
+          "fixed inset-y-0 left-0 z-50 w-full bg-background border-r transform transition-transform duration-300 ease-in-out lg:hidden flex flex-col",
           isOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >

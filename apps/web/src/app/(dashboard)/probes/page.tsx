@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -56,6 +56,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { usePagination } from "@/hooks/use-pagination";
+import { useRegions } from "@/hooks/use-regions";
 import { Pagination, DEFAULT_PAGE_SIZE, getPaginationProps } from "@/components/ui/pagination";
 // Common region suggestions for probes
 const COMMON_REGIONS = [
@@ -90,12 +91,25 @@ export default function ProbesPage() {
   const [newToken, setNewToken] = useState<{ token: string; command: string } | null>(null);
   const [probeToAssign, setProbeToAssign] = useState<string | null>(null);
 
+  // Fetch regions and default region
+  const { data: regionsData } = useRegions();
+
   // Form state
   const [formData, setFormData] = useState({
     name: "",
     description: "",
-    region: "uk",
+    region: regionsData?.default || "uk",
   });
+
+  // Update region when regionsData loads
+  useEffect(() => {
+    if (regionsData?.default) {
+      setFormData((prev) => ({
+        ...prev,
+        region: regionsData.default,
+      }));
+    }
+  }, [regionsData?.default]);
 
   const [assignMonitorId, setAssignMonitorId] = useState("");
 
