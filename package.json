@@ -32,6 +32,11 @@
   },
   "workspaces": [
     "apps/*",
-    "packages/*"
-  ]
+    "packages/*",
+    "enterprise"
+  ],
+  "dependencies": {
+    "pino": "^10.3.0",
+    "pino-pretty": "^13.1.3"
+  }
 }

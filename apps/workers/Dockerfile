@@ -11,7 +11,7 @@ FROM base AS dev
 RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser \
     PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-COPY package.json pnpm-workspace.yaml ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/workers/package.json ./apps/workers/
 COPY packages/database/package.json ./packages/database/
 COPY packages/shared/package.json ./packages/shared/
@@ -19,7 +19,7 @@ COPY packages/email/package.json ./packages/email/
 COPY packages/ui/package.json ./packages/ui/
 COPY packages/licensing/package.json ./packages/licensing/
 COPY enterprise/package.json ./enterprise/
-RUN pnpm install --shamefully-hoist
+RUN pnpm install --shamefully-hoist --frozen-lockfile
 # Provide bun runtime for dev command
 COPY --from=bunbase /usr/local/bin/bun /usr/local/bin/bun
 COPY . .
@@ -29,7 +29,7 @@ CMD ["pnpm", "dev"]
 # Production build - use node for pnpm, install dependencies
 FROM base AS builder
 COPY --from=bunbase /usr/local/bin/bun /usr/local/bin/bun
-COPY package.json pnpm-workspace.yaml ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/workers/package.json ./apps/workers/
 COPY packages/database/package.json ./packages/database/
 COPY packages/shared/package.json ./packages/shared/
@@ -37,7 +37,7 @@ COPY packages/email/package.json ./packages/email/
 COPY packages/ui/package.json ./packages/ui/
 COPY packages/licensing/package.json ./packages/licensing/
 COPY enterprise/package.json ./enterprise/
-RUN pnpm install --shamefully-hoist
+RUN pnpm install --shamefully-hoist --frozen-lockfile
 COPY . .
 
 # Production - run source directly (Bun handles TypeScript/JSX natively)

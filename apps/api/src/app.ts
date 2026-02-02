@@ -5,6 +5,7 @@ import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { secureHeaders } from "hono/secure-headers";
 import { timing } from "hono/timing";
+import { createLogger } from "@uni-status/shared";
 
 import { authMiddleware } from "./middleware/auth";
 import { rateLimiter } from "./middleware/rate-limit";
@@ -57,6 +58,8 @@ import { s3ProxyRoutes } from "./routes/s3-proxy";
 // Create app with OpenAPI support
 export const app = new OpenAPIHono();
 
+const log = createLogger({ module: "app" });
+
 // CORS origins cache
 let cachedCorsOrigins: string[] | null = null;
 let cachedStatusPageDomains: Set<string> | null = null;
@@ -86,7 +89,7 @@ async function buildCorsOrigins(): Promise<{ origins: string[]; statusPageDomain
       }
     }
   } catch (error) {
-    console.warn("[CORS] Failed to load custom domains:", error);
+    log.warn({ err: error }, "Failed to load custom domains for CORS");
   }
 
   return {
@@ -310,7 +313,7 @@ async function loadEnterprise() {
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND") {
     } else {
-      console.error("[Enterprise] Failed to load:", error instanceof Error ? error.message : error);
+      log.error({ err: error }, "Failed to load enterprise features");
     }
   }
 }

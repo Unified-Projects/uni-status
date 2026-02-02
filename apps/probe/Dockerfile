@@ -5,12 +5,12 @@ WORKDIR /app
 RUN npm install -g pnpm@9.15.4
 
 # Copy minimal workspace context needed to build the probe
-COPY package.json pnpm-workspace.yaml tsconfig.json ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.json ./
 COPY apps/probe/package.json apps/probe/tsconfig.json ./apps/probe/
 COPY apps/probe/src ./apps/probe/src
 
-# Install dependencies and build (no lockfile available for filtered install)
-RUN pnpm install --filter @uni-status/probe
+# Install dependencies and build using lockfile
+RUN pnpm install --filter @uni-status/probe --frozen-lockfile
 RUN pnpm --filter @uni-status/probe build
 
 # ---- Runtime image ----

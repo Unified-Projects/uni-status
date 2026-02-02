@@ -79,11 +79,8 @@ services:
       redis:
         condition: service_started
     volumes:
-      - ../apps/api/src:/app/apps/api/src
-      - ../packages:/app/packages
-      - /app/node_modules
       - reports_data_test:/app/reports
-      - uploads_data_test:/app/apps/api/uploads
+      - uploads_data_test:/app/uploads
     networks:
       - uni-status-test
 
@@ -154,9 +151,6 @@ services:
       openssh:
         condition: service_started
     volumes:
-      - ../apps/workers/src:/app/apps/workers/src
-      - ../packages:/app/packages
-      - /app/node_modules
       - reports_data_test:/app/reports
     networks:
       - uni-status-test
@@ -226,9 +220,15 @@ services:
   rabbitmq:
     image: rabbitmq:3-management-alpine
     container_name: uni-status-rabbitmq-test
+    hostname: rabbitmq-test
+    user: rabbitmq
     environment:
       - RABBITMQ_DEFAULT_USER=test
       - RABBITMQ_DEFAULT_PASS=test
+      - RABBITMQ_NODENAME=rabbit@rabbitmq-test
+      - HOME=/var/lib/rabbitmq
+    tmpfs:
+      - /var/lib/rabbitmq:uid=100,gid=101
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s

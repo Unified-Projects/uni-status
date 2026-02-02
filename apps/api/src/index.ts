@@ -1,8 +1,9 @@
 import { app } from "./app";
+import { logger } from "@uni-status/shared";
 
 const port = parseInt(process.env.API_PORT || "3001");
 
-console.log(`Starting Uni-Status API server on port ${port}`);
+logger.info({ port }, "Starting Uni-Status API server");
 
 export default {
   port,

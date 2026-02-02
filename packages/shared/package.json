@@ -1,6 +1,6 @@
 {
   "name": "@uni-status/shared",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -71,6 +71,10 @@
     "./lib/federation": {
       "types": "./src/lib/federation.ts",
       "default": "./src/lib/federation.ts"
+    },
+    "./lib/status-icons": {
+      "types": "./src/lib/status-icons.ts",
+      "default": "./src/lib/status-icons.ts"
     }
   },
   "scripts": {
@@ -78,6 +82,7 @@
   },
   "dependencies": {
     "@uni-status/licensing": "workspace:*",
+    "lucide-react": "^0.562.0",
     "zod": "^4.3.5"
   },
   "devDependencies": {

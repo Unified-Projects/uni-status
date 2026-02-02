@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Development - install and run in one stage
 FROM base AS dev
-COPY package.json pnpm-workspace.yaml ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/web/package.json ./apps/web/
 COPY packages/ui/package.json ./packages/ui/
 COPY packages/shared/package.json ./packages/shared/
@@ -13,7 +13,7 @@ COPY packages/database/package.json ./packages/database/
 COPY packages/email/package.json ./packages/email/
 COPY packages/licensing/package.json ./packages/licensing/
 COPY enterprise/package.json ./enterprise/
-RUN pnpm install --shamefully-hoist
+RUN pnpm install --shamefully-hoist --frozen-lockfile
 COPY . .
 WORKDIR /app/apps/web
 EXPOSE 3000
@@ -21,7 +21,7 @@ CMD ["pnpm", "dev"]
 
 # Production build
 FROM base AS builder
-COPY package.json pnpm-workspace.yaml ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/web/package.json ./apps/web/
 COPY packages/ui/package.json ./packages/ui/
 COPY packages/shared/package.json ./packages/shared/
@@ -30,7 +30,7 @@ COPY packages/database/package.json ./packages/database/
 COPY packages/email/package.json ./packages/email/
 COPY packages/licensing/package.json ./packages/licensing/
 COPY enterprise/package.json ./enterprise/
-RUN pnpm install --shamefully-hoist
+RUN pnpm install --shamefully-hoist --frozen-lockfile
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 # Build-time placeholder env vars (replaced at runtime via entrypoint)
