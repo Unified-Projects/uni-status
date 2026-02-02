@@ -12,16 +12,23 @@ import {
   OG_STATUS_COLORS,
   type OGTemplateId,
   type OGOverallStatus,
+  createLogger,
 } from "@uni-status/shared";
 import satori from "satori";
 import { Resvg } from "@resvg/resvg-js";
 import type { ReactNode } from "react";
 import { getAppUrl } from "@uni-status/shared/config";
 
+const log = createLogger({ module: 'og-routes' });
+
 export const ogRoutes = new OpenAPIHono();
 
 // Font loading - we'll use a system font or load one
 let fontData: ArrayBuffer | null = null;
+
+// Resource cache with TTL for fonts and images
+const resourceCache = new Map<string, { data: ArrayBuffer | string; timestamp: number }>();
+const RESOURCE_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
 function normalizeHexColor(color: string | undefined, fallback: string): string {
   if (!color) return fallback;
@@ -79,37 +86,78 @@ function buildImageUrlCandidates(url: string, baseUrls: string[]): string[] {
 }
 
 async function loadImageDataUri(url: string, baseUrls: string[]): Promise<string | null> {
+  const cacheKey = `image:${url}`;
+  const cached = resourceCache.get(cacheKey);
+
+  if (cached && Date.now() - cached.timestamp < RESOURCE_CACHE_TTL) {
+    return cached.data as string;
+  }
+
   const candidates = buildImageUrlCandidates(url, baseUrls);
   for (const candidate of candidates) {
     if (candidate.startsWith("data:")) {
+      resourceCache.set(cacheKey, { data: candidate, timestamp: Date.now() });
       return candidate;
     }
     try {
-      const response = await fetch(candidate);
+      const response = await fetch(candidate, {
+        signal: AbortSignal.timeout(5000)
+      });
       if (!response.ok) continue;
+
       const contentType = response.headers.get("content-type") || "image/png";
       const buffer = await response.arrayBuffer();
       const base64 = Buffer.from(buffer).toString("base64");
-      return `data:${contentType};base64,${base64}`;
+      const dataUri = `data:${contentType};base64,${base64}`;
+
+      resourceCache.set(cacheKey, { data: dataUri, timestamp: Date.now() });
+      return dataUri;
     } catch (error) {
-      console.warn("[OG] Failed to load image:", error);
+      log.warn({ context: 'og', candidate, err: error }, 'Failed to load image');
     }
   }
+
+  // Use stale cache as fallback
+  if (cached) {
+    log.warn({ context: 'og' }, 'Using stale cached image');
+    return cached.data as string;
+  }
+
   return null;
 }
 
 async function loadFont(): Promise<ArrayBuffer> {
-  if (fontData) return fontData;
+  const cacheKey = 'inter-font';
+  const cached = resourceCache.get(cacheKey);
+
+  if (cached && Date.now() - cached.timestamp < RESOURCE_CACHE_TTL) {
+    return cached.data as ArrayBuffer;
+  }
 
   // Try to load Inter font from Google Fonts CDN
   try {
     const response = await fetch(
-      "https://fonts.gstatic.com/s/inter/v18/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff"
+      "https://fonts.gstatic.com/s/inter/v18/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff",
+      { signal: AbortSignal.timeout(5000) }
     );
-    fontData = await response.arrayBuffer();
-    return fontData;
+
+    if (!response.ok) {
+      throw new Error(`Font fetch failed: ${response.status}`);
+    }
+
+    const fontDataNew = await response.arrayBuffer();
+    resourceCache.set(cacheKey, { data: fontDataNew, timestamp: Date.now() });
+    fontData = fontDataNew;
+    return fontDataNew;
   } catch (error) {
-    console.error("[OG] Failed to load font:", error);
+    log.error({ context: 'og', err: error }, 'Failed to load font');
+
+    // Use stale cache as fallback
+    if (cached) {
+      log.warn({ context: 'og' }, 'Using stale cached font');
+      return cached.data as ArrayBuffer;
+    }
+
     // Return a minimal valid font buffer as fallback
     throw new Error("Failed to load font for OG image generation");
   }
@@ -158,6 +206,11 @@ async function getStatusPageData(slug: string): Promise<StatusPageData | null> {
     where: eq(statusPages.slug, slug),
     with: {
       organization: true,
+      monitors: {
+        with: {
+          monitor: true,
+        },
+      },
     },
   });
 
@@ -165,25 +218,17 @@ async function getStatusPageData(slug: string): Promise<StatusPageData | null> {
     return null;
   }
 
-  // Fetch linked monitors
-  const linkedMonitors = await db.query.statusPageMonitors.findMany({
-    where: eq(statusPageMonitors.statusPageId, page.id),
-    with: {
-      monitor: true,
-    },
-  });
+  const monitorIds = page.monitors.map((lm) => lm.monitorId);
 
-  const monitorIds = linkedMonitors.map((lm) => lm.monitorId);
+  const activeIncidents = monitorIds.length > 0
+    ? await db.query.incidents.findMany({
+        where: and(
+          eq(incidents.organizationId, page.organizationId),
+          ne(incidents.status, "resolved")
+        ),
+      })
+    : [];
 
-  // Get active incidents
-  const activeIncidents = await db.query.incidents.findMany({
-    where: and(
-      eq(incidents.organizationId, page.organizationId),
-      ne(incidents.status, "resolved")
-    ),
-  });
-
-  // Filter to incidents affecting these monitors
   const relevantIncidents = activeIncidents.filter((incident) => {
     const affectedMonitors = incident.affectedMonitors || [];
     return affectedMonitors.some((mid: string) => monitorIds.includes(mid));
@@ -197,7 +242,7 @@ async function getStatusPageData(slug: string): Promise<StatusPageData | null> {
     logo: page.logo ?? null,
     orgLogo: page.organization?.logo ?? null,
     theme,
-    monitors: linkedMonitors.map((lm) => ({
+    monitors: page.monitors.map((lm) => ({
       name: lm.displayName || lm.monitor?.name || "Monitor",
       status: lm.monitor.status as StatusPageData["monitors"][0]["status"],
     })),
@@ -1236,11 +1281,15 @@ ogRoutes.get("/:slug", async (c) => {
     const pngData = resvg.render();
     const pngBuffer = pngData.asPng();
 
+    const hasActiveIncidents = data.activeIncidents.length > 0;
+    const cacheSeconds = hasActiveIncidents ? 60 : 300; // 1 min if incidents, 5 min otherwise
+
     c.header("Content-Type", "image/png");
-    c.header("Cache-Control", "public, max-age=60, s-maxage=60");
+    c.header("Cache-Control", `public, max-age=${cacheSeconds}, s-maxage=${cacheSeconds}, stale-while-revalidate=600`);
+    c.header("CDN-Cache-Control", `max-age=${cacheSeconds * 2}`);
     return c.body(pngBuffer);
   } catch (error) {
-    console.error("[OG] Error generating image:", error);
+    log.error({ context: 'og', slug, err: error }, 'Error generating image');
     return c.text("Failed to generate OG image", 500);
   }
 });

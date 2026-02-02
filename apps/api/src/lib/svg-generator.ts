@@ -1,4 +1,5 @@
 // SVG Generator for status badges and indicators
+import { getStatusIconSvg, type StatusIconType } from "@uni-status/shared/lib/status-icons";
 
 export type OverallStatus = "operational" | "degraded" | "partial_outage" | "major_outage" | "maintenance";
 export type MonitorStatus = "active" | "degraded" | "down" | "paused" | "pending";
@@ -222,26 +223,12 @@ export function generateBadgeSvg(
     const modernTextColor = statusTextColorValue;
     const iconStrokeColor = modernTextColor;
 
-    // SVG path icons (Lucide-style, simplified) with dynamic color
-    const icons: Record<string, string> = {
-      // CheckCircle for operational/active
-      operational: `<path d="M7.5 12l2 2 5-5" stroke="${iconStrokeColor}" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="6" stroke="${iconStrokeColor}" stroke-width="1.5" fill="none"/>`,
-      active: `<path d="M7.5 12l2 2 5-5" stroke="${iconStrokeColor}" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="6" stroke="${iconStrokeColor}" stroke-width="1.5" fill="none"/>`,
-      // AlertTriangle for degraded/partial
-      degraded: `<path d="M12 6.5v4M12 14.5h.01" stroke="${iconStrokeColor}" stroke-width="1.5" stroke-linecap="round"/><path d="M5.5 17h13L12 5.5 5.5 17z" stroke="${iconStrokeColor}" stroke-width="1.5" fill="none" stroke-linejoin="round"/>`,
-      partial_outage: `<path d="M12 6.5v4M12 14.5h.01" stroke="${iconStrokeColor}" stroke-width="1.5" stroke-linecap="round"/><path d="M5.5 17h13L12 5.5 5.5 17z" stroke="${iconStrokeColor}" stroke-width="1.5" fill="none" stroke-linejoin="round"/>`,
-      // XCircle for down/major
-      down: `<circle cx="12" cy="12" r="6" stroke="${iconStrokeColor}" stroke-width="1.5" fill="none"/><path d="M9.5 9.5l5 5M14.5 9.5l-5 5" stroke="${iconStrokeColor}" stroke-width="1.5" stroke-linecap="round"/>`,
-      major_outage: `<circle cx="12" cy="12" r="6" stroke="${iconStrokeColor}" stroke-width="1.5" fill="none"/><path d="M9.5 9.5l5 5M14.5 9.5l-5 5" stroke="${iconStrokeColor}" stroke-width="1.5" stroke-linecap="round"/>`,
-      // Wrench for maintenance
-      maintenance: `<path d="M14.5 6.5a3.5 3.5 0 00-5 4.95l-4 4 1.4 1.4 4-4a3.5 3.5 0 004.6-6.35z" stroke="${iconStrokeColor}" stroke-width="1.5" fill="none" stroke-linejoin="round"/>`,
-      // Pause for paused
-      paused: `<rect x="8" y="7" width="2.5" height="10" rx="0.5" fill="${iconStrokeColor}"/><rect x="13.5" y="7" width="2.5" height="10" rx="0.5" fill="${iconStrokeColor}"/>`,
-      // Clock for pending
-      pending: `<circle cx="12" cy="12" r="6" stroke="${iconStrokeColor}" stroke-width="1.5" fill="none"/><path d="M12 8v4l2.5 2.5" stroke="${iconStrokeColor}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
-    };
-
-    const icon = icons[status] || icons.pending;
+    // Generate icon SVG using shared utility
+    const icon = getStatusIconSvg(status as StatusIconType, {
+      stroke: iconStrokeColor,
+      strokeWidth: 1.5,
+      fill: "none",
+    });
     const iconX = iconPadding;
     const iconY = (modernHeight - iconSize) / 2;
     const textX = iconPadding + iconSize + gap;
