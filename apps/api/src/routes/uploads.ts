@@ -1,6 +1,9 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { requireAuth, requireOrganization, requireScope } from "../middleware/auth";
 import { validateFile, saveFile, deleteFile, fileExists } from "../lib/uploads";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "uploads-routes" });
 
 export const uploadsRoutes = new OpenAPIHono();
 
@@ -64,7 +67,7 @@ uploadsRoutes.post("/", async (c) => {
       },
     });
   } catch (error) {
-    console.error("[Uploads] Failed to save file:", error);
+    log.error({ err: error }, "Failed to save file");
     return c.json(
       {
         success: false,

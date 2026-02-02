@@ -11,6 +11,9 @@ import { eq } from "drizzle-orm";
 import { authMiddleware, requireSuperAdmin, getSystemSettings } from "../middleware/auth";
 import { isSelfHosted, getDeploymentType } from "@uni-status/shared/config/env";
 import { auth } from "@uni-status/auth/server";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "system-routes" });
 
 export const systemRoutes = new OpenAPIHono();
 
@@ -255,7 +258,7 @@ systemRoutes.post("/setup", async (c) => {
       },
     });
   } catch (error) {
-    console.error("Setup error:", error);
+    log.error({ err: error }, "Setup error");
     return c.json(
       {
         success: false,

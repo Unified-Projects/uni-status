@@ -2,6 +2,9 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { nanoid } from "nanoid";
 import { realtimeHub, type SSEClient, type SSEEvent } from "../lib/sse-manager";
 import { authMiddleware } from "../middleware/auth";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "websocket" });
 
 export const websocketRoutes = new OpenAPIHono();
 
@@ -134,7 +137,7 @@ websocketRoutes.get("/", async (c) => {
           );
         }
       } catch (err) {
-        console.error("[WebSocket] Failed to parse client message", err);
+        log.error({ err }, "Failed to parse client message");
       }
     },
   });

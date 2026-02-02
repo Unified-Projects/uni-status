@@ -7,7 +7,9 @@ import {
   EventSubscriptionVerificationEmail,
 } from "@uni-status/email";
 import { getAppUrl } from "@uni-status/shared/config";
+import { createLogger } from "@uni-status/shared";
 
+const log = createLogger({ module: "email" });
 const APP_URL = getAppUrl();
 
 /**
@@ -38,14 +40,9 @@ export async function sendSubscriberVerificationEmail({
   });
 
   if (!result.success) {
-    console.error(
-      `[Email] Failed to send subscriber verification email to ${email}:`,
-      result.error
-    );
+    log.error({ email, statusPageName, error: result.error }, "Failed to send subscriber verification email");
   } else {
-    console.log(
-      `[Email] Sent subscriber verification email to ${email} for ${statusPageName}`
-    );
+    log.info({ email, statusPageName }, "Sent subscriber verification email");
   }
 
   return result;
@@ -89,14 +86,9 @@ export async function sendInvitationEmail({
   });
 
   if (!result.success) {
-    console.error(
-      `[Email] Failed to send invitation email to ${email}:`,
-      result.error
-    );
+    log.error({ email, organizationName, error: result.error }, "Failed to send invitation email");
   } else {
-    console.log(
-      `[Email] Sent invitation email to ${email} for ${organizationName}`
-    );
+    log.info({ email, organizationName, role }, "Sent invitation email");
   }
 
   return result;
@@ -133,14 +125,9 @@ export async function sendComponentSubscriptionVerificationEmail({
   });
 
   if (!result.success) {
-    console.error(
-      `[Email] Failed to send component subscription verification email to ${email}:`,
-      result.error
-    );
+    log.error({ email, statusPageName, monitorName, error: result.error }, "Failed to send component subscription verification email");
   } else {
-    console.log(
-      `[Email] Sent component subscription verification email to ${email} for ${monitorName} on ${statusPageName}`
-    );
+    log.info({ email, statusPageName, monitorName }, "Sent component subscription verification email");
   }
 
   return result;
@@ -182,14 +169,9 @@ export async function sendEventSubscriptionVerificationEmail({
   });
 
   if (!result.success) {
-    console.error(
-      `[Email] Failed to send event subscription verification email to ${email}:`,
-      result.error
-    );
+    log.error({ email, eventTitle, eventType, error: result.error }, "Failed to send event subscription verification email");
   } else {
-    console.log(
-      `[Email] Sent event subscription verification email to ${email} for ${eventTitle}`
-    );
+    log.info({ email, eventTitle, eventType }, "Sent event subscription verification email");
   }
 
   return result;

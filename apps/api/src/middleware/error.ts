@@ -1,9 +1,12 @@
 import { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { ZodError } from "zod";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "error-handler" });
 
 export function errorHandler(err: Error, c: Context) {
-  console.error("Error:", err);
+  log.error({ err, path: c.req.path, method: c.req.method, errorName: err.name, errorConstructor: err.constructor.name }, "Request error");
 
   // Normalize HTTPExceptions (e.g., thrown by license/validation guards) to JSON
   if (err instanceof HTTPException) {
@@ -16,18 +19,22 @@ export function errorHandler(err: Error, c: Context) {
     );
   }
 
-  // Zod validation error
-  if (err instanceof ZodError) {
+  // Zod validation error - check both instanceof and error name for cross-version compatibility
+  if (err instanceof ZodError || err.name === "ZodError" || (err as any).issues) {
+    const zodError = err as ZodError;
     return c.json(
       {
         success: false,
         error: {
           code: "VALIDATION_ERROR",
           message: "Invalid request data",
-          details: err.errors.map((e) => ({
+          details: zodError.errors?.map((e) => ({
             path: e.path.join("."),
             message: e.message,
-          })),
+          })) || (zodError as any).issues?.map((e: any) => ({
+            path: e.path.join("."),
+            message: e.message,
+          })) || [],
         },
       },
       400

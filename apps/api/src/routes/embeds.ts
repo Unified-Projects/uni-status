@@ -24,6 +24,9 @@ import {
   type MonitorStatus,
   type BadgeStyle,
 } from "../lib/svg-generator";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "embeds" });
 
 export const embedsRoutes = new OpenAPIHono();
 

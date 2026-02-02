@@ -8,6 +8,9 @@ import {
   getUploadDir,
 } from "../lib/uploads";
 import { join } from "node:path";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "s3-proxy" });
 
 export const s3ProxyRoutes = new OpenAPIHono();
 
@@ -134,7 +137,7 @@ s3ProxyRoutes.get("/:organizationId/:filename", async (c) => {
       if (err.name === "NoSuchKey") {
         return c.json({ error: "File not found" }, 404);
       }
-      console.error(`[S3Proxy] Error fetching ${s3Key}:`, error);
+      log.error({ err: error, s3Key }, "Error fetching S3 object");
       return c.json({ error: "Failed to fetch file" }, 500);
     }
   } else {
@@ -161,7 +164,7 @@ s3ProxyRoutes.get("/:organizationId/:filename", async (c) => {
         },
       });
     } catch (error) {
-      console.error(`[S3Proxy] Error reading local file ${filepath}:`, error);
+      log.error({ err: error, filepath }, "Error reading local file");
       return c.json({ error: "Failed to read file" }, 500);
     }
   }

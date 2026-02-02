@@ -34,7 +34,9 @@ import { createHash } from "crypto";
 import { buildPublicStatusPagePayload } from "../lib/status-page-data";
 import { getEnabledGlobalProviders } from "@uni-status/auth/server";
 import { getJwtSecret } from "@uni-status/shared/config";
+import { createLogger } from "@uni-status/shared";
 
+const log = createLogger({ module: "public-api" });
 const JWT_SECRET = getJwtSecret();
 
 // Helper to check OAuth access for status pages
@@ -242,7 +244,7 @@ publicRoutes.get("/status-pages/:slug", async (c) => {
       data,
     });
   } catch (error) {
-    console.error(`[Public API] Error fetching status page ${slug}:`, error);
+    log.error({ err: error, slug }, "Error fetching status page");
     return c.json(
       {
         success: false,
@@ -996,9 +998,7 @@ publicRoutes.post("/status-pages/:slug/report-down", async (c) => {
         },
       });
 
-      console.log(
-        `[Crowdsourced] Monitor ${monitorId} set to degraded (${reportCount} reports)`
-      );
+      log.info({ monitorId, reportCount }, "Monitor set to degraded by crowdsourced reports");
     }
   }
 
@@ -2324,7 +2324,7 @@ publicRoutes.get("/internal/domain-lookup", async (c) => {
 
     return c.json({ success: true, slug: page.slug }, 200);
   } catch (error) {
-    console.error("[Domain Lookup] Error:", error);
+    log.error({ err: error }, "Domain lookup error");
     return c.json({ success: false, error: "Database error" }, 500);
   }
 });

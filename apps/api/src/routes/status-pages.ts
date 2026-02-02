@@ -10,6 +10,9 @@ import {
 } from "@uni-status/enterprise/api/middleware/license";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { deleteFileByUrl } from "../lib/uploads";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "status-pages" });
 
 export const statusPagesRoutes = new OpenAPIHono();
 
@@ -222,7 +225,7 @@ statusPagesRoutes.patch("/:id", async (c) => {
   if (logoValue !== undefined && currentPage.logo && currentPage.logo !== logoValue) {
     // Fire and forget - don't block update on file deletion
     deleteFileByUrl(currentPage.logo).catch((err) => {
-      console.error("[StatusPages] Failed to delete old logo:", err);
+      log.error({ err }, "Failed to delete old logo");
     });
   }
 
@@ -230,7 +233,7 @@ statusPagesRoutes.patch("/:id", async (c) => {
   if (faviconValue !== undefined && currentPage.favicon && currentPage.favicon !== faviconValue) {
     // Fire and forget - don't block update on file deletion
     deleteFileByUrl(currentPage.favicon).catch((err) => {
-      console.error("[StatusPages] Failed to delete old favicon:", err);
+      log.error({ err }, "Failed to delete old favicon");
     });
   }
 
@@ -328,12 +331,12 @@ statusPagesRoutes.delete("/:id", async (c) => {
   // Clean up uploaded files (fire and forget - don't block response)
   if (pageToDelete.logo) {
     deleteFileByUrl(pageToDelete.logo).catch((err) => {
-      console.error("[StatusPages] Failed to delete logo on page deletion:", err);
+      log.error({ err }, "Failed to delete logo on page deletion");
     });
   }
   if (pageToDelete.favicon) {
     deleteFileByUrl(pageToDelete.favicon).catch((err) => {
-      console.error("[StatusPages] Failed to delete favicon on page deletion:", err);
+      log.error({ err }, "Failed to delete favicon on page deletion");
     });
   }
 

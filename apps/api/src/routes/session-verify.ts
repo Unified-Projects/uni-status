@@ -1,6 +1,9 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { auth } from "@uni-status/auth/server";
 import { db, organizationMembers, organizations, users, eq, and, like } from "@uni-status/database";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "session-verify" });
 
 export const sessionVerifyRoutes = new OpenAPIHono();
 
@@ -69,7 +72,7 @@ sessionVerifyRoutes.get("/", async (c) => {
       })),
     });
   } catch (error) {
-    console.error("[Session Verify] Error:", error);
+    log.error({ err: error }, "Session verification error");
     return c.json({
       user: null,
       session: null,
@@ -125,17 +128,17 @@ sessionVerifyRoutes.post("/mark-portal-only", async (c) => {
     for (const org of personalOrgs) {
       await db.delete(organizationMembers).where(eq(organizationMembers.organizationId, org.orgId));
       await db.delete(organizations).where(eq(organizations.id, org.orgId));
-      console.log(`[Portal Only] Deleted personal org ${org.orgId} for user ${userId}`);
+      log.info({ orgId: org.orgId, userId }, "Deleted personal org for portal-only user");
     }
 
-    console.log(`[Portal Only] Marked user ${userId} as portal-only`);
+    log.info({ userId }, "Marked user as portal-only");
 
     return c.json({
       success: true,
       data: { portalOnly: true },
     });
   } catch (error) {
-    console.error("[Portal Only] Error:", error);
+    log.error({ err: error }, "Portal-only setup error");
     return c.json({
       success: false,
       error: { code: "INTERNAL_ERROR", message: "Failed to mark as portal-only" },

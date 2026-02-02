@@ -8,6 +8,9 @@ import {
   HeadObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getS3Config, getAwsConfig, getStorageConfig } from "@uni-status/shared/config";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "uploads" });
 
 // Supported image types
 const ALLOWED_MIME_TYPES = [
@@ -221,7 +224,7 @@ export async function saveFile(
 export async function deleteFile(organizationId: string, filename: string): Promise<boolean> {
   // Security check - prevent path traversal
   if (filename.includes("/") || filename.includes("\\") || filename.includes("..")) {
-    console.error(`[Uploads] Invalid filename rejected: ${filename}`);
+    log.error({ filename }, "Invalid filename rejected");
     return false;
   }
 
@@ -237,7 +240,7 @@ export async function deleteFile(organizationId: string, filename: string): Prom
       );
       return true;
     } catch (error) {
-      console.error(`[Uploads] Failed to delete S3 object ${s3Key}:`, error);
+      log.error({ err: error, s3Key }, "Failed to delete S3 object");
       return false;
     }
   } else {
@@ -254,7 +257,7 @@ export async function deleteFile(organizationId: string, filename: string): Prom
       await unlink(filepath);
       return true;
     } catch (error) {
-      console.error(`[Uploads] Failed to delete file ${filepath}:`, error);
+      log.error({ err: error, filepath }, "Failed to delete file");
       return false;
     }
   }
@@ -377,12 +380,11 @@ export async function deleteFileByUrl(url: string | null | undefined): Promise<b
   try {
     const deleted = await deleteFile(organizationId, filename);
     if (!deleted) {
-      // File didn't exist or couldn't be deleted - log but don't fail
-      console.warn(`[Uploads] Could not delete file: ${organizationId}/${filename} (may not exist)`);
+      log.warn({ organizationId, filename }, "Could not delete file (may not exist)");
     }
     return true;
   } catch (error) {
-    console.error(`[Uploads] Error deleting file by URL ${url}:`, error);
+    log.error({ err: error, url }, "Error deleting file by URL");
     return false;
   }
 }

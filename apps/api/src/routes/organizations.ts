@@ -37,6 +37,9 @@ import { sendInvitationEmail } from "../lib/email";
 import { createAuditLog, createAuditLogWithChanges, getAuditUserId } from "../lib/audit";
 import { canUserCreateFreeOrg } from "../lib/org-membership";
 import { deleteFileByUrl } from "../lib/uploads";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "organizations" });
 
 export const organizationsRoutes = new OpenAPIHono();
 
@@ -251,7 +254,7 @@ organizationsRoutes.patch("/current", async (c) => {
   if (newLogoValue !== undefined && orgBefore.logo && orgBefore.logo !== newLogoValue) {
     // Fire and forget - don't block update on file deletion
     deleteFileByUrl(orgBefore.logo).catch((err) => {
-      console.error("[Organizations] Failed to delete old logo:", err);
+      log.error({ err }, "Failed to delete old logo");
     });
   }
 
@@ -377,7 +380,7 @@ organizationsRoutes.patch("/:id", async (c) => {
   if (newLogoValue !== undefined && orgBefore.logo && orgBefore.logo !== newLogoValue) {
     // Fire and forget - don't block update on file deletion
     deleteFileByUrl(orgBefore.logo).catch((err) => {
-      console.error("[Organizations] Failed to delete old logo:", err);
+      log.error({ err }, "Failed to delete old logo");
     });
   }
 
@@ -489,7 +492,7 @@ organizationsRoutes.delete("/:id", async (c) => {
   // Clean up uploaded logo file (fire and forget - don't block response)
   if (orgToDelete.logo) {
     deleteFileByUrl(orgToDelete.logo).catch((err) => {
-      console.error("[Organizations] Failed to delete logo on org deletion:", err);
+      log.error({ err }, "Failed to delete logo on org deletion");
     });
   }
 

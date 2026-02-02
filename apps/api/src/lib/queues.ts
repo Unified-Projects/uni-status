@@ -238,7 +238,8 @@ export interface TestNotificationChannel {
 
 function buildTestNotificationJobData(
   channel: TestNotificationChannel,
-  orgCredentials?: OrganizationCredentials
+  orgCredentials?: OrganizationCredentials,
+  testEmailRecipient?: string
 ): Record<string, unknown> {
   const testData = {
     monitorName: "Test Monitor",
@@ -253,11 +254,18 @@ function buildTestNotificationJobData(
 
   switch (channel.type) {
     case "email":
+      // Use testEmailRecipient if provided, otherwise fall back to configured addresses
+      const toAddress = testEmailRecipient ||
+        (channel.config.toAddresses as string[] | undefined)?.[0] ||
+        channel.config.email ||
+        "test@example.com";
+
       return {
-        to: channel.config.email,
+        to: toAddress,
         subject: "[Test] Uni-Status Alert Channel Test",
         emailType: "alert",
         data: testData,
+        from: channel.config.fromAddress as string | undefined,
         orgSmtpCredentials: orgCredentials?.smtp,
         orgResendCredentials: orgCredentials?.resend,
       };
@@ -376,10 +384,11 @@ function buildTestNotificationJobData(
 
 export async function queueTestNotification(
   channel: TestNotificationChannel,
-  orgCredentials?: OrganizationCredentials
+  orgCredentials?: OrganizationCredentials,
+  testEmailRecipient?: string
 ): Promise<string> {
   const queue = getNotifyQueueForType(channel.type);
-  const jobData = buildTestNotificationJobData(channel, orgCredentials);
+  const jobData = buildTestNotificationJobData(channel, orgCredentials, testEmailRecipient);
   const jobId = `test-${channel.id}-${Date.now()}`;
 
   await queue.add(`test-${channel.id}`, jobData, {

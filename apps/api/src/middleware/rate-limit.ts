@@ -1,6 +1,9 @@
 import { Context, Next } from "hono";
 import { redis } from "../lib/redis";
 import { isRateLimitDisabled } from "@uni-status/shared/config";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "rate-limiter" });
 
 const WINDOW_MS = 60 * 1000; // 1 minute
 const MAX_REQUESTS = 100;
@@ -68,8 +71,7 @@ export async function rateLimiter(c: Context, next: Next) {
     c.header("X-RateLimit-Remaining", remaining.toString());
     c.header("X-RateLimit-Reset", Math.ceil((now + WINDOW_MS) / 1000).toString());
   } catch (error) {
-    // Log Redis errors but don't block requests - fail open
-    console.error("Rate limiter Redis error:", error);
+    log.error({ err: error, identifier }, "Rate limiter Redis error, failing open");
   }
 
   await next();

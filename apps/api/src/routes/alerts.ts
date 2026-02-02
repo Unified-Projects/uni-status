@@ -2,7 +2,7 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { nanoid } from "nanoid";
 import { db } from "@uni-status/database";
-import { alertChannels, alertPolicies, alertHistory, monitorAlertPolicies, organizations } from "@uni-status/database/schema";
+import { alertChannels, alertPolicies, alertHistory, monitorAlertPolicies, organizations, users } from "@uni-status/database/schema";
 import { createAlertChannelSchema, updateAlertChannelSchema, createAlertPolicySchema, updateAlertPolicySchema } from "@uni-status/shared/validators";
 import { SSE_CHANNELS } from "@uni-status/shared/constants";
 import { decryptConfigSecrets } from "@uni-status/shared/lib/crypto";
@@ -12,6 +12,9 @@ import { publishEvent } from "../lib/redis";
 import { queueTestNotification } from "../lib/queues";
 import { createAuditLog, createAuditLogWithChanges, getAuditUserId } from "../lib/audit";
 import { eq, and, desc, sql } from "drizzle-orm";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: 'alerts-routes' });
 
 export const alertsRoutes = new OpenAPIHono();
 
@@ -205,6 +208,7 @@ alertsRoutes.delete("/channels/:id", async (c) => {
 });
 
 alertsRoutes.post("/channels/:id/test", async (c) => {
+  const auth = c.get("auth");
   const organizationId = await requireOrganization(c);
   requireScope(c, "write");
   const { id } = c.req.param();
@@ -220,6 +224,17 @@ alertsRoutes.post("/channels/:id/test", async (c) => {
     throw new Error("Not found");
   }
 
+  // Get current user's email for test notification
+  let currentUserEmail: string | undefined;
+  if (auth.user?.id) {
+    const user = await db
+      .select({ email: users.email })
+      .from(users)
+      .where(eq(users.id, auth.user.id))
+      .limit(1);
+    currentUserEmail = user[0]?.email;
+  }
+
   // Fetch org credentials for email notifications (BYO SMTP/Resend)
   let orgCredentials: OrganizationCredentials | undefined;
   if (channel.type === "email") {
@@ -233,7 +248,7 @@ alertsRoutes.post("/channels/:id/test", async (c) => {
       try {
         orgCredentials = await decryptConfigSecrets(org[0].settings.credentials);
       } catch (error) {
-        console.error(`[Alert] Error decrypting org credentials for test:`, error);
+        log.error({ organizationId, err: error }, 'Error decrypting org credentials for test');
       }
     }
   }
@@ -244,7 +259,8 @@ alertsRoutes.post("/channels/:id/test", async (c) => {
       type: channel.type,
       config: channel.config as Record<string, unknown>,
     },
-    orgCredentials
+    orgCredentials,
+    currentUserEmail
   );
 
   return c.json({

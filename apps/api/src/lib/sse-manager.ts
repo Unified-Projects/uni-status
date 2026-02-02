@@ -1,7 +1,9 @@
 import IORedis from "ioredis";
 import { SSE_CHANNELS } from "@uni-status/shared/constants";
 import { getRedisUrl } from "@uni-status/shared/config";
+import { createLogger } from "@uni-status/shared";
 
+const log = createLogger({ module: "realtime-hub" });
 const REDIS_URL = getRedisUrl();
 
 export interface SSEClient {
@@ -45,7 +47,7 @@ class SSEConnectionManager {
     });
 
     this.initialized = true;
-    console.log("[Realtime Hub] Initialized and subscribed to Redis channels");
+    log.info("Initialized and subscribed to Redis channels");
   }
 
   /**
@@ -66,12 +68,12 @@ class SSEConnectionManager {
       // Send to all target clients
       for (const client of targetClients) {
         client.send(event.type, event).catch((err) => {
-          console.error(`[Realtime Hub] Failed to send to client ${client.id}:`, err);
+          log.error({ err, clientId: client.id }, "Failed to send to client");
           this.removeClient(client.id);
         });
       }
     } catch (err) {
-      console.error("[Realtime Hub] Failed to parse message:", err);
+      log.error({ err }, "Failed to parse message");
     }
   }
 
@@ -130,7 +132,7 @@ class SSEConnectionManager {
    */
   addClient(client: SSEClient) {
     this.clients.set(client.id, client);
-    console.log(`[Realtime Hub] Client ${client.id} connected (total: ${this.clients.size})`);
+    log.info({ clientId: client.id, totalClients: this.clients.size }, "Client connected");
   }
 
   /**
@@ -139,7 +141,7 @@ class SSEConnectionManager {
   removeClient(clientId: string) {
     const removed = this.clients.delete(clientId);
     if (removed) {
-      console.log(`[Realtime Hub] Client ${clientId} disconnected (total: ${this.clients.size})`);
+      log.info({ clientId, totalClients: this.clients.size }, "Client disconnected");
     }
   }
 
@@ -167,7 +169,7 @@ class SSEConnectionManager {
       try {
         await client.send(event.type, event);
       } catch (err) {
-        console.error(`[Realtime Hub] Broadcast failed for client ${client.id}:`, err);
+        log.error({ err, clientId: client.id }, "Broadcast failed for client");
         this.removeClient(client.id);
       }
     }
