@@ -17,6 +17,10 @@ import type { OrganizationCredentials } from "@uni-status/shared/types/credentia
 import { decryptConfigSecrets } from "@uni-status/shared/lib/crypto";
 import { getAppUrl } from "@uni-status/shared/config";
 import { buildNotificationJobData, getQueueForChannelType } from "../lib/notification-builder";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "enterprise-workers-processors-escalation" });
+
 
 function getNotificationQueues() {
   const connection = getConnection();
@@ -59,7 +63,7 @@ async function getOrgCredentials(organizationId: string): Promise<OrganizationCr
   try {
     return await decryptConfigSecrets(org[0].settings.credentials);
   } catch (error) {
-    console.error(`[Escalation] Error decrypting org credentials:`, error);
+    log.error(`[Escalation] Error decrypting org credentials:`, error);
     return null;
   }
 }
@@ -72,17 +76,17 @@ export async function processAlertEscalation(job: Job<EscalationJobData>) {
   });
 
   if (!alert) {
-    console.log(`[Escalation] Alert ${alertHistoryId} not found`);
+    log.info(`[Escalation] Alert ${alertHistoryId} not found`);
     return;
   }
 
   if (alert.status === "resolved") {
-    console.log(`[Escalation] Alert ${alertHistoryId} resolved, skipping escalation`);
+    log.info(`[Escalation] Alert ${alertHistoryId} resolved, skipping escalation`);
     return;
   }
 
   if (alert.status === "acknowledged") {
-    console.log(`[Escalation] Alert ${alertHistoryId} acknowledged, skipping escalation`);
+    log.info(`[Escalation] Alert ${alertHistoryId} acknowledged, skipping escalation`);
     return;
   }
 
@@ -96,13 +100,13 @@ export async function processAlertEscalation(job: Job<EscalationJobData>) {
   });
 
   if (!policy) {
-    console.log(`[Escalation] Policy ${escalationPolicyId} not found`);
+    log.info(`[Escalation] Policy ${escalationPolicyId} not found`);
     return;
   }
 
   const step = policy.steps.find((s) => s.stepNumber === stepNumber);
   if (!step) {
-    console.log(`[Escalation] Step ${stepNumber} missing for policy ${escalationPolicyId}`);
+    log.info(`[Escalation] Step ${stepNumber} missing for policy ${escalationPolicyId}`);
     return;
   }
 
@@ -114,7 +118,7 @@ export async function processAlertEscalation(job: Job<EscalationJobData>) {
     .limit(1);
 
   if (!monitor[0]) {
-    console.log(`[Escalation] Monitor ${monitorId} not found`);
+    log.info(`[Escalation] Monitor ${monitorId} not found`);
     return;
   }
 
@@ -130,7 +134,7 @@ export async function processAlertEscalation(job: Job<EscalationJobData>) {
     );
 
   if (channels.length === 0) {
-    console.log(`[Escalation] No channels enabled for step ${stepNumber}`);
+    log.info(`[Escalation] No channels enabled for step ${stepNumber}`);
     return;
   }
 
@@ -176,5 +180,5 @@ export async function processAlertEscalation(job: Job<EscalationJobData>) {
     })
     .where(eq(alertHistory.id, alertHistoryId));
 
-  console.log(`[Escalation] Step ${stepNumber} dispatched for alert ${alertHistoryId}`);
+  log.info(`[Escalation] Step ${stepNumber} dispatched for alert ${alertHistoryId}`);
 }

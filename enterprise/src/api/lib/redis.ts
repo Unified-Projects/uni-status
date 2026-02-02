@@ -13,7 +13,7 @@ export function configureRedis(fns: { publishEvent: PublishEventFn }) {
 
 export async function publishEvent(channel: string, data: any): Promise<void> {
   if (!_publishEvent) {
-    console.warn("Enterprise redis not configured, skipping publishEvent");
+    log.warn("Enterprise redis not configured, skipping publishEvent");
     return;
   }
   return _publishEvent(channel, data);

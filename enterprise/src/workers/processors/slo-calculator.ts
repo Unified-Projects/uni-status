@@ -11,6 +11,10 @@ import type { OrganizationCredentials } from "@uni-status/shared/types/credentia
 import { decryptConfigSecrets } from "@uni-status/shared/lib/crypto";
 import { getAppUrl } from "@uni-status/shared/config";
 import { getConnection, getPrefix } from "../lib/redis";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "enterprise-workers-processors-slo-calculator" });
+
 
 interface SloCalculateJobData {
   sloTargetId?: string; // Calculate for specific SLO
@@ -214,7 +218,7 @@ async function calculateSloErrorBudget(slo: typeof sloTargets.$inferSelect): Pro
           .where(eq(errorBudgets.id, budget.id));
 
         // Queue alert notification
-        console.log(`SLO ${slo.name}: Budget at ${percentRemaining.toFixed(1)}% remaining, threshold ${currentThreshold}% crossed`);
+        log.info(`SLO ${slo.name}: Budget at ${percentRemaining.toFixed(1)}% remaining, threshold ${currentThreshold}% crossed`);
 
         try {
           const connection = getConnection();
@@ -232,7 +236,7 @@ async function calculateSloErrorBudget(slo: typeof sloTargets.$inferSelect): Pro
             removeOnFail: 100,
           });
         } catch (error) {
-          console.error(`[SLO] Error queueing alert for ${slo.name}:`, error);
+          log.error({ err: error, sloName: slo.name, sloId: slo.id }, "Error queueing SLO alert");
         }
       }
     }
@@ -298,7 +302,7 @@ async function recordSloBreach(
     createdAt: now,
   });
 
-  console.log(`SLO BREACH: ${slo.name} - Target ${targetPercentage}%, Actual ${uptimePercentage.toFixed(3)}%`);
+  log.info(`SLO BREACH: ${slo.name} - Target ${targetPercentage}%, Actual ${uptimePercentage.toFixed(3)}%`);
 
   // Queue breach alert
   try {
@@ -317,7 +321,7 @@ async function recordSloBreach(
       removeOnFail: 100,
     });
   } catch (error) {
-    console.error(`[SLO] Error queueing breach alert for ${slo.name}:`, error);
+    log.error({ err: error, sloName: slo.name, sloId: slo.id }, "Error queueing breach alert");
   }
 }
 
@@ -325,7 +329,7 @@ async function recordSloBreach(
 export async function processSloCalculation(job: Job<SloCalculateJobData>): Promise<void> {
   const { sloTargetId, organizationId, full } = job.data;
 
-  console.log(`Processing SLO calculation: ${sloTargetId || "all"} for org ${organizationId || "all"}`);
+  log.info(`Processing SLO calculation: ${sloTargetId || "all"} for org ${organizationId || "all"}`);
 
   let slosToProcess: (typeof sloTargets.$inferSelect)[] = [];
 
@@ -355,17 +359,17 @@ export async function processSloCalculation(job: Job<SloCalculateJobData>): Prom
     });
   }
 
-  console.log(`Processing ${slosToProcess.length} SLOs`);
+  log.info(`Processing ${slosToProcess.length} SLOs`);
 
   for (const slo of slosToProcess) {
     try {
       await calculateSloErrorBudget(slo);
     } catch (error) {
-      console.error(`Error calculating SLO ${slo.id}:`, error);
+      log.error(`Error calculating SLO ${slo.id}:`, error);
     }
   }
 
-  console.log(`SLO calculation complete`);
+  log.info(`SLO calculation complete`);
 }
 
 // Get organization credentials for BYO integrations
@@ -383,7 +387,7 @@ async function getOrgCredentials(organizationId: string): Promise<OrganizationCr
   try {
     return await decryptConfigSecrets(org[0].settings.credentials);
   } catch (error) {
-    console.error(`[SLO Alert] Error decrypting org credentials:`, error);
+    log.error({ err: error, organizationId }, "Error decrypting org credentials");
     return null;
   }
 }
@@ -406,7 +410,7 @@ export async function processSloAlert(job: Job<SloAlertJobData>): Promise<void> 
   });
 
   if (!slo) {
-    console.error(`[SLO Alert] SLO target ${sloTargetId} not found`);
+    log.error({ sloTargetId }, "SLO target not found");
     return;
   }
 
@@ -414,7 +418,7 @@ export async function processSloAlert(job: Job<SloAlertJobData>): Promise<void> 
     ? `SLO BREACH: ${slo.name} for ${slo.monitor.name} has exceeded its error budget`
     : `SLO WARNING: ${slo.name} for ${slo.monitor.name} error budget is at ${percentRemaining.toFixed(1)}% (threshold: ${threshold}%)`;
 
-  console.log(`[SLO Alert] ${message}`);
+  log.info({ sloTargetId, sloName: slo.name, threshold, breached, percentRemaining }, "Processing SLO alert");
 
   // Get all enabled alert channels for this organization
   const channels = await db
@@ -428,7 +432,7 @@ export async function processSloAlert(job: Job<SloAlertJobData>): Promise<void> 
     );
 
   if (channels.length === 0) {
-    console.log(`[SLO Alert] No alert channels configured for organization ${organizationId}`);
+    log.info({ organizationId }, "No alert channels configured for organization");
     return;
   }
 
@@ -479,9 +483,9 @@ export async function processSloAlert(job: Job<SloAlertJobData>): Promise<void> 
         },
       });
 
-      console.log(`[SLO Alert] Queued ${channel.type} notification for SLO ${slo.name}`);
+      log.info({ channelType: channel.type, sloName: slo.name }, "Queued SLO notification");
     } catch (error) {
-      console.error(`[SLO Alert] Error queueing notification to ${channel.type}:`, error);
+      log.error({ err: error, channelType: channel.type }, "Error queueing notification");
     }
   }
 }

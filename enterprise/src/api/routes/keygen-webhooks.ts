@@ -28,6 +28,9 @@ import {
   type KeygenWebhookEventType,
 } from "@uni-status/shared/lib/keygen";
 import { KEYGEN_POLICY_IDS } from "@uni-status/licensing";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: 'keygen-webhooks' });
 
 export const keygenWebhooksRoutes = new OpenAPIHono();
 
@@ -69,7 +72,7 @@ keygenWebhooksRoutes.post("/", async (c) => {
   const signature = c.req.header("Keygen-Signature");
 
   if (!signature) {
-    console.warn("[Keygen Webhook] Missing signature header");
+    log.warn('Missing signature header');
     return c.json({ error: "Missing signature" }, 401);
   }
 
@@ -77,7 +80,7 @@ keygenWebhooksRoutes.post("/", async (c) => {
   const isValid = verifyWebhookSignature(rawBody, signature);
 
   if (!isValid) {
-    console.warn("[Keygen Webhook] Invalid signature");
+    log.warn('Invalid signature');
     return c.json({ error: "Invalid signature" }, 401);
   }
 
@@ -86,7 +89,7 @@ keygenWebhooksRoutes.post("/", async (c) => {
   try {
     payload = JSON.parse(rawBody);
   } catch (error) {
-    console.error("[Keygen Webhook] Failed to parse payload:", error);
+    log.error({ err: error }, 'Failed to parse payload');
     return c.json({ error: "Invalid payload" }, 400);
   }
 
@@ -98,7 +101,7 @@ keygenWebhooksRoutes.post("/", async (c) => {
       (item) => item.type === "entitlements"
     ) || [];
 
-  console.log(`[Keygen Webhook] Processing event: ${eventType} (${eventId})`);
+  log.info({ eventType, eventId }, 'Processing event');
 
   try {
     // Route to appropriate handler
@@ -177,16 +180,16 @@ keygenWebhooksRoutes.post("/", async (c) => {
       case "machine.heartbeat-dead":
       case "machine.heartbeat-reset":
         // Machine events are handled separately or logged for audit purposes
-        console.log(`[Keygen Webhook] Machine event: ${eventType}`);
+        log.info({ eventType }, 'Machine event');
         break;
 
       default:
-        console.log(`[Keygen Webhook] Unhandled event type: ${eventType}`);
+        log.info({ eventType }, 'Unhandled event type');
     }
 
     return c.json({ success: true, event: eventType });
   } catch (error) {
-    console.error(`[Keygen Webhook] Error processing ${eventType}:`, error);
+    log.error({ eventType, err: error }, 'Error processing event');
     return c.json({ error: "Internal error processing webhook" }, 500);
   }
 });
@@ -217,9 +220,7 @@ async function handleLicenseCreated(
     null;
 
   if (!organizationId) {
-    console.warn(
-      `[Keygen Webhook] License ${keygenLicenseId} has no organizationId in metadata`
-    );
+    log.warn({ keygenLicenseId }, 'License has no organizationId in metadata');
     // For hosted mode, we may need to create org or wait for user to link
     return;
   }
@@ -230,9 +231,7 @@ async function handleLicenseCreated(
   });
 
   if (!org) {
-    console.error(
-      `[Keygen Webhook] Organization ${organizationId} not found for license ${keygenLicenseId}`
-    );
+    log.error({ organizationId, keygenLicenseId }, 'Organization not found for license');
     return;
   }
 
@@ -242,9 +241,7 @@ async function handleLicenseCreated(
   });
 
   if (existingLicense) {
-    console.log(
-      `[Keygen Webhook] License ${keygenLicenseId} already exists, updating...`
-    );
+    log.info({ keygenLicenseId }, 'License already exists, updating');
     await handleLicenseUpdated(licenseData, entitlements, eventId);
     return;
   }
@@ -298,9 +295,7 @@ async function handleLicenseCreated(
     }
   );
 
-  console.log(
-    `[Keygen Webhook] Created license ${licenseId} for org ${organizationId}`
-  );
+  log.info({ licenseId, organizationId }, 'Created license');
 }
 
 /**
@@ -346,7 +341,7 @@ async function handleLicenseRenewed(
     }
   );
 
-  console.log(`[Keygen Webhook] Renewed license ${license.id}`);
+  log.info({ licenseId: license.id }, 'Renewed license');
 }
 
 /**
@@ -407,9 +402,7 @@ async function handleLicenseExpired(
     }
   );
 
-  console.log(
-    `[Keygen Webhook] License ${license.id} expired, grace period started until ${gracePeriodEnds.toISOString()}`
-  );
+  log.info({ licenseId: license.id, gracePeriodEnds: gracePeriodEnds.toISOString() }, 'License expired, grace period started');
 }
 
 /**
@@ -471,9 +464,7 @@ async function handleLicenseSuspended(
     }
   );
 
-  console.log(
-    `[Keygen Webhook] License ${license.id} suspended, grace period started`
-  );
+  log.info({ licenseId: license.id }, 'License suspended, grace period started');
 }
 
 /**
@@ -516,7 +507,7 @@ async function handleLicenseReinstated(
     }
   );
 
-  console.log(`[Keygen Webhook] License ${license.id} reinstated`);
+  log.info({ licenseId: license.id }, 'License reinstated');
 }
 
 /**
@@ -570,9 +561,7 @@ async function handleLicenseRevoked(
     { plan: "free", reason: "revoked" }
   );
 
-  console.log(
-    `[Keygen Webhook] License ${license.id} revoked, downgraded to free`
-  );
+  log.info({ licenseId: license.id }, 'License revoked, downgraded to free');
 }
 
 /**
@@ -585,13 +574,13 @@ async function handleMachineCreated(machineData: any, eventId: string) {
   const fingerprint = machineData?.attributes?.fingerprint as string | undefined;
 
   if (!licenseId || !machineId) {
-    console.warn("[Keygen Webhook] Machine event missing licenseId or machineId");
+    log.warn('Machine event missing licenseId or machineId');
     return;
   }
 
   const license = await findLicenseByKeygenId(licenseId);
   if (!license) {
-    console.warn(`[Keygen Webhook] License ${licenseId} not found for machine ${machineId}`);
+    log.warn({ licenseId, machineId }, 'License not found for machine');
     return;
   }
 
@@ -615,7 +604,7 @@ async function handleMachineCreated(machineData: any, eventId: string) {
     { machineId, machineFingerprint: fingerprint }
   );
 
-  console.log(`[Keygen Webhook] Machine ${machineId} attached to license ${license.id}`);
+  log.info({ machineId, licenseId: license.id }, 'Machine attached to license');
 }
 
 /**
@@ -638,9 +627,7 @@ async function handleLicenseExpiringSoon(
     : null;
 
   // Log the event - email notifications handled by worker job
-  console.log(
-    `[Keygen Webhook] License ${license.id} expiring in ${daysRemaining} days`
-  );
+  log.info({ licenseId: license.id, daysRemaining }, 'License expiring soon');
 }
 
 /**
@@ -722,10 +709,7 @@ async function handleEntitlementsChanged(
     try {
       currentEntitlements = await getLicenseEntitlements(licenseData.id);
     } catch (error) {
-      console.error(
-        `[Keygen Webhook] Failed to fetch entitlements for ${licenseData.id}:`,
-        error
-      );
+      log.error({ licenseId: licenseData.id, err: error }, 'Failed to fetch entitlements');
       return;
     }
   }
@@ -751,7 +735,7 @@ async function handleEntitlementsChanged(
     { entitlements: newEntitlements }
   );
 
-  console.log(`[Keygen Webhook] Updated entitlements for license ${license.id}`);
+  log.info({ licenseId: license.id }, 'Updated entitlements');
 }
 
 /**
@@ -811,7 +795,7 @@ async function handleLicenseUpdated(
     );
   }
 
-  console.log(`[Keygen Webhook] Updated license ${license.id}`);
+  log.info({ licenseId: license.id }, 'Updated license');
 }
 
 /**
@@ -837,7 +821,7 @@ async function handleLicenseDeleted(
 
   await db.delete(licenses).where(eq(licenses.id, license.id));
 
-  console.log(`[Keygen Webhook] Deleted license ${license.id}`);
+  log.info({ licenseId: license.id }, 'Deleted license');
 }
 
 /**
@@ -861,10 +845,7 @@ async function handlePolicyChanged(
     try {
       currentEntitlements = await getLicenseEntitlements(licenseData.id);
     } catch (error) {
-      console.error(
-        `[Keygen Webhook] Failed to fetch entitlements for ${licenseData.id}:`,
-        error
-      );
+      log.error({ licenseId: licenseData.id, err: error }, 'Failed to fetch entitlements');
     }
   }
 
@@ -896,9 +877,7 @@ async function handlePolicyChanged(
     { plan: newPlan, entitlements: newEntitlements }
   );
 
-  console.log(
-    `[Keygen Webhook] License ${license.id} policy changed from ${previousPlan} to ${newPlan}`
-  );
+  log.info({ licenseId: license.id, previousPlan, newPlan }, 'License policy changed');
 }
 
 // ==========================================

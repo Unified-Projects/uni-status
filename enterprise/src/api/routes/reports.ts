@@ -24,6 +24,10 @@ import { eq, and, desc, gte, lte, sql, inArray } from "drizzle-orm";
 import fs from "fs/promises";
 import path from "path";
 import { getStorageConfig } from "@uni-status/shared/config";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "enterprise-api-routes-reports" });
+
 
 export const reportsRoutes = new OpenAPIHono();
 
@@ -38,92 +42,6 @@ function isInlineReportMode() {
   );
 }
 
-// Minimal inline fallback to complete reports when the full generator (Puppeteer/S3)
-// is unavailable in the API container during tests.
-async function completeReportWithStub(
-  reportId: string,
-  organizationId: string,
-  reportType: string,
-  jobData: {
-    includedMonitors: string[];
-    includedStatusPages: string[];
-    periodStart: string | Date;
-    periodEnd: string | Date;
-  }
-) {
-  const reportsDir = getStorageConfig().reportsDir;
-  const orgDir = path.join(reportsDir, organizationId);
-  await fs.mkdir(orgDir, { recursive: true });
-
-  // Build a lightweight PDF-like payload and pad it to satisfy size assertions
-  const header = `%PDF-1.4\n% Uni-Status stub report\n`;
-  const body = JSON.stringify({
-    reportId,
-    reportType,
-    generatedAt: new Date().toISOString(),
-    periodStart: jobData.periodStart,
-    periodEnd: jobData.periodEnd,
-    monitors: jobData.includedMonitors,
-    statusPages: jobData.includedStatusPages,
-  });
-  const padding = Buffer.alloc(Math.max(1200, body.length), 0);
-  const pdfBuffer = Buffer.concat([Buffer.from(header), Buffer.from(body), padding]);
-
-  const fileName = `${reportType}-report-${reportId}.pdf`;
-  const filePath = path.join(orgDir, fileName);
-  await fs.writeFile(filePath, pdfBuffer);
-
-  const fileUrl = `/reports/${organizationId}/${fileName}`;
-  const now = new Date();
-
-  await db
-    .update(slaReports)
-    .set({
-      status: "completed",
-      fileUrl,
-      fileName,
-      fileSize: pdfBuffer.length,
-      mimeType: "application/pdf",
-      generatedAt: now,
-      generationDurationMs: 1,
-      summary: {
-        monitorCount: jobData.includedMonitors.length,
-        incidentCount: 0,
-        uptimePercentage: 100,
-        avgResponseTime: 0,
-        slosMet: 0,
-        slosBreached: 0,
-        maintenanceWindows: 0,
-      },
-    })
-    .where(eq(slaReports.id, reportId));
-}
-
-async function ensureReportCompletedForTests(
-  reportId: string,
-  organizationId: string,
-  reportType: string,
-  jobData: {
-    includedMonitors: string[];
-    includedStatusPages: string[];
-    periodStart: string | Date;
-    periodEnd: string | Date;
-  }
-) {
-  const existing = await db.query.slaReports.findFirst({
-    where: and(eq(slaReports.id, reportId), eq(slaReports.organizationId, organizationId)),
-  });
-
-  if (!existing || existing.status === "completed" || existing.status === "failed") {
-    return existing ?? null;
-  }
-
-  await completeReportWithStub(reportId, organizationId, reportType, jobData);
-
-  return await db.query.slaReports.findFirst({
-    where: and(eq(slaReports.id, reportId), eq(slaReports.organizationId, organizationId)),
-  });
-}
 
 // ==========================================
 // Report Settings (Automated Reports)
@@ -576,7 +494,7 @@ reportsRoutes.post("/generate", async (c) => {
       }
     );
   } catch (error) {
-    console.warn("[reports] Queueing report generation failed, continuing inline:", error);
+    log.warn("[reports] Queueing report generation failed, continuing inline:", error);
   }
 
   // In test/CI environments we still kick off inline processing,
@@ -589,27 +507,17 @@ reportsRoutes.post("/generate", async (c) => {
           const { processReportGeneration } = await import("../../workers/processors/report-generator");
           await processReportGeneration({ data: jobData } as any);
         } catch (error) {
-          console.warn("[reports] Inline report generation failed, falling back to stub:", error);
-          await completeReportWithStub(id, organizationId, validated.reportType, {
-            includedMonitors,
-            includedStatusPages: validated.statusPageIds || [],
-            periodStart: validated.periodStart,
-            periodEnd: validated.periodEnd,
-          });
+          log.error("[reports] Inline report generation failed:", error);
+          // Mark report as failed in database
+          await db
+            .update(slaReports)
+            .set({
+              status: "failed",
+              error: error instanceof Error ? error.message : "Unknown error during report generation",
+            })
+            .where(eq(slaReports.id, id));
         }
-
-        await ensureReportCompletedForTests(
-          id,
-          organizationId,
-          validated.reportType,
-          {
-            includedMonitors,
-            includedStatusPages: validated.statusPageIds || [],
-            periodStart: validated.periodStart,
-            periodEnd: validated.periodEnd,
-          }
-        );
-      })().catch((err) => console.error("[reports] Inline processing error:", err));
+      })().catch((err) => log.error("[reports] Inline processing error:", err));
     }, 100);
   }
 
@@ -951,36 +859,12 @@ reportsRoutes.get("/:id", async (c) => {
       where: eq(reportDeliveries.reportId, report.id),
     });
 
-    if (
-      isInlineReportMode() &&
-      report.status !== "completed" &&
-      report.status !== "failed"
-    ) {
-      const completed = await ensureReportCompletedForTests(
-        report.id,
-        organizationId,
-        report.reportType,
-        {
-          includedMonitors: report.includedMonitors || [],
-          includedStatusPages: report.includedStatusPages || [],
-          periodStart: report.periodStart,
-          periodEnd: report.periodEnd,
-        }
-      );
-      if (completed) {
-        return c.json({
-          success: true,
-          data: { ...completed, settings, deliveries },
-        });
-      }
-    }
-
     return c.json({
       success: true,
       data: { ...report, settings, deliveries },
     });
   } catch (error) {
-    console.error("[reports] GET /:id error:", error);
+    log.error("[reports] GET /:id error:", error);
     return c.json({ success: false, error: "Internal server error" }, 500);
   }
 });
@@ -1030,7 +914,7 @@ reportsRoutes.get("/:id/download", async (c) => {
         },
       });
     } catch (error) {
-      console.error("Report download error:", error);
+      log.error("Report download error:", error);
       return c.json({ success: false, error: "Report file not found" }, 404);
     }
   }

@@ -20,6 +20,10 @@ import { organizations, users, organizationMembers } from "@uni-status/database"
 import { clearLicenseCache } from "../../api/middleware/license";
 import { getQueue } from "../../api/lib/queues";
 import { QUEUE_NAMES } from "@uni-status/shared/constants";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "enterprise-workers-processors-grace-period" });
+
 
 export interface GracePeriodJobData {
   organizationId?: string; // Process specific org
@@ -46,7 +50,7 @@ export async function processGracePeriod(
 ): Promise<{ processed: number; results: ProcessingResult[] }> {
   const { organizationId, dryRun } = job.data;
 
-  console.log(`[GracePeriod] Starting job ${job.id}`, { organizationId, dryRun });
+  log.info(`[GracePeriod] Starting job ${job.id}`, { organizationId, dryRun });
 
   // Build query conditions
   const conditions = [eq(licenses.gracePeriodStatus, "active")];
@@ -60,7 +64,7 @@ export async function processGracePeriod(
     where: and(...conditions),
   });
 
-  console.log(
+  log.info(
     `[GracePeriod] Found ${gracePeriodLicenses.length} licenses in grace period`
   );
 
@@ -76,7 +80,7 @@ export async function processGracePeriod(
         Math.round((results.length / gracePeriodLicenses.length) * 100)
       );
     } catch (error) {
-      console.error(
+      log.error(
         `[GracePeriod] Error processing license ${license.id}:`,
         error
       );
@@ -90,7 +94,7 @@ export async function processGracePeriod(
   }
 
   const actioned = results.filter((r) => r.action !== "skipped").length;
-  console.log(
+  log.info(
     `[GracePeriod] Completed: ${actioned}/${results.length} actioned`
   );
 
@@ -184,7 +188,7 @@ async function downgradeLicense(
   license: typeof licenses.$inferSelect,
   now: Date
 ): Promise<void> {
-  console.log(`[GracePeriod] Downgrading license ${license.id}`);
+  log.info(`[GracePeriod] Downgrading license ${license.id}`);
 
   const previousState = {
     plan: license.plan,
@@ -248,7 +252,7 @@ async function sendGracePeriodReminder(
   const recipients = await getOrganizationAdminEmails(license.organizationId);
 
   if (recipients.length === 0) {
-    console.warn(
+    log.warn(
       `[GracePeriod] No recipients found for org ${license.organizationId}`
     );
     return;
@@ -282,7 +286,7 @@ async function sendGracePeriodReminder(
       }
     );
   } else {
-    console.warn("[GracePeriod] Email queue not available");
+    log.warn("[GracePeriod] Email queue not available");
   }
 }
 

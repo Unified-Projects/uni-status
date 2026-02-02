@@ -24,6 +24,10 @@ import {
   isKeygenConfigured,
 } from "@uni-status/shared/lib/keygen";
 import { clearLicenseCache } from "../../api/middleware/license";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "enterprise-workers-processors-license-validation" });
+
 
 export interface LicenseValidationJobData {
   licenseId?: string; // Validate specific license
@@ -49,7 +53,7 @@ export async function processLicenseValidation(
 ): Promise<{ processed: number; results: ValidationResult[] }> {
   const { licenseId, organizationId, full } = job.data;
 
-  console.log(`[LicenseValidation] Starting job ${job.id}`, {
+  log.info(`[LicenseValidation] Starting job ${job.id}`, {
     licenseId,
     organizationId,
     full,
@@ -74,7 +78,7 @@ export async function processLicenseValidation(
     where: and(...conditions),
   });
 
-  console.log(
+  log.info(
     `[LicenseValidation] Found ${licensesToValidate.length} licenses to validate`
   );
 
@@ -90,7 +94,7 @@ export async function processLicenseValidation(
         Math.round((results.length / licensesToValidate.length) * 100)
       );
     } catch (error) {
-      console.error(
+      log.error(
         `[LicenseValidation] Error validating license ${license.id}:`,
         error
       );
@@ -106,7 +110,7 @@ export async function processLicenseValidation(
   }
 
   const successful = results.filter((r) => r.success).length;
-  console.log(
+  log.info(
     `[LicenseValidation] Completed: ${successful}/${results.length} successful`
   );
 
@@ -160,7 +164,7 @@ async function validateSingleLicense(
           );
           validationResult.entitlements = mapKeygenEntitlements(entitlements);
         } catch {
-          console.warn(
+          log.warn(
             `[LicenseValidation] Could not fetch entitlements for ${license.id}`
           );
         }
@@ -173,7 +177,7 @@ async function validateSingleLicense(
         );
       }
     } catch (error) {
-      console.warn(
+      log.warn(
         `[LicenseValidation] Online validation failed for ${license.id}, falling back to offline:`,
         error
       );

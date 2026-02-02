@@ -18,6 +18,10 @@ import { isKeygenConfigured } from "@uni-status/shared/lib/keygen";
 import { isSelfHosted } from "@uni-status/shared/config";
 import { resolveOrgType } from "@uni-status/shared/lib/org-type";
 import type { LicenseEntitlements } from "../../database/schema/licensing";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "enterprise-api-routes-billing" });
+
 
 // Landing API configuration for billing proxy
 // Always points to the official Unified Projects landing page
@@ -237,7 +241,7 @@ billingRoutes.get("/invoices", async (c) => {
 
   // Proxy to landing API
   if (!LANDING_INTERNAL_API_KEY) {
-    console.warn("[Billing] LANDING_INTERNAL_API_KEY not configured");
+    log.warn("[Billing] LANDING_INTERNAL_API_KEY not configured");
     return c.json({
       success: true,
       data: {
@@ -262,7 +266,7 @@ billingRoutes.get("/invoices", async (c) => {
     });
 
     if (!response.ok) {
-      console.error(`[Billing] Landing API error: ${response.status}`);
+      log.error(`[Billing] Landing API error: ${response.status}`);
       return c.json({
         success: true,
         data: {
@@ -275,7 +279,7 @@ billingRoutes.get("/invoices", async (c) => {
     const landingData = await response.json();
     return c.json(landingData);
   } catch (error) {
-    console.error("[Billing] Failed to fetch invoices from landing:", error);
+    log.error("[Billing] Failed to fetch invoices from landing:", error);
     return c.json({
       success: true,
       data: {

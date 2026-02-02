@@ -16,6 +16,9 @@ import {
 } from "../../database/schema";
 import { eq, and, gte, lte, sql, inArray, desc } from "drizzle-orm";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: 'report-generator' });
 
 interface ReportGenerateJobData {
   reportId: string;
@@ -176,15 +179,6 @@ function buildS3PublicUrl(key: string): string {
   return `https://${s3Bucket}.s3.${region}.amazonaws.com/${key}`;
 }
 
-function buildStubPdf(reportData: ReportData): Buffer {
-  const header = `%PDF-1.4\n% Stub report for ${reportData.reportType}\n`;
-  const body = JSON.stringify({
-    summary: reportData.summary,
-    generatedAt: reportData.generatedAt,
-  });
-  const padding = Buffer.alloc(Math.max(1024, body.length), 0);
-  return Buffer.concat([Buffer.from(header), Buffer.from(body), padding]);
-}
 
 // Gather report data from database
 async function gatherReportData(
@@ -1586,12 +1580,12 @@ async function uploadPdfWithRetry(
       return await uploadPdf(pdfBuffer, organizationId, reportId, reportType);
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
-      console.warn(`[Report ${reportId}] Upload attempt ${attempt}/${maxRetries} failed:`, lastError.message);
+      log.warn({ reportId, attempt, maxRetries, err: lastError }, 'Upload attempt failed');
 
       if (attempt < maxRetries) {
         // Exponential backoff: 1s, 2s, 4s
         const delay = Math.pow(2, attempt - 1) * 1000;
-        console.log(`[Report ${reportId}] Retrying upload in ${delay}ms...`);
+        log.info({ reportId, delay }, 'Retrying upload');
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
@@ -1606,7 +1600,7 @@ export async function processReportGeneration(
 ): Promise<void> {
   const { reportId, organizationId, reportType } = job.data;
 
-  console.log(`Generating ${reportType.toUpperCase()} report ${reportId} for org ${organizationId}`);
+  log.info({ reportId, organizationId, reportType }, 'Generating report');
 
   const startTime = Date.now();
 
@@ -1618,25 +1612,25 @@ export async function processReportGeneration(
       .where(eq(slaReports.id, reportId));
 
     // Step 1: Gather report data
-    console.log(`[Report ${reportId}] Step 1: Gathering data...`);
+    log.info({ reportId }, 'Step 1: Gathering data');
     const dataStart = Date.now();
     const reportData = await gatherReportData(job.data);
-    console.log(`[Report ${reportId}] Step 1 complete in ${Date.now() - dataStart}ms - Found ${reportData.monitors.length} monitors, ${reportData.incidents.length} incidents`);
+    log.info({ reportId, duration: Date.now() - dataStart, monitorCount: reportData.monitors.length, incidentCount: reportData.incidents.length }, 'Step 1 complete');
 
     // Step 2: Generate HTML
-    console.log(`[Report ${reportId}] Step 2: Generating HTML...`);
+    log.info({ reportId }, 'Step 2: Generating HTML');
     const htmlStart = Date.now();
     const html = generateReportHtml(reportData);
-    console.log(`[Report ${reportId}] Step 2 complete in ${Date.now() - htmlStart}ms - HTML size: ${html.length} bytes`);
+    log.info({ reportId, duration: Date.now() - htmlStart, htmlSize: html.length }, 'Step 2 complete');
 
     // Step 3: Launch Puppeteer and generate PDF
-    console.log(`[Report ${reportId}] Step 3: Launching Puppeteer...`);
+    log.info({ reportId }, 'Step 3: Launching Puppeteer');
     const pdfStart = Date.now();
     let browser: Awaited<ReturnType<typeof puppeteer.launch>> | null = null;
     let pdfBuffer: Uint8Array | Buffer;
     try {
       const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
-      console.log(`[Report ${reportId}] Using Chromium at: ${executablePath || 'default'}`);
+      log.debug({ reportId, executablePath: executablePath || 'default' }, 'Using Chromium');
 
       browser = await puppeteer.launch({
         headless: true,
@@ -1681,15 +1675,8 @@ export async function processReportGeneration(
         timeout: 30000,
       });
     } catch (browserError) {
-      // Use indirect access to prevent Bun bundler from inlining env vars at build time
-      const env = process.env;
-      if (env["NODE_ENV"] === "test") {
-        console.warn(`[Report ${reportId}] Puppeteer unavailable in tests, using stub PDF:`, browserError);
-        pdfBuffer = buildStubPdf(reportData);
-      } else {
-        console.error(`[Report ${reportId}] Failed to launch Puppeteer:`, browserError);
-        throw new Error(`Puppeteer launch failed: ${browserError instanceof Error ? browserError.message : "Unknown error"}`);
-      }
+      log.error({ reportId, err: browserError }, 'Failed to launch Puppeteer');
+      throw new Error(`Puppeteer launch failed: ${browserError instanceof Error ? browserError.message : "Unknown error"}`);
     } finally {
       if (browser) {
         await browser.close();
@@ -1699,12 +1686,10 @@ export async function processReportGeneration(
       throw new Error("Failed to generate report PDF buffer");
     }
 
-    console.log(
-      `[Report ${reportId}] Step 3 complete in ${Date.now() - pdfStart}ms - PDF size: ${pdfBuffer.length} bytes`
-    );
+    log.info({ reportId, duration: Date.now() - pdfStart, pdfSize: pdfBuffer.length }, 'Step 3 complete');
 
     // Step 4: Upload PDF with retry
-    console.log(`[Report ${reportId}] Step 4: Uploading PDF...`);
+    log.info({ reportId }, 'Step 4: Uploading PDF');
     const uploadStart = Date.now();
     const { url, size } = await uploadPdfWithRetry(
       Buffer.from(pdfBuffer),
@@ -1713,7 +1698,7 @@ export async function processReportGeneration(
       job.data.reportType,
       3
     );
-    console.log(`[Report ${reportId}] Step 4 complete in ${Date.now() - uploadStart}ms - URL: ${url}`);
+    log.info({ reportId, duration: Date.now() - uploadStart, url }, 'Step 4 complete');
 
     const generationDuration = Date.now() - startTime;
 
@@ -1740,9 +1725,9 @@ export async function processReportGeneration(
       })
       .where(eq(slaReports.id, reportId));
 
-    console.log(`Report ${reportId} generated successfully in ${generationDuration}ms`);
+    log.info({ reportId, generationDuration }, 'Report generated successfully');
   } catch (error) {
-    console.error(`Error generating report ${reportId}:`, error);
+    log.error({ reportId, err: error }, 'Error generating report');
 
     await db
       .update(slaReports)

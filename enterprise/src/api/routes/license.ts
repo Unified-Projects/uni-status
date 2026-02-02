@@ -21,6 +21,9 @@ import {
 } from "../../database/schema/licensing";
 import { organizations } from "@uni-status/database";
 import { requireOrganization, requireRole } from "../middleware/auth";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: 'license-routes' });
 import {
     validateLicenseOnline,
     verifyLicenseOffline,
@@ -146,7 +149,7 @@ licenseRoutes.get("/", async (c) => {
                     }
                 } else {
                     // Activation failed - log and return error info
-                    console.error("[License] Auto-activation failed:", activationResult.error);
+                    log.error({ organizationId, error: activationResult.error }, 'Auto-activation failed');
                     return c.json({
                         success: true,
                         data: {
@@ -163,7 +166,7 @@ licenseRoutes.get("/", async (c) => {
                     });
                 }
             } catch (error) {
-                console.error("[License] Auto-activation of env license threw exception:", error);
+                log.error({ organizationId, err: error }, 'Auto-activation of env license threw exception');
                 // Return info that env license exists but failed to activate
                 return c.json({
                     success: true,
@@ -373,7 +376,7 @@ licenseRoutes.post("/activate", async (c) => {
             licenseKey, // Pass license key for auth in self-hosted mode
         });
     } catch (error) {
-        console.error("[License] Machine activation failed:", error);
+        log.error({ organizationId, keygenLicenseId, err: error }, 'Machine activation failed');
         return c.json(
             {
                 success: false,
@@ -393,7 +396,7 @@ licenseRoutes.post("/activate", async (c) => {
             const keygenEntitlements = await getLicenseEntitlements(keygenLicenseId);
             entitlements = mapKeygenEntitlements(keygenEntitlements);
         } catch (error) {
-            console.error("[License] Failed to fetch entitlements:", error);
+            log.error({ keygenLicenseId, err: error }, 'Failed to fetch entitlements');
         }
     }
 
@@ -593,7 +596,7 @@ licenseRoutes.post("/validate", async (c) => {
                     .where(eq(licenses.id, license.id));
             }
         } catch (error) {
-            console.error("[License] Online validation failed:", error);
+            log.error({ licenseId: license.id, err: error }, 'Online validation failed');
 
             // Fall back to offline validation
             if (license.key) {
@@ -710,7 +713,7 @@ licenseRoutes.post("/deactivate", async (c) => {
         try {
             await deactivateMachine(license.machineId);
         } catch (error) {
-            console.error("[License] Machine deactivation failed:", error);
+            log.error({ licenseId: license.id, machineId: license.machineId, err: error }, 'Machine deactivation failed');
             // Continue with local deactivation even if Keygen fails
         }
     }
@@ -937,19 +940,19 @@ async function autoActivateEnvLicense(
 
     // Read and determine license type
     const licenseData = readLicenseFromEnvOrFile(envValue);
-    console.log(`[License] Detected license type: ${licenseData.type}`);
+    log.info({ organizationId, licenseType: licenseData.type }, 'Detected license type');
 
     const fingerprint = generateMachineFingerprint();
     const now = new Date();
 
     // Handle certificate-style license files (offline)
     if (licenseData.type === "certificate") {
-        console.log(`[License] Verifying license file certificate...`);
+        log.info({ organizationId }, 'Verifying license file certificate');
         const certResult = verifyLicenseFileCertificate(licenseData.content);
-        console.log(`[License] Certificate verification result: ${certResult.code} - ${certResult.detail}`);
+        log.info({ organizationId, code: certResult.code, detail: certResult.detail }, 'Certificate verification result');
 
         if (!certResult.valid) {
-            console.error(`[License] Certificate verification FAILED: ${certResult.code} - ${certResult.detail}`);
+            log.error({ organizationId, code: certResult.code, detail: certResult.detail }, 'Certificate verification failed');
             return {
                 success: false,
                 error: `License file verification failed: ${certResult.code} - ${certResult.detail}`,
@@ -1047,7 +1050,7 @@ async function autoActivateEnvLicense(
             });
         }
 
-        console.log(`[License] Activated env license (certificate) for org ${organizationId}`);
+        log.info({ organizationId, licenseType: 'certificate' }, 'Activated env license');
         return { success: true };
     }
 
@@ -1135,7 +1138,7 @@ async function autoActivateEnvLicense(
             });
         }
 
-        console.log(`[License] Activated env license (signed key) for org ${organizationId}`);
+        log.info({ organizationId, licenseType: 'signed_key' }, 'Activated env license');
         return { success: true };
     }
 
@@ -1286,7 +1289,7 @@ async function autoActivateEnvLicense(
         });
     }
 
-    console.log(`[License] Auto-activated env license (online) for org ${organizationId}`);
+    log.info({ organizationId, licenseType: 'online' }, 'Auto-activated env license');
     return { success: true };
 }
 
@@ -1354,13 +1357,13 @@ licenseRoutes.post("/internal/license-sync", async (c) => {
     const expectedKey = process.env.UNI_STATUS_INTERNAL_API_KEY;
 
     if (!expectedKey) {
-        console.error("[License Sync] INTERNAL_API_KEY not configured");
+        log.error('INTERNAL_API_KEY not configured');
         return c.json({ error: "Internal endpoint not configured" }, 503);
     }
 
     const providedKey = authHeader?.replace("Bearer ", "");
     if (!providedKey || providedKey !== expectedKey) {
-        console.warn("[License Sync] Invalid internal API key");
+        log.warn('Invalid internal API key');
         return c.json({ error: "Unauthorized" }, 401);
     }
 
@@ -1371,9 +1374,7 @@ licenseRoutes.post("/internal/license-sync", async (c) => {
         return c.json({ error: "Missing event or organizationId" }, 400);
     }
 
-    console.log(
-        `[License Sync] Received ${event} for org ${organizationId} at ${timestamp}`
-    );
+    log.info({ event, organizationId, timestamp }, 'Received license sync event');
 
     const license = await db.query.licenses.findFirst({
         where: eq(licenses.organizationId, organizationId),
@@ -1427,9 +1428,7 @@ licenseRoutes.post("/internal/license-sync", async (c) => {
                     { plan: "free", reason: "subscription_cancelled" }
                 );
 
-                console.log(
-                    `[License Sync] Revoked license ${license.id} for org ${organizationId}`
-                );
+                log.info({ licenseId: license.id, organizationId }, 'Revoked license');
             }
             break;
 
@@ -1465,9 +1464,7 @@ licenseRoutes.post("/internal/license-sync", async (c) => {
                     }
                 );
 
-                console.log(
-                    `[License Sync] Suspended license ${license.id} for org ${organizationId}`
-                );
+                log.info({ licenseId: license.id, organizationId }, 'Suspended license');
             }
             break;
 
@@ -1496,14 +1493,12 @@ licenseRoutes.post("/internal/license-sync", async (c) => {
                     { status: "active", reason: "payment_recovered" }
                 );
 
-                console.log(
-                    `[License Sync] Reinstated license ${license.id} for org ${organizationId}`
-                );
+                log.info({ licenseId: license.id, organizationId }, 'Reinstated license');
             }
             break;
 
         default:
-            console.log(`[License Sync] Unknown event type: ${event}`);
+            log.info({ event }, 'Unknown event type');
     }
 
     return c.json({
