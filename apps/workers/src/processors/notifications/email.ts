@@ -13,6 +13,10 @@ import {
   SubscriberMaintenanceEmail,
 } from "@uni-status/email";
 import type { SmtpCredentials, ResendCredentials } from "@uni-status/shared/types/credentials";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "notifications-email" });
+
 
 // Alert email data
 interface AlertEmailData {
@@ -149,7 +153,7 @@ export async function processEmailNotification(
   job: Job<EmailNotificationJob>
 ): Promise<{ success: boolean; to: string | string[] }> {
   if (!job.data) {
-    console.error(`[Email] Job ${job.id} has no data`);
+    log.error(`[Email] Job ${job.id} has no data`);
     throw new Error("Email job data is missing");
   }
 
@@ -164,7 +168,7 @@ export async function processEmailNotification(
   } = job.data;
   const attemptsMade = job.attemptsMade;
 
-  console.log(`[Email] Processing ${emailType} email to ${to} (attempt ${attemptsMade + 1}): ${subject}`);
+  log.info(`[Email] Processing ${emailType} email to ${to} (attempt ${attemptsMade + 1}): ${subject}`);
 
   try {
     // Build the email component
@@ -181,7 +185,7 @@ export async function processEmailNotification(
 
     if (!result.success) {
       const errorMsg = result.error || "Email send failed";
-      console.error(`[Email] Failed to send ${emailType} email (attempt ${attemptsMade + 1}):`, errorMsg);
+      log.error(`[Email] Failed to send ${emailType} email (attempt ${attemptsMade + 1}):`, errorMsg);
 
       // Log failure on final attempt
       if (alertHistoryId && channelId && attemptsMade >= 4) {
@@ -197,11 +201,11 @@ export async function processEmailNotification(
       await logNotification(alertHistoryId, channelId, true, null, null, attemptsMade + 1);
     }
 
-    console.log(`[Email] Successfully sent ${emailType} email to ${to}`);
+    log.info(`[Email] Successfully sent ${emailType} email to ${to}`);
     return { success: true, to };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    console.error(`[Email] Error processing ${emailType} email (attempt ${attemptsMade + 1}):`, errorMessage);
+    log.error(`[Email] Error processing ${emailType} email (attempt ${attemptsMade + 1}):`, errorMessage);
 
     // Log failure on final attempt (5 total attempts = index 4)
     if (alertHistoryId && channelId && attemptsMade >= 4) {

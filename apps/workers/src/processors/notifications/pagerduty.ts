@@ -2,6 +2,10 @@ import { Job } from "bullmq";
 import { nanoid } from "nanoid";
 import { db } from "@uni-status/database";
 import { notificationLogs } from "@uni-status/database/schema";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "notifications-pagerduty" });
+
 
 interface PagerDutyNotificationJob {
   routingKey: string;
@@ -76,7 +80,7 @@ export async function processPagerDutyNotification(job: Job<PagerDutyNotificatio
   const { routingKey, message, alertHistoryId, channelId } = job.data;
   const attemptsMade = job.attemptsMade;
 
-  console.log(`[PagerDuty] Sending ${message.eventAction} event (attempt ${attemptsMade + 1}): ${message.summary}`);
+  log.info(`[PagerDuty] Sending ${message.eventAction} event (attempt ${attemptsMade + 1}): ${message.summary}`);
 
   try {
     const payload = buildPagerDutyPayload(routingKey, message);
@@ -106,7 +110,7 @@ export async function processPagerDutyNotification(job: Job<PagerDutyNotificatio
       await logNotification(alertHistoryId, channelId, true, response.status, null, attemptsMade + 1);
     }
 
-    console.log(`[PagerDuty] Successfully sent ${message.eventAction} event, dedup_key: ${responseData.dedup_key || message.dedupKey}`);
+    log.info(`[PagerDuty] Successfully sent ${message.eventAction} event, dedup_key: ${responseData.dedup_key || message.dedupKey}`);
     return {
       success: true,
       statusCode: response.status,
@@ -114,7 +118,7 @@ export async function processPagerDutyNotification(job: Job<PagerDutyNotificatio
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    console.error(`[PagerDuty] Failed (attempt ${attemptsMade + 1}):`, errorMessage);
+    log.error(`[PagerDuty] Failed (attempt ${attemptsMade + 1}):`, errorMessage);
 
     // Log failure on final attempt (5 total attempts = index 4)
     if (alertHistoryId && channelId && attemptsMade >= 4) {

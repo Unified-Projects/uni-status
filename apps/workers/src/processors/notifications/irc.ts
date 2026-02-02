@@ -3,6 +3,10 @@ import { nanoid } from "nanoid";
 import { Client } from "irc-framework";
 import { db } from "@uni-status/database";
 import { notificationLogs } from "@uni-status/database/schema";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "notifications-irc" });
+
 
 interface IrcNotificationJob {
   // IRC connection config
@@ -81,7 +85,7 @@ export async function processIrcNotification(job: Job<IrcNotificationJob>) {
     channelId,
   } = data;
 
-  console.log(`[IRC] Sending notification to ${ircChannel} on ${ircServer} (attempt ${attemptsMade + 1})`);
+  log.info(`[IRC] Sending notification to ${ircChannel} on ${ircServer} (attempt ${attemptsMade + 1})`);
 
   return new Promise<{ success: boolean }>((resolve, reject) => {
     const client = new Client();
@@ -93,7 +97,7 @@ export async function processIrcNotification(job: Job<IrcNotificationJob>) {
       if (!messageDelivered) {
         client.quit("Connection timeout");
         const errorMsg = "IRC connection timeout after 30 seconds";
-        console.error(`[IRC] ${errorMsg}`);
+        log.error(`[IRC] ${errorMsg}`);
 
         if (alertHistoryId && channelId && attemptsMade >= 4) {
           logNotification(alertHistoryId, channelId, false, null, errorMsg, attemptsMade + 1);
@@ -103,7 +107,7 @@ export async function processIrcNotification(job: Job<IrcNotificationJob>) {
     }, 30000);
 
     client.on("registered", () => {
-      console.log(`[IRC] Connected to ${ircServer}, joining ${ircChannel}`);
+      log.info(`[IRC] Connected to ${ircServer}, joining ${ircChannel}`);
       client.join(ircChannel);
     });
 
@@ -122,7 +126,7 @@ export async function processIrcNotification(job: Job<IrcNotificationJob>) {
             logNotification(alertHistoryId, channelId, true, null, null, attemptsMade + 1);
           }
 
-          console.log(`[IRC] Successfully sent notification to ${ircChannel}`);
+          log.info(`[IRC] Successfully sent notification to ${ircChannel}`);
           resolve({ success: true });
         }, 1000);
       }
@@ -132,7 +136,7 @@ export async function processIrcNotification(job: Job<IrcNotificationJob>) {
       clearTimeout(connectionTimeout);
       if (!messageDelivered) {
         const errorMsg = "IRC connection closed before message was sent";
-        console.error(`[IRC] ${errorMsg}`);
+        log.error(`[IRC] ${errorMsg}`);
 
         if (alertHistoryId && channelId && attemptsMade >= 4) {
           logNotification(alertHistoryId, channelId, false, null, errorMsg, attemptsMade + 1);

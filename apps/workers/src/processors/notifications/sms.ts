@@ -2,6 +2,10 @@ import { Job } from "bullmq";
 import { nanoid } from "nanoid";
 import { db } from "@uni-status/database";
 import { notificationLogs } from "@uni-status/database/schema";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "notifications-sms" });
+
 
 interface SmsNotificationJob {
   to: string;  // Phone number in E.164 format (+1234567890)
@@ -65,7 +69,7 @@ export async function processSmsNotification(job: Job<SmsNotificationJob>) {
 
   if (!accountSid || !authToken || !fromNumber) {
     const errorMsg = "Twilio credentials not configured";
-    console.error(`[SMS] ${errorMsg}`);
+    log.error(`[SMS] ${errorMsg}`);
 
     if (alertHistoryId && channelId) {
       await logNotification(alertHistoryId, channelId, false, null, errorMsg, attemptsMade + 1);
@@ -73,7 +77,7 @@ export async function processSmsNotification(job: Job<SmsNotificationJob>) {
     throw new Error(errorMsg);
   }
 
-  console.log(`[SMS] Sending notification to ${to} (attempt ${attemptsMade + 1})`);
+  log.info(`[SMS] Sending notification to ${to} (attempt ${attemptsMade + 1})`);
 
   try {
     // Truncate message if needed
@@ -112,7 +116,7 @@ export async function processSmsNotification(job: Job<SmsNotificationJob>) {
       await logNotification(alertHistoryId, channelId, true, response.status, null, attemptsMade + 1);
     }
 
-    console.log(`[SMS] Successfully sent to ${to}, SID: ${responseData.sid}`);
+    log.info(`[SMS] Successfully sent to ${to}, SID: ${responseData.sid}`);
     return {
       success: true,
       statusCode: response.status,
@@ -120,7 +124,7 @@ export async function processSmsNotification(job: Job<SmsNotificationJob>) {
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    console.error(`[SMS] Failed (attempt ${attemptsMade + 1}):`, errorMessage);
+    log.error(`[SMS] Failed (attempt ${attemptsMade + 1}):`, errorMessage);
 
     // Log failure on final attempt (5 total attempts = index 4)
     if (alertHistoryId && channelId && attemptsMade >= 4) {

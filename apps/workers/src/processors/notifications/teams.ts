@@ -2,6 +2,10 @@ import { Job } from "bullmq";
 import { nanoid } from "nanoid";
 import { db } from "@uni-status/database";
 import { notificationLogs } from "@uni-status/database/schema";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "notifications-teams" });
+
 
 interface TeamsNotificationJob {
   webhookUrl: string;
@@ -130,7 +134,7 @@ export async function processTeamsNotification(job: Job<TeamsNotificationJob>) {
   const { webhookUrl, message, alertHistoryId, channelId } = job.data;
   const attemptsMade = job.attemptsMade;
 
-  console.log(`[Teams] Sending notification (attempt ${attemptsMade + 1}): ${message.title}`);
+  log.info(`[Teams] Sending notification (attempt ${attemptsMade + 1}): ${message.title}`);
 
   try {
     const adaptiveCard = buildAdaptiveCard(message);
@@ -159,11 +163,11 @@ export async function processTeamsNotification(job: Job<TeamsNotificationJob>) {
       await logNotification(alertHistoryId, channelId, true, response.status, null, attemptsMade + 1);
     }
 
-    console.log(`[Teams] Successfully sent notification`);
+    log.info(`[Teams] Successfully sent notification`);
     return { success: true, statusCode: response.status };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    console.error(`[Teams] Failed (attempt ${attemptsMade + 1}):`, errorMessage);
+    log.error(`[Teams] Failed (attempt ${attemptsMade + 1}):`, errorMessage);
 
     // Log failure on final attempt (5 total attempts = index 4)
     if (alertHistoryId && channelId && attemptsMade >= 4) {

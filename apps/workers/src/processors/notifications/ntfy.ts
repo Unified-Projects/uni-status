@@ -2,6 +2,10 @@ import { Job } from "bullmq";
 import { nanoid } from "nanoid";
 import { db } from "@uni-status/database";
 import { notificationLogs } from "@uni-status/database/schema";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "notifications-ntfy" });
+
 
 interface NtfyNotificationJob {
   topic: string;
@@ -77,7 +81,7 @@ export async function processNtfyNotification(job: Job<NtfyNotificationJob>) {
   const ntfyServer = server || "https://ntfy.sh";
   const ntfyUrl = `${ntfyServer}/${topic}`;
 
-  console.log(`[Ntfy] Sending notification to ${topic} (attempt ${attemptsMade + 1}): ${message.title}`);
+  log.info(`[Ntfy] Sending notification to ${topic} (attempt ${attemptsMade + 1}): ${message.title}`);
 
   try {
     // Build headers for ntfy
@@ -138,11 +142,11 @@ export async function processNtfyNotification(job: Job<NtfyNotificationJob>) {
       await logNotification(alertHistoryId, channelId, true, response.status, null, attemptsMade + 1);
     }
 
-    console.log(`[Ntfy] Successfully sent notification to ${topic}`);
+    log.info(`[Ntfy] Successfully sent notification to ${topic}`);
     return { success: true, statusCode: response.status };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    console.error(`[Ntfy] Failed (attempt ${attemptsMade + 1}):`, errorMessage);
+    log.error(`[Ntfy] Failed (attempt ${attemptsMade + 1}):`, errorMessage);
 
     // Log failure on final attempt (5 total attempts = index 4)
     if (alertHistoryId && channelId && attemptsMade >= 4) {

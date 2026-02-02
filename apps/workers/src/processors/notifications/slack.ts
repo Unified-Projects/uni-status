@@ -2,6 +2,10 @@ import { Job } from "bullmq";
 import { nanoid } from "nanoid";
 import { db } from "@uni-status/database";
 import { notificationLogs } from "@uni-status/database/schema";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "notifications-slack" });
+
 
 interface SlackNotificationJob {
   webhookUrl: string;
@@ -38,7 +42,7 @@ export async function processSlackNotification(job: Job<SlackNotificationJob>) {
   const { webhookUrl, message, alertHistoryId, channelId } = job.data;
   const attemptsMade = job.attemptsMade;
 
-  console.log(`[Slack] Sending notification (attempt ${attemptsMade + 1}): ${message.text}`);
+  log.info(`[Slack] Sending notification (attempt ${attemptsMade + 1}): ${message.text}`);
 
   try {
     const response = await fetch(webhookUrl, {
@@ -63,11 +67,11 @@ export async function processSlackNotification(job: Job<SlackNotificationJob>) {
       await logNotification(alertHistoryId, channelId, true, response.status, null, attemptsMade + 1);
     }
 
-    console.log(`[Slack] Successfully sent notification`);
+    log.info(`[Slack] Successfully sent notification`);
     return { success: true, statusCode: response.status };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    console.error(`[Slack] Failed (attempt ${attemptsMade + 1}):`, errorMessage);
+    log.error(`[Slack] Failed (attempt ${attemptsMade + 1}):`, errorMessage);
 
     // Log failure on final attempt (5 total attempts = index 4)
     if (alertHistoryId && channelId && attemptsMade >= 4) {

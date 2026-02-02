@@ -4,6 +4,10 @@ import type { OrganizationCredentials } from "@uni-status/shared/types/credentia
 import { QUEUE_NAMES } from "@uni-status/shared/constants";
 import { decrypt } from "@uni-status/shared/lib/crypto";
 import { signWebhookPayload } from "@uni-status/shared/lib/webhook-signing";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "lib-notification-builder" });
+
 
 // Map check status to alert status
 export function mapCheckStatusToAlertStatus(
@@ -84,9 +88,20 @@ export async function buildNotificationJobData(
 
   switch (channelType) {
     case "email": {
+      // Support both old and new format
+      let toAddresses: string | string[];
+      if (channel.config.toAddresses && Array.isArray(channel.config.toAddresses)) {
+        toAddresses = channel.config.toAddresses;
+      } else if (channel.config.email) {
+        // Backward compatibility
+        toAddresses = channel.config.email as string;
+      } else {
+        throw new Error("Email channel missing recipient addresses");
+      }
+
       return {
         ...loggingIds,
-        to: (channel.config.email as string) || "",
+        to: toAddresses,
         subject: `[Alert] ${alertData.monitorName} is ${alertData.status}`,
         emailType: "alert",
         data: {
@@ -99,6 +114,7 @@ export async function buildNotificationJobData(
           dashboardUrl: alertData.dashboardUrl,
           timestamp: alertData.timestamp,
         },
+        from: channel.config.fromAddress as string | undefined,
         orgSmtpCredentials: orgCredentials?.smtp,
         orgResendCredentials: orgCredentials?.resend,
       };
@@ -280,7 +296,7 @@ export async function buildNotificationJobData(
           body["signedAt"] = ts;
         } catch (error) {
           // Best-effort signing
-          console.error("[Notification] Failed to sign webhook payload", error);
+          log.error("[Notification] Failed to sign webhook payload", error);
         }
       }
 

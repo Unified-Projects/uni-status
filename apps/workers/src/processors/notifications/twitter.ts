@@ -3,6 +3,10 @@ import { nanoid } from "nanoid";
 import { TwitterApi } from "twitter-api-v2";
 import { db } from "@uni-status/database";
 import { notificationLogs } from "@uni-status/database/schema";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "notifications-twitter" });
+
 
 interface TwitterNotificationJob {
   // Twitter API credentials
@@ -114,7 +118,7 @@ export async function processTwitterNotification(job: Job<TwitterNotificationJob
     channelId,
   } = data;
 
-  console.log(`[Twitter] Sending ${twitterMode} notification (attempt ${attemptsMade + 1})`);
+  log.info(`[Twitter] Sending ${twitterMode} notification (attempt ${attemptsMade + 1})`);
 
   try {
     // Create Twitter client with OAuth 1.0a User Context
@@ -129,7 +133,7 @@ export async function processTwitterNotification(job: Job<TwitterNotificationJob
       // Direct Message mode
       if (!twitterDmRecipient) {
         const errorMsg = "Twitter DM recipient ID is required for DM mode";
-        console.error(`[Twitter] ${errorMsg}`);
+        log.error(`[Twitter] ${errorMsg}`);
 
         if (alertHistoryId && channelId && attemptsMade >= 4) {
           await logNotification(alertHistoryId, channelId, false, null, errorMsg, attemptsMade + 1);
@@ -145,7 +149,7 @@ export async function processTwitterNotification(job: Job<TwitterNotificationJob
         text: message,
       });
 
-      console.log(`[Twitter] Successfully sent DM to ${twitterDmRecipient}`);
+      log.info(`[Twitter] Successfully sent DM to ${twitterDmRecipient}`);
     } else {
       // Tweet mode
       const message = formatTwitterMessage(data, 280);
@@ -153,7 +157,7 @@ export async function processTwitterNotification(job: Job<TwitterNotificationJob
       // Post tweet via v2 API
       await client.v2.tweet(message);
 
-      console.log(`[Twitter] Successfully posted tweet`);
+      log.info(`[Twitter] Successfully posted tweet`);
     }
 
     // Log success
@@ -164,7 +168,7 @@ export async function processTwitterNotification(job: Job<TwitterNotificationJob
     return { success: true };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    console.error(`[Twitter] Failed (attempt ${attemptsMade + 1}):`, errorMessage);
+    log.error(`[Twitter] Failed (attempt ${attemptsMade + 1}):`, errorMessage);
 
     // Log failure on final attempt (5 total attempts = index 4)
     if (alertHistoryId && channelId && attemptsMade >= 4) {

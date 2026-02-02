@@ -4,6 +4,10 @@ import { db } from "@uni-status/database";
 import { notificationLogs } from "@uni-status/database/schema";
 import { decrypt } from "@uni-status/shared/lib/crypto";
 import { signWebhookPayload } from "@uni-status/shared/lib/webhook-signing";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "notifications-webhook" });
+
 
 interface WebhookNotificationJob {
   url: string;
@@ -41,7 +45,7 @@ export async function processWebhookNotification(job: Job<WebhookNotificationJob
   const { url, method = "POST", headers = {}, body, alertHistoryId, channelId, signingKey } = job.data;
   const attemptsMade = job.attemptsMade;
 
-  console.log(`[Webhook] Sending notification to ${url} (attempt ${attemptsMade + 1})`);
+  log.info(`[Webhook] Sending notification to ${url} (attempt ${attemptsMade + 1})`);
 
   try {
     const bodyString = body ? JSON.stringify(body) : "";
@@ -60,7 +64,7 @@ export async function processWebhookNotification(job: Job<WebhookNotificationJob
         requestHeaders["X-Uni-Status-Signature"] = `sha256=${signature}`;
         requestHeaders["X-Uni-Status-Timestamp"] = timestamp.toString();
       } catch (signError) {
-        console.error("[Webhook] Failed to sign payload:", signError);
+        log.error("[Webhook] Failed to sign payload:", signError);
         // Continue without signing rather than failing the entire notification
       }
     }
@@ -85,11 +89,11 @@ export async function processWebhookNotification(job: Job<WebhookNotificationJob
       await logNotification(alertHistoryId, channelId, true, response.status, null, attemptsMade + 1);
     }
 
-    console.log(`[Webhook] Successfully sent to ${url}`);
+    log.info(`[Webhook] Successfully sent to ${url}`);
     return { success: true, statusCode: response.status };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    console.error(`[Webhook] Failed (attempt ${attemptsMade + 1}):`, errorMessage);
+    log.error(`[Webhook] Failed (attempt ${attemptsMade + 1}):`, errorMessage);
 
     // Log failure on final attempt (5 total attempts = index 4)
     if (alertHistoryId && channelId && attemptsMade >= 4) {

@@ -2,6 +2,10 @@ import { Job } from "bullmq";
 import { nanoid } from "nanoid";
 import { db } from "@uni-status/database";
 import { notificationLogs } from "@uni-status/database/schema";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "notifications-google-chat" });
+
 
 interface GoogleChatNotificationJob {
   webhookUrl: string;
@@ -166,7 +170,7 @@ export async function processGoogleChatNotification(job: Job<GoogleChatNotificat
   const { webhookUrl, message, alertHistoryId, channelId } = job.data;
   const attemptsMade = job.attemptsMade;
 
-  console.log(`[Google Chat] Sending notification (attempt ${attemptsMade + 1}): ${message.title}`);
+  log.info(`[Google Chat] Sending notification (attempt ${attemptsMade + 1}): ${message.title}`);
 
   try {
     const chatCard = buildGoogleChatCard(message);
@@ -195,11 +199,11 @@ export async function processGoogleChatNotification(job: Job<GoogleChatNotificat
       await logNotification(alertHistoryId, channelId, true, response.status, null, attemptsMade + 1);
     }
 
-    console.log(`[Google Chat] Successfully sent notification`);
+    log.info(`[Google Chat] Successfully sent notification`);
     return { success: true, statusCode: response.status };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    console.error(`[Google Chat] Failed (attempt ${attemptsMade + 1}):`, errorMessage);
+    log.error(`[Google Chat] Failed (attempt ${attemptsMade + 1}):`, errorMessage);
 
     // Log failure on final attempt (5 total attempts = index 4)
     if (alertHistoryId && channelId && attemptsMade >= 4) {
