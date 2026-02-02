@@ -7,6 +7,10 @@ import { publishEvent } from "../lib/redis";
 import { evaluateAlerts } from "../lib/alert-evaluator";
 import type { CheckStatus } from "@uni-status/shared/types";
 import * as grpc from "@grpc/grpc-js";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "grpc-check" });
+
 
 interface GrpcConfig {
   serviceName?: string;
@@ -78,7 +82,7 @@ const HEALTH_CHECK_PROTO = {
 export async function processGrpcCheck(job: Job<GrpcCheckJob>) {
   const { monitorId, url, timeoutMs, config } = job.data;
 
-  console.log(`Processing gRPC check for ${monitorId}`);
+  log.info(`Processing gRPC check for ${monitorId}`);
 
   const grpcConfig = config?.grpc || {};
   const defaultRegion = process.env.MONITOR_DEFAULT_REGION || "uk";
@@ -177,7 +181,7 @@ export async function processGrpcCheck(job: Job<GrpcCheckJob>) {
         });
       }
 
-      console.log(`gRPC check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
+      log.info(`gRPC check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
 
       resolve({
         status,
@@ -242,7 +246,7 @@ export async function processGrpcCheck(job: Job<GrpcCheckJob>) {
         if (grpcConfig.serviceName && grpcConfig.methodName) {
           // For custom service calls, we'd need the proto definition
           // For now, we just verify connectivity was successful
-          console.log(`gRPC channel ready for ${url}, service: ${grpcConfig.serviceName}`);
+          log.info(`gRPC channel ready for ${url}, service: ${grpcConfig.serviceName}`);
           await cleanup("success");
         } else {
           // Standard health check - try to make a health check call
@@ -278,7 +282,7 @@ export async function processGrpcCheck(job: Job<GrpcCheckJob>) {
                 // Health service may not be implemented - if we got this far, channel is up
                 if (error.code === grpc.status.UNIMPLEMENTED) {
                   // Health service not implemented, but connection works
-                  console.log(`gRPC health service not implemented at ${url}, but connection succeeded`);
+                  log.info(`gRPC health service not implemented at ${url}, but connection succeeded`);
                   await cleanup("success");
                 } else if (error.code === grpc.status.UNAVAILABLE) {
                   await cleanup("failure", error.message, "SERVICE_UNAVAILABLE");

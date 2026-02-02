@@ -8,6 +8,10 @@ import { publishEvent } from "../lib/redis";
 import { evaluateAlerts } from "../lib/alert-evaluator";
 import { linkCheckToActiveIncident } from "../lib/incident-linker";
 import type { CheckStatus } from "@uni-status/shared/types";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "email-auth-check" });
+
 
 interface EmailAuthCheckJob {
   monitorId: string;
@@ -336,7 +340,7 @@ export async function processEmailAuthCheck(job: Job<EmailAuthCheckJob>) {
     : DEFAULT_DKIM_SELECTORS;
   const validatePolicy = emailAuthConfig?.validatePolicy ?? true;
 
-  console.log(`Processing Email Auth check for ${monitorId}: ${domain}`);
+  log.info(`Processing Email Auth check for ${monitorId}: ${domain}`);
 
   const startTime = performance.now();
   let status: CheckStatus = "success";
@@ -504,7 +508,7 @@ export async function processEmailAuthCheck(job: Job<EmailAuthCheckJob>) {
     });
   }
 
-  console.log(
+  log.info(
     `Email Auth check completed for ${monitorId}: ${status} (${responseTimeMs}ms) - ` +
     `SPF: ${spfResult.status}, DKIM: ${dkimResult.status}, DMARC: ${dmarcResult.status}, Score: ${overallScore}`
   );

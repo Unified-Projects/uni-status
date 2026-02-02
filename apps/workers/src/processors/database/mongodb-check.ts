@@ -8,6 +8,10 @@ import { evaluateAlerts } from "../../lib/alert-evaluator";
 import { decryptConfigSecrets } from "@uni-status/shared/crypto";
 import type { CheckStatus } from "@uni-status/shared/types";
 import { MongoClient } from "mongodb";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "database-mongodb-check" });
+
 
 interface DatabaseConfig extends Record<string, unknown> {
   host: string;
@@ -34,11 +38,11 @@ interface MongodbCheckJob {
 export async function processMongodbCheck(job: Job<MongodbCheckJob>) {
   const { monitorId, url, timeoutMs, config } = job.data;
 
-  console.log(`Processing MongoDB check for ${monitorId}`);
+  log.info(`Processing MongoDB check for ${monitorId}`);
 
   const dbConfig = config?.database;
   if (!dbConfig) {
-    console.error(`No database config found for monitor ${monitorId}`);
+    log.error(`No database config found for monitor ${monitorId}`);
     return { status: "error" as CheckStatus, message: "Missing database configuration" };
   }
 
@@ -240,7 +244,7 @@ export async function processMongodbCheck(job: Job<MongodbCheckJob>) {
     });
   }
 
-  console.log(`MongoDB check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
+  log.info(`MongoDB check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
 
   return {
     status,

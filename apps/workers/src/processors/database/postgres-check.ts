@@ -8,6 +8,10 @@ import { evaluateAlerts } from "../../lib/alert-evaluator";
 import { decryptConfigSecrets } from "@uni-status/shared/crypto";
 import type { CheckStatus } from "@uni-status/shared/types";
 import { Client as PgClient } from "pg";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "database-postgres-check" });
+
 
 interface DatabaseConfig extends Record<string, unknown> {
   host: string;
@@ -32,11 +36,11 @@ interface PostgresCheckJob {
 export async function processPostgresCheck(job: Job<PostgresCheckJob>) {
   const { monitorId, url, timeoutMs, config } = job.data;
 
-  console.log(`Processing Postgres check for ${monitorId}`);
+  log.info(`Processing Postgres check for ${monitorId}`);
 
   const dbConfig = config?.database;
   if (!dbConfig) {
-    console.error(`No database config found for monitor ${monitorId}`);
+    log.error(`No database config found for monitor ${monitorId}`);
     return { status: "error" as CheckStatus, message: "Missing database configuration" };
   }
 
@@ -192,7 +196,7 @@ export async function processPostgresCheck(job: Job<PostgresCheckJob>) {
     });
   }
 
-  console.log(`Postgres check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
+  log.info(`Postgres check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
 
   return {
     status,

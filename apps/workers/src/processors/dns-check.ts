@@ -9,6 +9,10 @@ import { publishEvent } from "../lib/redis";
 import { evaluateAlerts } from "../lib/alert-evaluator";
 import { linkCheckToActiveIncident } from "../lib/incident-linker";
 import type { CheckStatus } from "@uni-status/shared/types";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "dns-check" });
+
 
 type DnsRecordType = "A" | "AAAA" | "CNAME" | "TXT" | "MX" | "SRV" | "NS" | "SOA" | "PTR";
 type ResolverType = "udp" | "doh" | "dot";
@@ -341,7 +345,7 @@ export async function processDnsCheck(job: Job<DnsCheckJob>) {
   const nameserver = dnsConfig?.nameserver;
   const expectedValue = dnsConfig?.expectedValue;
 
-  console.log(`Processing DNS check for ${monitorId}: ${url} (${recordType} record)`);
+  log.info(`Processing DNS check for ${monitorId}: ${url} (${recordType} record)`);
 
   let status: CheckStatus = "success";
   let responseTimeMs = 0;
@@ -616,8 +620,8 @@ export async function processDnsCheck(job: Job<DnsCheckJob>) {
     });
   }
 
-  console.log(`DNS check completed for ${monitorId}: ${status} (${responseTimeMs}ms) - ${recordType}: ${aggregatedRecords.join(", ") || "no records"}`);
-  console.log(
+  log.info(`DNS check completed for ${monitorId}: ${status} (${responseTimeMs}ms) - ${recordType}: ${aggregatedRecords.join(", ") || "no records"}`);
+  log.info(
     `DNS detail -> records: ${aggregatedRecords.join(", ") || "none"}; resolvers: ${
       resolverResults.length
     }; strategy: ${resolverStrategy}`

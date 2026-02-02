@@ -8,6 +8,10 @@ import { evaluateAlerts } from "../../lib/alert-evaluator";
 import { decryptConfigSecrets } from "@uni-status/shared/crypto";
 import type { CheckStatus } from "@uni-status/shared/types";
 import amqp from "amqplib";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "broker-amqp-check" });
+
 
 interface BrokerConfig extends Record<string, unknown> {
   host: string;
@@ -31,11 +35,11 @@ interface AmqpCheckJob {
 export async function processAmqpCheck(job: Job<AmqpCheckJob>) {
   const { monitorId, url, timeoutMs, config } = job.data;
 
-  console.log(`Processing AMQP check for ${monitorId}`);
+  log.info(`Processing AMQP check for ${monitorId}`);
 
   const brokerConfig = config?.broker;
   if (!brokerConfig) {
-    console.error(`No broker config found for monitor ${monitorId}`);
+    log.error(`No broker config found for monitor ${monitorId}`);
     return { status: "error" as CheckStatus, message: "Missing broker configuration" };
   }
 
@@ -72,7 +76,7 @@ export async function processAmqpCheck(job: Job<AmqpCheckJob>) {
     const activeConnection = await Promise.race([connectPromise, timeoutPromise]);
     connection = activeConnection;
 
-    console.log(`AMQP connected to ${decryptedConfig.host}:${decryptedConfig.port}`);
+    log.info(`AMQP connected to ${decryptedConfig.host}:${decryptedConfig.port}`);
 
     // Create a channel to verify full connectivity
     const activeChannel = await activeConnection.createChannel();
@@ -82,7 +86,7 @@ export async function processAmqpCheck(job: Job<AmqpCheckJob>) {
     if (decryptedConfig.queue) {
       try {
         const queueInfo = await activeChannel.checkQueue(decryptedConfig.queue);
-        console.log(`AMQP queue ${decryptedConfig.queue} exists with ${queueInfo.messageCount} messages`);
+        log.info(`AMQP queue ${decryptedConfig.queue} exists with ${queueInfo.messageCount} messages`);
       } catch (queueError) {
         // Queue doesn't exist - this is a failure condition if queue was specified
         if (queueError instanceof Error && queueError.message.includes("NOT_FOUND")) {
@@ -215,7 +219,7 @@ export async function processAmqpCheck(job: Job<AmqpCheckJob>) {
     });
   }
 
-  console.log(`AMQP check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
+  log.info(`AMQP check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
 
   return {
     status,

@@ -2,6 +2,10 @@ import { db } from "@uni-status/database";
 import { checkResults, incidents } from "@uni-status/database/schema";
 import { eq, and, ne, sql } from "drizzle-orm";
 import type { CheckStatus } from "@uni-status/shared/types";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "lib-incident-linker" });
+
 
 /**
  * Links a failed check result to any active incident affecting the monitor.
@@ -44,7 +48,7 @@ export async function linkCheckToActiveIncident(
     }
   } catch (error) {
     // Log but don't fail the check if incident linking fails
-    console.error(
+    log.error(
       `Failed to link check result ${checkResultId} to incident:`,
       error
     );

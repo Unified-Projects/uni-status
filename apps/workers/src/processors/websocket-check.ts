@@ -7,6 +7,10 @@ import { publishEvent } from "../lib/redis";
 import { evaluateAlerts } from "../lib/alert-evaluator";
 import type { CheckStatus } from "@uni-status/shared/types";
 import WebSocket from "ws";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "websocket-check" });
+
 
 interface WebSocketConfig {
   messageToSend?: string;
@@ -27,7 +31,7 @@ interface WebSocketCheckJob {
 export async function processWebSocketCheck(job: Job<WebSocketCheckJob>) {
   const { monitorId, url, timeoutMs, config } = job.data;
 
-  console.log(`Processing WebSocket check for ${monitorId}`);
+  log.info(`Processing WebSocket check for ${monitorId}`);
 
   const wsConfig = config?.websocket || {};
   const defaultRegion = process.env.MONITOR_DEFAULT_REGION || "uk";
@@ -126,7 +130,7 @@ export async function processWebSocketCheck(job: Job<WebSocketCheckJob>) {
         });
       }
 
-      console.log(`WebSocket check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
+      log.info(`WebSocket check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
 
       resolve({
         status,
@@ -151,7 +155,7 @@ export async function processWebSocketCheck(job: Job<WebSocketCheckJob>) {
       ws = new WebSocket(url, wsConfig.subprotocol ? [wsConfig.subprotocol] : undefined, wsOptions);
 
       ws.on("open", async () => {
-        console.log(`WebSocket connected to ${url}`);
+        log.info(`WebSocket connected to ${url}`);
 
         // If we need to send a message and expect a response
         if (wsConfig.messageToSend) {

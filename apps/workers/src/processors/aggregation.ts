@@ -3,6 +3,10 @@ import { nanoid } from "nanoid";
 import { db } from "@uni-status/database";
 import { checkResults, checkResultsHourly } from "@uni-status/database/schema";
 import { eq, and, gte, lt, sql } from "drizzle-orm";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "aggregation" });
+
 
 interface AggregationJob {
   monitorId: string;
@@ -15,7 +19,7 @@ export async function processAggregation(job: Job<AggregationJob>) {
   const hourStart = new Date(hour);
   const hourEnd = new Date(hourStart.getTime() + 60 * 60 * 1000);
 
-  console.log(`Aggregating results for monitor ${monitorId} at ${hour}`);
+  log.info(`Aggregating results for monitor ${monitorId} at ${hour}`);
 
   // Get all results for this hour
   const results = await db.query.checkResults.findMany({
@@ -28,7 +32,7 @@ export async function processAggregation(job: Job<AggregationJob>) {
   });
 
   if (results.length === 0) {
-    console.log("No results to aggregate");
+    log.info("No results to aggregate");
     return { success: true, count: 0 };
   }
 
@@ -84,7 +88,7 @@ export async function processAggregation(job: Job<AggregationJob>) {
       set: aggregate,
     });
 
-  console.log(`Aggregated ${results.length} results for monitor ${monitorId}`);
+  log.info(`Aggregated ${results.length} results for monitor ${monitorId}`);
 
   return { success: true, count: results.length };
 }

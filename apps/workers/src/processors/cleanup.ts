@@ -3,6 +3,10 @@ import { db } from "@uni-status/database";
 import { checkResults, crowdsourcedReports } from "@uni-status/database/schema";
 import { lt } from "drizzle-orm";
 import { DATA_RETENTION } from "@uni-status/shared/constants";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "cleanup" });
+
 
 interface CleanupJob {
   type: "check_results" | "audit_logs" | "crowdsourced_reports" | "all";
@@ -11,7 +15,7 @@ interface CleanupJob {
 export async function processCleanup(job: Job<CleanupJob>) {
   const { type } = job.data;
 
-  console.log(`Running cleanup job: ${type}`);
+  log.info(`Running cleanup job: ${type}`);
 
   const results = {
     checkResults: 0,
@@ -31,7 +35,7 @@ export async function processCleanup(job: Job<CleanupJob>) {
       .returning();
 
     results.checkResults = deleted.length;
-    console.log(`Deleted ${deleted.length} check results older than ${retentionDays} days`);
+    log.info(`Deleted ${deleted.length} check results older than ${retentionDays} days`);
   }
 
   // Cleanup audit logs - handled by enterprise package
@@ -48,9 +52,9 @@ export async function processCleanup(job: Job<CleanupJob>) {
         .returning();
 
       results.auditLogs = deleted.length;
-      console.log(`Deleted ${deleted.length} audit logs older than ${retentionDays} days`);
+      log.info(`Deleted ${deleted.length} audit logs older than ${retentionDays} days`);
     } catch {
-      console.log("Audit logs cleanup skipped - enterprise package not available");
+      log.info("Audit logs cleanup skipped - enterprise package not available");
     }
   }
 
@@ -64,10 +68,10 @@ export async function processCleanup(job: Job<CleanupJob>) {
       .returning();
 
     results.crowdsourcedReports = deleted.length;
-    console.log(`Deleted ${deleted.length} expired crowdsourced reports`);
+    log.info(`Deleted ${deleted.length} expired crowdsourced reports`);
   }
 
-  console.log("Cleanup completed:", results);
+  log.info("Cleanup completed:", results);
 
   return results;
 }

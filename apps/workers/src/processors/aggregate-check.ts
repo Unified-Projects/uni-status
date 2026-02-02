@@ -6,6 +6,10 @@ import { eq, and, inArray } from "drizzle-orm";
 import { publishEvent } from "../lib/redis";
 import { evaluateAlerts } from "../lib/alert-evaluator";
 import type { CheckStatus } from "@uni-status/shared/types";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "aggregate-check" });
+
 
 interface AggregateConfig {
   thresholdMode: "absolute" | "percentage";
@@ -27,7 +31,7 @@ interface AggregateCheckJob {
 export async function processAggregateCheck(job: Job<AggregateCheckJob>) {
   const { monitorId, config } = job.data;
 
-  console.log(`Processing aggregate check for ${monitorId}`);
+  log.info(`Processing aggregate check for ${monitorId}`);
 
   // Fetch monitor to get organizationId and config if not provided
   const monitor = await db
@@ -40,7 +44,7 @@ export async function processAggregateCheck(job: Job<AggregateCheckJob>) {
     .limit(1);
 
   if (!monitor[0]) {
-    console.error(`Monitor not found: ${monitorId}`);
+    log.error(`Monitor not found: ${monitorId}`);
     return { status: "error" as CheckStatus, message: "Monitor not found" };
   }
 
@@ -49,7 +53,7 @@ export async function processAggregateCheck(job: Job<AggregateCheckJob>) {
 
   const aggregateConfig = monitorConfig?.aggregate;
   if (!aggregateConfig) {
-    console.error(`No aggregate config found for monitor ${monitorId}`);
+    log.error(`No aggregate config found for monitor ${monitorId}`);
     // Still update the monitor status so it doesn't stay pending forever
     const now = new Date();
     await db
@@ -256,7 +260,7 @@ export async function processAggregateCheck(job: Job<AggregateCheckJob>) {
     responseTimeMs,
   });
 
-  console.log(`Aggregate check completed for ${monitorId}: ${status}`);
+  log.info(`Aggregate check completed for ${monitorId}: ${status}`);
 
   return {
     status,

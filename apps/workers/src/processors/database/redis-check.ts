@@ -8,6 +8,10 @@ import { evaluateAlerts } from "../../lib/alert-evaluator";
 import { decryptConfigSecrets } from "@uni-status/shared/crypto";
 import type { CheckStatus } from "@uni-status/shared/types";
 import { Redis } from "ioredis";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "database-redis-check" });
+
 
 interface DatabaseConfig extends Record<string, unknown> {
   host: string;
@@ -31,11 +35,11 @@ interface RedisCheckJob {
 export async function processRedisCheck(job: Job<RedisCheckJob>) {
   const { monitorId, url, timeoutMs, config } = job.data;
 
-  console.log(`Processing Redis check for ${monitorId}`);
+  log.info(`Processing Redis check for ${monitorId}`);
 
   const dbConfig = config?.database;
   if (!dbConfig) {
-    console.error(`No database config found for monitor ${monitorId}`);
+    log.error(`No database config found for monitor ${monitorId}`);
     return { status: "error" as CheckStatus, message: "Missing database configuration" };
   }
 
@@ -190,7 +194,7 @@ export async function processRedisCheck(job: Job<RedisCheckJob>) {
     });
   }
 
-  console.log(`Redis check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
+  log.info(`Redis check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
 
   return {
     status,

@@ -3,6 +3,10 @@ import { nanoid } from "nanoid";
 import { db } from "@uni-status/database";
 import { checkResultsHourly, checkResultsDaily } from "@uni-status/database/schema";
 import { eq, and, gte, lt, sql } from "drizzle-orm";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "daily-aggregation" });
+
 
 interface DailyAggregationJob {
     monitorId: string;
@@ -16,7 +20,7 @@ export async function processDailyAggregation(job: Job<DailyAggregationJob>) {
     dayStart.setUTCHours(0, 0, 0, 0);
     const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
 
-    console.log(`[Daily Aggregation] Aggregating results for monitor ${monitorId} on ${date}`);
+    log.info(`[Daily Aggregation] Aggregating results for monitor ${monitorId} on ${date}`);
 
     // Get all hourly aggregates for this day
     const hourlyResults = await db.query.checkResultsHourly.findMany({
@@ -28,7 +32,7 @@ export async function processDailyAggregation(job: Job<DailyAggregationJob>) {
     });
 
     if (hourlyResults.length === 0) {
-        console.log("[Daily Aggregation] No hourly results to aggregate");
+        log.info("[Daily Aggregation] No hourly results to aggregate");
         return { success: true, count: 0 };
     }
 
@@ -121,7 +125,7 @@ export async function processDailyAggregation(job: Job<DailyAggregationJob>) {
                 },
             });
 
-        console.log(`[Daily Aggregation] Aggregated ${hours.length} hourly results for monitor ${monitorId} region ${region}`);
+        log.info(`[Daily Aggregation] Aggregated ${hours.length} hourly results for monitor ${monitorId} region ${region}`);
     }
 
     return { success: true, count: hourlyResults.length, regions: byRegion.size };

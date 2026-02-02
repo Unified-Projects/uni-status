@@ -8,6 +8,10 @@ import { evaluateAlerts } from "../../lib/alert-evaluator";
 import { decryptConfigSecrets } from "@uni-status/shared/crypto";
 import type { CheckStatus } from "@uni-status/shared/types";
 import mysql from "mysql2/promise";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "database-mysql-check" });
+
 
 interface DatabaseConfig extends Record<string, unknown> {
   host: string;
@@ -32,11 +36,11 @@ interface MysqlCheckJob {
 export async function processMysqlCheck(job: Job<MysqlCheckJob>) {
   const { monitorId, url, timeoutMs, config } = job.data;
 
-  console.log(`Processing MySQL check for ${monitorId}`);
+  log.info(`Processing MySQL check for ${monitorId}`);
 
   const dbConfig = config?.database;
   if (!dbConfig) {
-    console.error(`No database config found for monitor ${monitorId}`);
+    log.error(`No database config found for monitor ${monitorId}`);
     return { status: "error" as CheckStatus, message: "Missing database configuration" };
   }
 
@@ -190,7 +194,7 @@ export async function processMysqlCheck(job: Job<MysqlCheckJob>) {
     });
   }
 
-  console.log(`MySQL check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
+  log.info(`MySQL check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
 
   return {
     status,

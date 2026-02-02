@@ -9,6 +9,10 @@ import { decryptConfigSecrets } from "@uni-status/shared/crypto";
 import type { CheckStatus } from "@uni-status/shared/types";
 import * as net from "net";
 import * as tls from "tls";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "protocol-ldap-check" });
+
 
 interface ProtocolConfig extends Record<string, unknown> {
   host: string;
@@ -165,11 +169,11 @@ function parseLdapBindResponse(data: Buffer): { resultCode: number; errorMessage
 export async function processLdapCheck(job: Job<LdapCheckJob>) {
   const { monitorId, url, timeoutMs, config } = job.data;
 
-  console.log(`Processing LDAP check for ${monitorId}`);
+  log.info(`Processing LDAP check for ${monitorId}`);
 
   const protocolConfig = config?.protocol;
   if (!protocolConfig) {
-    console.error(`No protocol config found for monitor ${monitorId}`);
+    log.error(`No protocol config found for monitor ${monitorId}`);
     return { status: "error" as CheckStatus, message: "Missing protocol configuration" };
   }
 
@@ -274,7 +278,7 @@ export async function processLdapCheck(job: Job<LdapCheckJob>) {
         });
       }
 
-      console.log(`LDAP check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
+      log.info(`LDAP check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
 
       resolve({
         status,
@@ -290,7 +294,7 @@ export async function processLdapCheck(job: Job<LdapCheckJob>) {
 
     try {
       const connectCallback = () => {
-        console.log(`LDAP connected to ${decryptedConfig.host}:${decryptedConfig.port}`);
+        log.info(`LDAP connected to ${decryptedConfig.host}:${decryptedConfig.port}`);
         currentState = "bind";
 
         // Send bind request (anonymous or with credentials)

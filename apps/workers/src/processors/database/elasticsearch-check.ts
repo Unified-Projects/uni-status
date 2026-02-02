@@ -8,6 +8,10 @@ import { evaluateAlerts } from "../../lib/alert-evaluator";
 import { decryptConfigSecrets } from "@uni-status/shared/crypto";
 import type { CheckStatus } from "@uni-status/shared/types";
 import { Client as ElasticsearchClient } from "@elastic/elasticsearch";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "database-elasticsearch-check" });
+
 
 interface DatabaseConfig extends Record<string, unknown> {
   host: string;
@@ -33,11 +37,11 @@ interface ElasticsearchCheckJob {
 export async function processElasticsearchCheck(job: Job<ElasticsearchCheckJob>) {
   const { monitorId, url, timeoutMs, config } = job.data;
 
-  console.log(`Processing Elasticsearch check for ${monitorId}`);
+  log.info(`Processing Elasticsearch check for ${monitorId}`);
 
   const dbConfig = config?.database;
   if (!dbConfig) {
-    console.error(`No database config found for monitor ${monitorId}`);
+    log.error(`No database config found for monitor ${monitorId}`);
     return { status: "error" as CheckStatus, message: "Missing database configuration" };
   }
 
@@ -247,7 +251,7 @@ export async function processElasticsearchCheck(job: Job<ElasticsearchCheckJob>)
     });
   }
 
-  console.log(`Elasticsearch check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
+  log.info(`Elasticsearch check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
 
   return {
     status,

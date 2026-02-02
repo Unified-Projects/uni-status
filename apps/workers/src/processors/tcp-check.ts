@@ -7,6 +7,10 @@ import { publishEvent } from "../lib/redis";
 import { evaluateAlerts } from "../lib/alert-evaluator";
 import { linkCheckToActiveIncident } from "../lib/incident-linker";
 import type { CheckStatus } from "@uni-status/shared/types";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "tcp-check" });
+
 
 interface TcpCheckJob {
   monitorId: string;
@@ -30,7 +34,7 @@ export async function processTcpCheck(job: Job<TcpCheckJob>) {
     : preferredRegion;
   const tcpOptions = assertions?.tcpOptions;
 
-  console.log(`Processing TCP check for ${monitorId}: ${url}`);
+  log.info(`Processing TCP check for ${monitorId}: ${url}`);
 
   const { hostname, port } = parseTcpUrl(url);
 
@@ -213,7 +217,7 @@ export async function processTcpCheck(job: Job<TcpCheckJob>) {
     });
   }
 
-  console.log(
+  log.info(
     `TCP check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`
   );
 

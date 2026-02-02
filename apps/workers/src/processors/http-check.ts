@@ -9,6 +9,10 @@ import { linkCheckToActiveIncident } from "../lib/incident-linker";
 import { fetchPageSpeedData, checkPageSpeedThresholds, checkWebVitalsThresholds, type PageSpeedScores, type WebVitals } from "../lib/pagespeed";
 import { analyzeSecurityHeaders } from "../lib/security-headers";
 import type { CheckStatus, SecurityHeadersAnalysis } from "@uni-status/shared/types";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "http-check" });
+
 
 interface SyntheticStep {
   action: "goto" | "click" | "type" | "waitForSelector" | "waitForTimeout";
@@ -148,7 +152,7 @@ export async function processHttpCheck(job: Job<HttpCheckJob>) {
     ? defaultRegion
     : preferredRegion;
 
-  console.log(`Processing HTTP check for ${monitorId}: ${url}`);
+  log.info(`Processing HTTP check for ${monitorId}: ${url}`);
 
   const startTime = performance.now();
   let status: CheckStatus = "success";
@@ -218,7 +222,7 @@ export async function processHttpCheck(job: Job<HttpCheckJob>) {
       responseSizeBytes = bodyBuffer.byteLength;
       responseBodyText = new TextDecoder().decode(bodyBuffer);
     } catch (bodyErr) {
-      console.warn(`Failed to read response body for ${monitorId}:`, bodyErr);
+      log.warn(`Failed to read response body for ${monitorId}:`, bodyErr);
     }
 
     // Check assertions
@@ -571,7 +575,7 @@ export async function processHttpCheck(job: Job<HttpCheckJob>) {
   // PageSpeed Insights check (only if enabled and HTTP check was successful)
   if (config?.pagespeed?.enabled && (status === "success" || status === "degraded")) {
     try {
-      console.log(`Fetching PageSpeed data for ${monitorId}: ${url}`);
+      log.info(`Fetching PageSpeed data for ${monitorId}: ${url}`);
 
       // Get organization's PageSpeed API key
       let pagespeedApiKey: string | undefined;
@@ -598,12 +602,12 @@ export async function processHttpCheck(job: Job<HttpCheckJob>) {
       if (primaryResult) {
         if (primaryResult.error) {
           pagespeedError = primaryResult.error;
-          console.warn(`PageSpeed error for ${monitorId}: ${primaryResult.error}`);
+          log.warn(`PageSpeed error for ${monitorId}: ${primaryResult.error}`);
         } else {
           pagespeedScores = primaryResult.scores;
           webVitals = primaryResult.webVitals;
 
-          console.log(`PageSpeed scores for ${monitorId}:`, pagespeedScores);
+          log.info(`PageSpeed scores for ${monitorId}:`, pagespeedScores);
 
           // Check PageSpeed thresholds
           if (config.pagespeed.thresholds && pagespeedScores) {
@@ -647,14 +651,14 @@ export async function processHttpCheck(job: Job<HttpCheckJob>) {
       }
     } catch (psError) {
       pagespeedError = psError instanceof Error ? psError.message : "Unknown PageSpeed error";
-      console.error(`PageSpeed check failed for ${monitorId}:`, psError);
+      log.error(`PageSpeed check failed for ${monitorId}:`, psError);
     }
   }
 
   // Security Headers check (only if enabled and HTTP check was successful)
   if (config?.securityHeaders?.enabled && responseHeaders && (status === "success" || status === "degraded")) {
     try {
-      console.log(`Analyzing security headers for ${monitorId}: ${url}`);
+      log.info(`Analyzing security headers for ${monitorId}: ${url}`);
 
       securityHeadersResult = await analyzeSecurityHeaders(
         responseHeaders,
@@ -662,7 +666,7 @@ export async function processHttpCheck(job: Job<HttpCheckJob>) {
         { checkHstsPreload: config.securityHeaders.checkHstsPreload }
       );
 
-      console.log(`Security headers score for ${monitorId}: ${securityHeadersResult.overallScore} (${securityHeadersResult.grade})`);
+      log.info(`Security headers score for ${monitorId}: ${securityHeadersResult.overallScore} (${securityHeadersResult.grade})`);
 
       // Check minimum score threshold
       if (config.securityHeaders.minScore !== undefined) {
@@ -675,7 +679,7 @@ export async function processHttpCheck(job: Job<HttpCheckJob>) {
         }
       }
     } catch (shError) {
-      console.error(`Security headers check failed for ${monitorId}:`, shError);
+      log.error(`Security headers check failed for ${monitorId}:`, shError);
     }
   }
 
@@ -891,7 +895,7 @@ export async function processHttpCheck(job: Job<HttpCheckJob>) {
     });
   }
 
-  console.log(`HTTP check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
+  log.info(`HTTP check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
 
   return {
     status,

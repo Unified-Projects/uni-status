@@ -9,6 +9,10 @@ import { decryptConfigSecrets } from "@uni-status/shared/crypto";
 import type { CheckStatus } from "@uni-status/shared/types";
 import * as net from "net";
 import * as tls from "tls";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "email-imap-check" });
+
 
 interface EmailServerConfig extends Record<string, unknown> {
   host: string;
@@ -31,11 +35,11 @@ interface ImapCheckJob {
 export async function processImapCheck(job: Job<ImapCheckJob>) {
   const { monitorId, url, timeoutMs, config } = job.data;
 
-  console.log(`Processing IMAP check for ${monitorId}`);
+  log.info(`Processing IMAP check for ${monitorId}`);
 
   const emailConfig = config?.emailServer;
   if (!emailConfig) {
-    console.error(`No email server config found for monitor ${monitorId}`);
+    log.error(`No email server config found for monitor ${monitorId}`);
     return { status: "error" as CheckStatus, message: "Missing email server configuration" };
   }
 
@@ -141,7 +145,7 @@ export async function processImapCheck(job: Job<ImapCheckJob>) {
         });
       }
 
-      console.log(`IMAP check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
+      log.info(`IMAP check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
 
       resolve({
         status,
@@ -221,7 +225,7 @@ export async function processImapCheck(job: Job<ImapCheckJob>) {
 
     try {
       const connectCallback = () => {
-        console.log(`IMAP connected to ${decryptedConfig.host}:${decryptedConfig.port}`);
+        log.info(`IMAP connected to ${decryptedConfig.host}:${decryptedConfig.port}`);
       };
 
       const setupSocketHandlers = (sock: net.Socket | tls.TLSSocket) => {

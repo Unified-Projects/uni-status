@@ -8,6 +8,10 @@ import { evaluateAlerts } from "../../lib/alert-evaluator";
 import { decryptConfigSecrets } from "@uni-status/shared/crypto";
 import type { CheckStatus } from "@uni-status/shared/types";
 import mqtt from "mqtt";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "broker-mqtt-check" });
+
 
 interface BrokerConfig extends Record<string, unknown> {
   host: string;
@@ -32,11 +36,11 @@ interface MqttCheckJob {
 export async function processMqttCheck(job: Job<MqttCheckJob>) {
   const { monitorId, url, timeoutMs, config } = job.data;
 
-  console.log(`Processing MQTT check for ${monitorId}`);
+  log.info(`Processing MQTT check for ${monitorId}`);
 
   const brokerConfig = config?.broker;
   if (!brokerConfig) {
-    console.error(`No broker config found for monitor ${monitorId}`);
+    log.error(`No broker config found for monitor ${monitorId}`);
     return { status: "error" as CheckStatus, message: "Missing broker configuration" };
   }
 
@@ -139,7 +143,7 @@ export async function processMqttCheck(job: Job<MqttCheckJob>) {
         });
       }
 
-      console.log(`MQTT check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
+      log.info(`MQTT check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
 
       resolve({
         status,
@@ -178,7 +182,7 @@ export async function processMqttCheck(job: Job<MqttCheckJob>) {
       client = mqtt.connect(brokerUrl, clientOptions);
 
       client.on("connect", async () => {
-        console.log(`MQTT connected to ${brokerUrl}`);
+        log.info(`MQTT connected to ${brokerUrl}`);
 
         // If a topic is specified, try to subscribe
         if (decryptedConfig.topic && client) {

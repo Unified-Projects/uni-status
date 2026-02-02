@@ -8,6 +8,10 @@ import { publishEvent } from "../lib/redis";
 import { evaluateAlerts } from "../lib/alert-evaluator";
 import { linkCheckToActiveIncident } from "../lib/incident-linker";
 import type { CheckStatus } from "@uni-status/shared/types";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "ping-check" });
+
 
 interface PingCheckJob {
   monitorId: string;
@@ -31,7 +35,7 @@ export async function processPingCheck(job: Job<PingCheckJob>) {
     : preferredRegion;
   const pingOptions = assertions?.pingOptions;
 
-  console.log(`Processing Ping check for ${monitorId}: ${url}`);
+  log.info(`Processing Ping check for ${monitorId}: ${url}`);
 
   const hostname = extractHostname(url);
 
@@ -193,7 +197,7 @@ export async function processPingCheck(job: Job<PingCheckJob>) {
     });
   }
 
-  console.log(
+  log.info(
     `Ping check completed for ${monitorId}: ${status} (${responseTimeMs}ms, ${packetLoss}% loss)`
   );
 

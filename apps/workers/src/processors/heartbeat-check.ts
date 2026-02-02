@@ -6,6 +6,10 @@ import { eq, desc, and, gte } from "drizzle-orm";
 import { publishEvent } from "../lib/redis";
 import { evaluateAlerts } from "../lib/alert-evaluator";
 import type { CheckStatus } from "@uni-status/shared/types";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "heartbeat-check" });
+
 
 interface HeartbeatCheckJob {
   monitorId: string;
@@ -21,11 +25,11 @@ interface HeartbeatCheckJob {
 export async function processHeartbeatCheck(job: Job<HeartbeatCheckJob>) {
   const { monitorId, config } = job.data;
 
-  console.log(`Processing heartbeat check for ${monitorId}`);
+  log.info(`Processing heartbeat check for ${monitorId}`);
 
   const heartbeatConfig = config?.heartbeat;
   if (!heartbeatConfig) {
-    console.error(`No heartbeat config found for monitor ${monitorId}`);
+    log.error(`No heartbeat config found for monitor ${monitorId}`);
     return { status: "error" as CheckStatus, message: "Missing heartbeat configuration" };
   }
 
@@ -153,7 +157,7 @@ export async function processHeartbeatCheck(job: Job<HeartbeatCheckJob>) {
     });
   }
 
-  console.log(`Heartbeat check completed for ${monitorId}: ${status}`);
+  log.info(`Heartbeat check completed for ${monitorId}: ${status}`);
 
   return {
     status,

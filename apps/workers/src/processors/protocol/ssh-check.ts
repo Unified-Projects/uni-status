@@ -8,6 +8,10 @@ import { evaluateAlerts } from "../../lib/alert-evaluator";
 import { decryptConfigSecrets } from "@uni-status/shared/crypto";
 import type { CheckStatus } from "@uni-status/shared/types";
 import { Client as SSHClient } from "ssh2";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "protocol-ssh-check" });
+
 
 interface ProtocolConfig extends Record<string, unknown> {
   host: string;
@@ -30,11 +34,11 @@ interface SshCheckJob {
 export async function processSshCheck(job: Job<SshCheckJob>) {
   const { monitorId, url, timeoutMs, config } = job.data;
 
-  console.log(`Processing SSH check for ${monitorId}`);
+  log.info(`Processing SSH check for ${monitorId}`);
 
   const protocolConfig = config?.protocol;
   if (!protocolConfig) {
-    console.error(`No protocol config found for monitor ${monitorId}`);
+    log.error(`No protocol config found for monitor ${monitorId}`);
     return { status: "error" as CheckStatus, message: "Missing protocol configuration" };
   }
 
@@ -137,7 +141,7 @@ export async function processSshCheck(job: Job<SshCheckJob>) {
         });
       }
 
-      console.log(`SSH check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
+      log.info(`SSH check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
 
       resolve({
         status,
@@ -155,7 +159,7 @@ export async function processSshCheck(job: Job<SshCheckJob>) {
       client = new SSHClient();
 
       client.on("ready", async () => {
-        console.log(`SSH connected to ${decryptedConfig.host}:${decryptedConfig.port}`);
+        log.info(`SSH connected to ${decryptedConfig.host}:${decryptedConfig.port}`);
 
         // If a command is specified, execute it
         if (decryptedConfig.command) {

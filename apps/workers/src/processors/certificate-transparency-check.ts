@@ -6,6 +6,10 @@ import { evaluateAlerts } from "../lib/alert-evaluator";
 import { publishEvent } from "../lib/redis";
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { CheckStatus } from "@uni-status/shared/types";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "certificate-transparency-check" });
+
 
 interface CertificateTransparencyJob {
   monitorId: string;
@@ -90,7 +94,7 @@ export async function processCertificateTransparencyCheck(
   const ctConfig = config?.certificateTransparency || {};
 
   if (ctConfig.enabled === false) {
-    console.log(`[CT] Skipping CT check for ${monitorId} (disabled)`);
+    log.info(`[CT] Skipping CT check for ${monitorId} (disabled)`);
     return { skipped: true };
   }
 
@@ -103,7 +107,7 @@ export async function processCertificateTransparencyCheck(
     });
 
     if (!monitor) {
-      console.warn(`[CT] Monitor ${monitorId} not found`);
+      log.warn(`[CT] Monitor ${monitorId} not found`);
       return { skipped: true };
     }
 
@@ -213,7 +217,7 @@ export async function processCertificateTransparencyCheck(
       },
     });
 
-    console.log(
+    log.info(
       `[CT] Checked ${domain} (${monitorId}) - ${status} - new:${newEntries.length} unexpected:${unexpectedEntries.length}`
     );
 
@@ -224,7 +228,7 @@ export async function processCertificateTransparencyCheck(
       unexpectedCertificates: unexpectedEntries.length,
     };
   } catch (error) {
-    console.error(`[CT] Error processing CT check for ${monitorId}:`, error);
+    log.error(`[CT] Error processing CT check for ${monitorId}:`, error);
     return { status: "error", error: (error as Error).message };
   }
 }

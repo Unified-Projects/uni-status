@@ -9,6 +9,10 @@ import { decryptConfigSecrets } from "@uni-status/shared/crypto";
 import type { CheckStatus } from "@uni-status/shared/types";
 import * as net from "net";
 import * as tls from "tls";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "protocol-rdp-check" });
+
 
 interface ProtocolConfig extends Record<string, unknown> {
   host: string;
@@ -80,11 +84,11 @@ function parseX224ConnectionConfirm(data: Buffer): { success: boolean; reason?: 
 export async function processRdpCheck(job: Job<RdpCheckJob>) {
   const { monitorId, url, timeoutMs, config } = job.data;
 
-  console.log(`Processing RDP check for ${monitorId}`);
+  log.info(`Processing RDP check for ${monitorId}`);
 
   const protocolConfig = config?.protocol;
   if (!protocolConfig) {
-    console.error(`No protocol config found for monitor ${monitorId}`);
+    log.error(`No protocol config found for monitor ${monitorId}`);
     return { status: "error" as CheckStatus, message: "Missing protocol configuration" };
   }
 
@@ -188,7 +192,7 @@ export async function processRdpCheck(job: Job<RdpCheckJob>) {
         });
       }
 
-      console.log(`RDP check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
+      log.info(`RDP check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
 
       resolve({
         status,
@@ -204,7 +208,7 @@ export async function processRdpCheck(job: Job<RdpCheckJob>) {
 
     try {
       const connectCallback = () => {
-        console.log(`RDP connected to ${decryptedConfig.host}:${decryptedConfig.port}`);
+        log.info(`RDP connected to ${decryptedConfig.host}:${decryptedConfig.port}`);
 
         // Send X.224 Connection Request
         const connectionRequest = buildX224ConnectionRequest();

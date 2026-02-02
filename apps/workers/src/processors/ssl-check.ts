@@ -9,6 +9,10 @@ import { publishEvent } from "../lib/redis";
 import { evaluateAlerts } from "../lib/alert-evaluator";
 import { linkCheckToActiveIncident } from "../lib/incident-linker";
 import type { CheckStatus } from "@uni-status/shared/types";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "ssl-check" });
+
 
 interface SslCheckJob {
   monitorId: string;
@@ -324,7 +328,7 @@ export async function processSslCheck(job: Job<SslCheckJob>) {
   const checkChain = sslConfig?.checkChain ?? true;
   const checkHostname = sslConfig?.checkHostname ?? true;
 
-  console.log(`Processing SSL check for ${monitorId}: ${url}`);
+  log.info(`Processing SSL check for ${monitorId}: ${url}`);
 
   const startTime = performance.now();
   let status: CheckStatus = "success";
@@ -645,7 +649,7 @@ export async function processSslCheck(job: Job<SslCheckJob>) {
   const expiryInfo = certificateInfo?.daysUntilExpiry !== undefined
     ? ` (expires in ${certificateInfo.daysUntilExpiry} days)`
     : "";
-  console.log(`[SSL Check] ${isSSLMonitor ? "Full check" : "Cert info only"} for ${monitorId}: ${status}${expiryInfo}`);
+  log.info(`[SSL Check] ${isSSLMonitor ? "Full check" : "Cert info only"} for ${monitorId}: ${status}${expiryInfo}`);
 
   return { status, responseTimeMs, certificateInfo };
 }

@@ -9,6 +9,10 @@ import { decryptConfigSecrets } from "@uni-status/shared/crypto";
 import type { CheckStatus } from "@uni-status/shared/types";
 import * as net from "net";
 import * as tls from "tls";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "email-pop3-check" });
+
 
 interface EmailServerConfig extends Record<string, unknown> {
   host: string;
@@ -31,11 +35,11 @@ interface Pop3CheckJob {
 export async function processPop3Check(job: Job<Pop3CheckJob>) {
   const { monitorId, url, timeoutMs, config } = job.data;
 
-  console.log(`Processing POP3 check for ${monitorId}`);
+  log.info(`Processing POP3 check for ${monitorId}`);
 
   const emailConfig = config?.emailServer;
   if (!emailConfig) {
-    console.error(`No email server config found for monitor ${monitorId}`);
+    log.error(`No email server config found for monitor ${monitorId}`);
     return { status: "error" as CheckStatus, message: "Missing email server configuration" };
   }
 
@@ -140,7 +144,7 @@ export async function processPop3Check(job: Job<Pop3CheckJob>) {
         });
       }
 
-      console.log(`POP3 check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
+      log.info(`POP3 check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
 
       resolve({
         status,
@@ -211,7 +215,7 @@ export async function processPop3Check(job: Job<Pop3CheckJob>) {
 
     try {
       const connectCallback = () => {
-        console.log(`POP3 connected to ${decryptedConfig.host}:${decryptedConfig.port}`);
+        log.info(`POP3 connected to ${decryptedConfig.host}:${decryptedConfig.port}`);
       };
 
       const setupSocketHandlers = (sock: net.Socket | tls.TLSSocket) => {

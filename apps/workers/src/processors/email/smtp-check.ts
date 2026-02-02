@@ -8,6 +8,10 @@ import { evaluateAlerts } from "../../lib/alert-evaluator";
 import { decryptConfigSecrets } from "@uni-status/shared/crypto";
 import type { CheckStatus } from "@uni-status/shared/types";
 import nodemailer from "nodemailer";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "email-smtp-check" });
+
 
 interface EmailServerConfig extends Record<string, unknown> {
   host: string;
@@ -30,11 +34,11 @@ interface SmtpCheckJob {
 export async function processSmtpCheck(job: Job<SmtpCheckJob>) {
   const { monitorId, url, timeoutMs, config } = job.data;
 
-  console.log(`Processing SMTP check for ${monitorId}`);
+  log.info(`Processing SMTP check for ${monitorId}`);
 
   const emailConfig = config?.emailServer;
   if (!emailConfig) {
-    console.error(`No email server config found for monitor ${monitorId}`);
+    log.error(`No email server config found for monitor ${monitorId}`);
     return { status: "error" as CheckStatus, message: "Missing email server configuration" };
   }
 
@@ -189,7 +193,7 @@ export async function processSmtpCheck(job: Job<SmtpCheckJob>) {
     });
   }
 
-  console.log(`SMTP check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
+  log.info(`SMTP check completed for ${monitorId}: ${status} (${responseTimeMs}ms)`);
 
   return {
     status,

@@ -7,6 +7,10 @@ import { publishEvent } from "../lib/redis";
 import { evaluateAlerts } from "../lib/alert-evaluator";
 import type { CheckStatus } from "@uni-status/shared/types";
 import { spawn } from "child_process";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "traceroute-check" });
+
 
 interface TracerouteConfig {
   maxHops?: number;
@@ -107,7 +111,7 @@ export async function processTracerouteCheck(job: Job<TracerouteCheckJob>) {
   // Extract hostname from URL for traceroute command
   const hostname = extractHostname(url);
 
-  console.log(`Processing traceroute check for ${monitorId} to ${hostname} (from ${url})`);
+  log.info(`Processing traceroute check for ${monitorId} to ${hostname} (from ${url})`);
 
   const tracerouteConfig = config?.traceroute || {};
   const defaultRegion = process.env.MONITOR_DEFAULT_REGION || "uk";
@@ -216,7 +220,7 @@ export async function processTracerouteCheck(job: Job<TracerouteCheckJob>) {
         });
       }
 
-      console.log(`Traceroute check completed for ${monitorId}: ${status} (${responseTimeMs}ms, ${hops.length} hops)`);
+      log.info(`Traceroute check completed for ${monitorId}: ${status} (${responseTimeMs}ms, ${hops.length} hops)`);
 
       resolve({
         status,
