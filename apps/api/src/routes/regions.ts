@@ -2,6 +2,9 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { db } from "@uni-status/database";
 import { probes } from "@uni-status/database/schema";
 import { eq, isNotNull, sql } from "drizzle-orm";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: 'regions-routes' });
 
 export const regionsRoutes = new OpenAPIHono();
 
@@ -22,10 +25,11 @@ regionsRoutes.get("/", async (c) => {
       .map((r) => r.region)
       .filter((r): r is string => r !== null);
 
-    // Determine default region - prefer UK if available, otherwise first available
-    const defaultRegion = regions.includes("uk")
-      ? "uk"
-      : regions[0] || "uk";
+    // Determine default region - prefer env var if available, otherwise first available
+    const envDefaultRegion = process.env.MONITOR_DEFAULT_REGION || "uk";
+    const defaultRegion = regions.includes(envDefaultRegion)
+      ? envDefaultRegion
+      : regions[0] || envDefaultRegion;
 
     return c.json({
       success: true,
@@ -37,7 +41,7 @@ regionsRoutes.get("/", async (c) => {
       },
     });
   } catch (error) {
-    console.error("Failed to fetch regions:", error);
+    log.error({ err: error }, 'Failed to fetch regions');
     return c.json(
       {
         success: false,
@@ -72,10 +76,11 @@ regionsRoutes.get("/detailed", async (c) => {
         probeCount: r.count,
       }));
 
-    // Determine default region - prefer UK if available
-    const defaultRegion = regions.find((r) => r.id === "uk")?.id
+    // Determine default region - prefer env var if available
+    const envDefaultRegion = process.env.MONITOR_DEFAULT_REGION || "uk";
+    const defaultRegion = regions.find((r) => r.id === envDefaultRegion)?.id
       || regions[0]?.id
-      || "uk";
+      || envDefaultRegion;
 
     return c.json({
       success: true,
@@ -86,7 +91,7 @@ regionsRoutes.get("/detailed", async (c) => {
       },
     });
   } catch (error) {
-    console.error("Failed to fetch detailed regions:", error);
+    log.error({ err: error }, 'Failed to fetch detailed regions');
     return c.json(
       {
         success: false,

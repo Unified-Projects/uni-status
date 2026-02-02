@@ -9,6 +9,10 @@ import {
   monitors,
 } from "@uni-status/database/schema";
 import { eq, and, lt, desc, inArray, sql } from "drizzle-orm";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "probe-dispatcher" });
+
 
 interface ProbeJobDispatchData {
   monitorId: string;
@@ -31,7 +35,7 @@ export async function processProbeJobDispatch(
 ): Promise<void> {
   const { monitorId, organizationId } = job.data;
 
-  console.log(`Dispatching probe job for monitor ${monitorId}`);
+  log.info(`Dispatching probe job for monitor ${monitorId}`);
 
   // Get the monitor details
   const monitor = await db.query.monitors.findFirst({
@@ -42,12 +46,12 @@ export async function processProbeJobDispatch(
   });
 
   if (!monitor) {
-    console.log(`Monitor ${monitorId} not found`);
+    log.info(`Monitor ${monitorId} not found`);
     return;
   }
 
   if (monitor.paused) {
-    console.log(`Monitor ${monitorId} is paused, skipping`);
+    log.info(`Monitor ${monitorId} is paused, skipping`);
     return;
   }
 
@@ -61,7 +65,7 @@ export async function processProbeJobDispatch(
   });
 
   if (assignments.length === 0) {
-    console.log(`No probe assignments for monitor ${monitorId}`);
+    log.info(`No probe assignments for monitor ${monitorId}`);
     return;
   }
 
@@ -71,7 +75,7 @@ export async function processProbeJobDispatch(
   );
 
   if (activeAssignments.length === 0) {
-    console.log(`No active probes assigned to monitor ${monitorId}`);
+    log.info(`No active probes assigned to monitor ${monitorId}`);
     return;
   }
 
@@ -118,10 +122,10 @@ export async function processProbeJobDispatch(
       createdAt: now,
     });
 
-    console.log(`Created pending job ${jobId} for probe ${probe.name}`);
+    log.info(`Created pending job ${jobId} for probe ${probe.name}`);
   }
 
-  console.log(`Dispatched jobs to ${targetProbes.length} probes for monitor ${monitorId}`);
+  log.info(`Dispatched jobs to ${targetProbes.length} probes for monitor ${monitorId}`);
 }
 
 // Check probe health and update status
@@ -130,7 +134,7 @@ export async function processProbeHealthCheck(
 ): Promise<void> {
   const { organizationId } = job.data;
 
-  console.log(`Running probe health check${organizationId ? ` for org ${organizationId}` : ""}`);
+  log.info(`Running probe health check${organizationId ? ` for org ${organizationId}` : ""}`);
 
   const now = new Date();
   const offlineThreshold = new Date(now.getTime() - OFFLINE_THRESHOLD_MS);
@@ -151,7 +155,7 @@ export async function processProbeHealthCheck(
   }
 
   if (offlineProbes.length > 0) {
-    console.log(`Marking ${offlineProbes.length} probes as offline`);
+    log.info(`Marking ${offlineProbes.length} probes as offline`);
 
     await db
       .update(probes)
@@ -162,7 +166,7 @@ export async function processProbeHealthCheck(
       .where(inArray(probes.id, offlineProbes.map((p) => p.id)));
 
     for (const probe of offlineProbes) {
-      console.log(`Probe ${probe.name} (${probe.id}) marked offline - last heartbeat: ${probe.lastHeartbeatAt?.toISOString()}`);
+      log.info(`Probe ${probe.name} (${probe.id}) marked offline - last heartbeat: ${probe.lastHeartbeatAt?.toISOString()}`);
     }
   }
 
@@ -178,7 +182,7 @@ export async function processProbeHealthCheck(
     .returning({ id: probePendingJobs.id });
 
   if (expiredJobs.length > 0) {
-    console.log(`Cleaned up ${expiredJobs.length} expired probe jobs`);
+    log.info(`Cleaned up ${expiredJobs.length} expired probe jobs`);
   }
 
   // Clean up old heartbeat records (keep last 7 days)
@@ -189,10 +193,10 @@ export async function processProbeHealthCheck(
     .returning({ id: probeHeartbeats.id });
 
   if (deletedHeartbeats.length > 0) {
-    console.log(`Cleaned up ${deletedHeartbeats.length} old heartbeat records`);
+    log.info(`Cleaned up ${deletedHeartbeats.length} old heartbeat records`);
   }
 
-  console.log(`Probe health check complete`);
+  log.info(`Probe health check complete`);
 }
 
 // Process results submitted by probes (if using queue-based approach instead of API)
@@ -210,7 +214,7 @@ export async function processProbeResult(
 ): Promise<void> {
   const { jobId, probeId, monitorId, success, responseTimeMs, statusCode, errorMessage, metadata } = job.data;
 
-  console.log(`Processing probe result for job ${jobId}`);
+  log.info(`Processing probe result for job ${jobId}`);
 
   // This is similar to the API endpoint handler
   // Mark job as completed
@@ -223,7 +227,7 @@ export async function processProbeResult(
   // is handled by the API endpoint in probes.ts
   // This processor is for queue-based result submission
 
-  console.log(`Probe result processed for job ${jobId}: ${success ? "success" : "failure"}`);
+  log.info(`Probe result processed for job ${jobId}: ${success ? "success" : "failure"}`);
 }
 
 // Get probe statistics for monitoring
@@ -271,7 +275,7 @@ export async function getProbeStats(organizationId?: string): Promise<{
 
 // Scheduler integration - create jobs for monitors with probe assignments
 export async function scheduleProbeJobs(organizationId?: string): Promise<void> {
-  console.log(`Scheduling probe jobs${organizationId ? ` for org ${organizationId}` : ""}`);
+  log.info(`Scheduling probe jobs${organizationId ? ` for org ${organizationId}` : ""}`);
 
   // Get all monitors with probe assignments that need checking
   const now = new Date();
@@ -307,7 +311,7 @@ export async function scheduleProbeJobs(organizationId?: string): Promise<void> 
   // Only process monitors with probe assignments
   const monitorsWithProbes = monitorsToCheck.filter((m) => assignmentsMap.has(m.id));
 
-  console.log(`Found ${monitorsWithProbes.length} monitors with probe assignments needing checks`);
+  log.info(`Found ${monitorsWithProbes.length} monitors with probe assignments needing checks`);
 
   // Dispatch jobs for each monitor
   for (const monitor of monitorsWithProbes) {
@@ -326,5 +330,5 @@ export async function scheduleProbeJobs(organizationId?: string): Promise<void> 
       .where(eq(monitors.id, monitor.id));
   }
 
-  console.log(`Scheduled ${monitorsWithProbes.length} probe jobs`);
+  log.info(`Scheduled ${monitorsWithProbes.length} probe jobs`);
 }

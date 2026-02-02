@@ -5,6 +5,10 @@ import process from "node:process";
 import { performance } from "node:perf_hooks";
 import ping from "ping";
 import pkg from "../package.json" assert { type: "json" };
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "probe-index" });
+
 
 /**
  * Reads a secret value from a file if the _FILE variant is set,
@@ -79,7 +83,7 @@ const heartbeatIntervalMs = parseNumberEnv(process.env.UNI_STATUS_PROBE_HEARTBEA
 const jobBatchSize = parseNumberEnv(process.env.UNI_STATUS_PROBE_JOB_BATCH_SIZE, 5);
 
 if (!probeToken) {
-  console.error("[probe] UNI_STATUS_PROBE_TOKEN is required.");
+  log.error("[probe] UNI_STATUS_PROBE_TOKEN is required.");
   process.exit(1);
 }
 
@@ -143,10 +147,10 @@ async function sendHeartbeat() {
 
     if (!res.ok) {
       const errorText = await res.text();
-      console.error(`[probe] Heartbeat failed: ${res.status} ${errorText}`);
+      log.error(`[probe] Heartbeat failed: ${res.status} ${errorText}`);
     }
   } catch (error) {
-    console.error("[probe] Heartbeat error:", error instanceof Error ? error.message : error);
+    log.error("[probe] Heartbeat error:", error instanceof Error ? error.message : error);
   }
 }
 
@@ -401,10 +405,10 @@ async function submitJobResult(job: PendingJob, result: JobResult) {
 
     if (!res.ok) {
       const text = await res.text();
-      console.error(`[probe] Failed to submit result for job ${job.id}: ${res.status} ${text}`);
+      log.error(`[probe] Failed to submit result for job ${job.id}: ${res.status} ${text}`);
     }
   } catch (error) {
-    console.error(`[probe] Error submitting result for job ${job.id}:`, error instanceof Error ? error.message : error);
+    log.error(`[probe] Error submitting result for job ${job.id}:`, error instanceof Error ? error.message : error);
   }
 }
 
@@ -432,7 +436,7 @@ async function pollJobs() {
 
     if (!res.ok) {
       const text = await res.text();
-      console.error(`[probe] Failed to poll jobs: ${res.status} ${text}`);
+      log.error(`[probe] Failed to poll jobs: ${res.status} ${text}`);
       return;
     }
 
@@ -443,17 +447,17 @@ async function pollJobs() {
       await handleJob(job);
     }
   } catch (error) {
-    console.error("[probe] Error polling jobs:", error instanceof Error ? error.message : error);
+    log.error("[probe] Error polling jobs:", error instanceof Error ? error.message : error);
   } finally {
     pollInFlight = false;
   }
 }
 
 function start() {
-  console.log(`[probe] Starting Uni-Status probe v${VERSION}`);
-  console.log(`[probe] API: ${apiBase}`);
-  console.log(`[probe] Probe ID: ${probeId || "not set"} | Region provided via dashboard`);
-  console.log(`[probe] Poll interval: ${pollIntervalMs}ms | Heartbeat interval: ${heartbeatIntervalMs}ms`);
+  log.info(`[probe] Starting Uni-Status probe v${VERSION}`);
+  log.info(`[probe] API: ${apiBase}`);
+  log.info(`[probe] Probe ID: ${probeId || "not set"} | Region provided via dashboard`);
+  log.info(`[probe] Poll interval: ${pollIntervalMs}ms | Heartbeat interval: ${heartbeatIntervalMs}ms`);
 
   // Kick off immediately, then on interval
   sendHeartbeat();
@@ -464,12 +468,12 @@ function start() {
 }
 
 process.on("SIGINT", () => {
-  console.log("[probe] Received SIGINT, exiting.");
+  log.info("[probe] Received SIGINT, exiting.");
   process.exit(0);
 });
 
 process.on("SIGTERM", () => {
-  console.log("[probe] Received SIGTERM, exiting.");
+  log.info("[probe] Received SIGTERM, exiting.");
   process.exit(0);
 });
 
