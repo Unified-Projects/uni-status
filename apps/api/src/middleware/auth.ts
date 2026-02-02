@@ -9,6 +9,9 @@ import {
   FEDERATED_AUTH_HEADER,
   type FederatedSessionPayload,
 } from "@uni-status/shared/lib/federation";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "auth-middleware" });
 
 export interface AuthContext {
   user: {
@@ -71,8 +74,11 @@ export async function authMiddleware(c: Context, next: Next) {
         // In production, use bcrypt verification
         let isValid = key.keyHash === token;
         if (!isValid) {
-          // Log mismatch for debugging
-          console.log(`[Auth Debug] Token mismatch - stored: "${key.keyHash?.slice(0, 20)}...", received: "${token.slice(0, 20)}..."`);
+          log.debug({
+            keyPrefix,
+            storedHashPrefix: key.keyHash?.slice(0, 20),
+            tokenPrefix: token.slice(0, 20)
+          }, "API key token mismatch");
           if (key.keyHash) {
             try {
               isValid = await Bun.password.verify(token, key.keyHash);
@@ -138,7 +144,7 @@ export async function authMiddleware(c: Context, next: Next) {
           .where(eq(apiKeys.id, key.id));
       }
     } catch (error) {
-      console.error("API key auth error:", error);
+      log.error({ err: error, keyPrefix: token?.slice(0, 8) }, "API key authentication error");
     }
   }
 
@@ -166,7 +172,7 @@ export async function authMiddleware(c: Context, next: Next) {
           c.set("federatedPayload", payload);
         }
       } catch (error) {
-        console.error("Federation token auth error:", error);
+        log.error({ err: error }, "Federation token authentication error");
       }
     }
   }
@@ -188,7 +194,7 @@ export async function authMiddleware(c: Context, next: Next) {
         };
       }
     } catch (error) {
-      console.error("Session auth error:", error);
+      log.error({ err: error }, "Session authentication error");
     }
   }
 

@@ -1,5 +1,9 @@
 import { db, organizationMembers, ssoProvider, eq, and } from "@uni-status/database";
 import type { GroupRoleMappingConfig } from "@uni-status/database/schema";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "auth-group-role-mapping" });
+
 
 type MemberRole = "owner" | "admin" | "member" | "viewer";
 
@@ -202,7 +206,7 @@ export async function applyGroupRoleMapping(params: {
     const resolvedRole = resolveRoleFromGroups(userGroups, groupRoleMapping);
 
     if (!resolvedRole) {
-      console.log(`[Auth] No role mapping match for user ${userId} with groups: ${userGroups.join(", ")}`);
+      log.info(`[Auth] No role mapping match for user ${userId} with groups: ${userGroups.join(", ")}`);
       return { success: true }; // No match, keep default role
     }
 
@@ -217,13 +221,13 @@ export async function applyGroupRoleMapping(params: {
     if (existingMember) {
       // Check if we should sync on login
       if (!groupRoleMapping.syncOnLogin) {
-        console.log(`[Auth] User ${userId} already member, syncOnLogin disabled, keeping role: ${existingMember.role}`);
+        log.info(`[Auth] User ${userId} already member, syncOnLogin disabled, keeping role: ${existingMember.role}`);
         return { success: true, role: existingMember.role as MemberRole };
       }
 
       // Don't demote owners unless explicitly configured
       if (existingMember.role === "owner" && resolvedRole !== "owner") {
-        console.log(`[Auth] Skipping role update for owner ${userId}`);
+        log.info(`[Auth] Skipping role update for owner ${userId}`);
         return { success: true, role: existingMember.role as MemberRole };
       }
 
@@ -234,7 +238,7 @@ export async function applyGroupRoleMapping(params: {
           .set({ role: resolvedRole, updatedAt: new Date() })
           .where(eq(organizationMembers.id, existingMember.id));
 
-        console.log(`[Auth] Updated role for user ${userId} from ${existingMember.role} to ${resolvedRole} based on groups: ${userGroups.join(", ")}`);
+        log.info(`[Auth] Updated role for user ${userId} from ${existingMember.role} to ${resolvedRole} based on groups: ${userGroups.join(", ")}`);
         return { success: true, role: resolvedRole };
       }
 
@@ -243,11 +247,11 @@ export async function applyGroupRoleMapping(params: {
 
     // User not yet a member - they'll be provisioned by Better Auth's SSO plugin
     // The role will be applied when they're provisioned
-    console.log(`[Auth] User ${userId} not yet member, resolved role from groups: ${resolvedRole}`);
+    log.info(`[Auth] User ${userId} not yet member, resolved role from groups: ${resolvedRole}`);
     return { success: true, role: resolvedRole };
 
   } catch (error) {
-    console.error(`[Auth] Error applying group role mapping:`, error);
+    log.error({ err: error, userId }, "Error applying group role mapping");
     return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
   }
 }
@@ -280,7 +284,7 @@ export async function getResolvedRoleFromSso(params: {
     const userGroups = extractGroups(payload, providerConfig.groupRoleMapping.groupsClaim);
     return resolveRoleFromGroups(userGroups, providerConfig.groupRoleMapping);
   } catch (error) {
-    console.error(`[Auth] Error getting resolved role from SSO:`, error);
+    log.error({ err: error, providerId }, "Error getting resolved role from SSO");
     return null;
   }
 }

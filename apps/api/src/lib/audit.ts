@@ -1,6 +1,9 @@
 import { Context } from "hono";
 import { nanoid } from "nanoid";
 import type { ResourceType } from "@uni-status/database/schema";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "audit" });
 
 interface AuditMetadata {
   before?: Record<string, unknown>;
@@ -102,20 +105,24 @@ export async function createAuditLog(
       createdAt: new Date(),
     });
 
-    console.log(
-      `[Audit] ${input.action} on ${input.resourceType}${input.resourceId ? `:${input.resourceId}` : ""} by user:${input.userId || "system"}`
-    );
+    log.info({
+      action: input.action,
+      resourceType: input.resourceType,
+      resourceId: input.resourceId,
+      userId: input.userId || "system"
+    }, "Audit log created");
 
     return id;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND") {
-      // Enterprise package not installed, skip audit logging
       return null;
     }
-    console.error(
-      `[Audit] Failed to create audit log for ${input.action} on ${input.resourceType}:`,
-      error instanceof Error ? error.message : error
-    );
+    log.error({
+      err: error,
+      action: input.action,
+      resourceType: input.resourceType,
+      resourceId: input.resourceId
+    }, "Failed to create audit log");
     return null;
   }
 }

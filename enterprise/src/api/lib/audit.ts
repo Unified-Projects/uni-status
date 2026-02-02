@@ -32,7 +32,7 @@ export function configureAudit(fns: AuditFns) {
 
 export async function createAuditLog(c: any, params: AuditLogParams): Promise<void> {
   if (!_auditFns) {
-    console.warn("Enterprise audit not configured, skipping createAuditLog");
+    log.warn("Enterprise audit not configured, skipping createAuditLog");
     return;
   }
   await _auditFns.createAuditLog(c, params);
@@ -40,7 +40,7 @@ export async function createAuditLog(c: any, params: AuditLogParams): Promise<vo
 
 export async function createAuditLogWithChanges(c: any, params: AuditLogWithChangesParams): Promise<void> {
   if (!_auditFns) {
-    console.warn("Enterprise audit not configured, skipping createAuditLogWithChanges");
+    log.warn("Enterprise audit not configured, skipping createAuditLogWithChanges");
     return;
   }
   await _auditFns.createAuditLogWithChanges(c, params);
@@ -48,7 +48,7 @@ export async function createAuditLogWithChanges(c: any, params: AuditLogWithChan
 
 export function getAuditUserId(c: any): string | null {
   if (!_auditFns) {
-    console.warn("Enterprise audit not configured, returning null for getAuditUserId");
+    log.warn("Enterprise audit not configured, returning null for getAuditUserId");
     return null;
   }
   return _auditFns.getAuditUserId(c);

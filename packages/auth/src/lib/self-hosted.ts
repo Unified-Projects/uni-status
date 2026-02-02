@@ -11,6 +11,10 @@ import {
   and,
 } from "@uni-status/database";
 import { isSelfHosted as checkIsSelfHosted, getDeploymentType } from "@uni-status/shared/config/env";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "auth-self-hosted" });
+
 
 export { checkIsSelfHosted as isSelfHosted };
 
@@ -154,13 +158,13 @@ export async function handleSelfHostedUserCreation(user: { id: string; email: st
   // If setup is not completed, this is the first user - they're completing setup
   // The setup endpoint will handle making them super admin and creating the org
   if (!settings?.setupCompleted) {
-    console.log(`[Auth] Self-hosted setup not complete - user ${user.id} will complete setup`);
+    log.info(`[Auth] Self-hosted setup not complete - user ${user.id} will complete setup`);
     return { handled: true, createPersonalOrg: false };
   }
 
   const primaryOrgId = settings.primaryOrganizationId;
   if (!primaryOrgId) {
-    console.error(`[Auth] Self-hosted mode misconfigured: no primary organization`);
+    log.error(`[Auth] Self-hosted mode misconfigured: no primary organization`);
     return { handled: false, createPersonalOrg: true };
   }
 
@@ -180,13 +184,13 @@ export async function handleSelfHostedUserCreation(user: { id: string; email: st
           .set({ status: "accepted", updatedAt: new Date() })
           .where(eq(organizationInvitations.id, invitation.id));
 
-        console.log(`[Auth] Self-hosted: User ${user.id} joined via invitation with role ${invitation.role}`);
+        log.info(`[Auth] Self-hosted: User ${user.id} joined via invitation with role ${invitation.role}`);
         return { handled: true, createPersonalOrg: false };
       }
 
       // No invitation - user shouldn't have been able to sign up
       // But since they already have an account, create pending approval
-      console.log(`[Auth] Self-hosted: User ${user.id} registered without invitation in invite_only mode`);
+      log.info(`[Auth] Self-hosted: User ${user.id} registered without invitation in invite_only mode`);
       await createPendingApproval(user.id, primaryOrgId);
       return {
         handled: true,
@@ -203,7 +207,7 @@ export async function handleSelfHostedUserCreation(user: { id: string; email: st
         await db.update(organizationInvitations)
           .set({ status: "accepted", updatedAt: new Date() })
           .where(eq(organizationInvitations.id, invitation.id));
-        console.log(`[Auth] Self-hosted: User ${user.id} joined via invitation with role ${invitation.role}`);
+        log.info(`[Auth] Self-hosted: User ${user.id} joined via invitation with role ${invitation.role}`);
         return { handled: true, createPersonalOrg: false };
       }
 
@@ -211,12 +215,12 @@ export async function handleSelfHostedUserCreation(user: { id: string; email: st
       const domainJoin = await checkDomainAutoJoin(email, primaryOrgId);
       if (domainJoin) {
         await addUserToOrganization(user.id, primaryOrgId, domainJoin.role);
-        console.log(`[Auth] Self-hosted: User ${user.id} auto-joined via domain with role ${domainJoin.role}`);
+        log.info(`[Auth] Self-hosted: User ${user.id} auto-joined via domain with role ${domainJoin.role}`);
         return { handled: true, createPersonalOrg: false };
       }
 
       // Domain not configured - create pending approval
-      console.log(`[Auth] Self-hosted: User ${user.id} domain not configured for auto-join`);
+      log.info(`[Auth] Self-hosted: User ${user.id} domain not configured for auto-join`);
       await createPendingApproval(user.id, primaryOrgId);
       return {
         handled: true,
@@ -233,7 +237,7 @@ export async function handleSelfHostedUserCreation(user: { id: string; email: st
         await db.update(organizationInvitations)
           .set({ status: "accepted", updatedAt: new Date() })
           .where(eq(organizationInvitations.id, invitation.id));
-        console.log(`[Auth] Self-hosted: User ${user.id} joined via invitation with role ${invitation.role}`);
+        log.info(`[Auth] Self-hosted: User ${user.id} joined via invitation with role ${invitation.role}`);
         return { handled: true, createPersonalOrg: false };
       }
 
@@ -241,13 +245,13 @@ export async function handleSelfHostedUserCreation(user: { id: string; email: st
       const domainJoin = await checkDomainAutoJoin(email, primaryOrgId);
       if (domainJoin) {
         await addUserToOrganization(user.id, primaryOrgId, domainJoin.role);
-        console.log(`[Auth] Self-hosted: User ${user.id} auto-joined via domain with role ${domainJoin.role}`);
+        log.info(`[Auth] Self-hosted: User ${user.id} auto-joined via domain with role ${domainJoin.role}`);
         return { handled: true, createPersonalOrg: false };
       }
 
       // Create pending approval
       await createPendingApproval(user.id, primaryOrgId);
-      console.log(`[Auth] Self-hosted: User ${user.id} created pending approval request`);
+      log.info(`[Auth] Self-hosted: User ${user.id} created pending approval request`);
       return {
         handled: true,
         createPersonalOrg: false,
@@ -256,7 +260,7 @@ export async function handleSelfHostedUserCreation(user: { id: string; email: st
     }
 
     default:
-      console.error(`[Auth] Unknown signup mode: ${signupMode}`);
+      log.error(`[Auth] Unknown signup mode: ${signupMode}`);
       return { handled: false, createPersonalOrg: true };
   }
 }

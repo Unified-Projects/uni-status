@@ -19,6 +19,10 @@ import { getAppUrl, getAuthSecret, getOAuthConfig, getEnv } from "@uni-status/sh
 import { handleSelfHostedUserCreation, isSelfHosted } from "./lib/self-hosted";
 import { withSsoEncryption } from "./lib/sso-adapter";
 import { applyGroupRoleMapping } from "./lib/group-role-mapping";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "auth-server" });
+
 
 const APP_URL = getAppUrl();
 
@@ -320,9 +324,9 @@ export const auth = betterAuth({
                 });
 
                 if (!result.success) {
-                    console.error(`[Auth] Failed to send invitation email to ${email}:`, result.error);
+                    log.error({ email, organizationName: organization.name, error: result.error }, "Failed to send invitation email");
                 } else {
-                    console.log(`[Auth] Sent invitation email to ${email} for ${organization.name}`);
+                    log.info({ email, organizationName: organization.name }, "Sent invitation email");
                 }
             },
         }),
@@ -368,9 +372,9 @@ export const auth = betterAuth({
                                 .update(users)
                                 .set({ emailVerified: true })
                                 .where(eq(users.id, account.userId));
-                            console.log(`[Auth] Auto-verified email for user ${account.userId} via ${account.providerId} SSO`);
+                            log.info({ userId: account.userId, providerId: account.providerId }, "Auto-verified email via SSO");
                         } catch (error) {
-                            console.error(`[Auth] Failed to auto-verify email for user ${account.userId}:`, error);
+                            log.error({ err: error, userId: account.userId }, "Failed to auto-verify email");
                         }
                     }
 
@@ -385,10 +389,10 @@ export const auth = betterAuth({
                                 accessToken: account.accessToken,
                             });
                             if (result.success && result.role) {
-                                console.log(`[Auth] Applied group role mapping for user ${account.userId}: ${result.role}`);
+                                log.info({ userId: account.userId, role: result.role }, "Applied group role mapping");
                             }
                         } catch (error) {
-                            console.error(`[Auth] Failed to apply group role mapping for user ${account.userId}:`, error);
+                            log.error({ err: error, userId: account.userId }, "Failed to apply group role mapping");
                         }
                     }
                 },
@@ -406,10 +410,10 @@ export const auth = betterAuth({
                                 accessToken: account.accessToken,
                             });
                             if (result.success && result.role) {
-                                console.log(`[Auth] Synced group role mapping for user ${account.userId}: ${result.role}`);
+                                log.info({ userId: account.userId, role: result.role }, "Synced group role mapping");
                             }
                         } catch (error) {
-                            console.error(`[Auth] Failed to sync group role mapping for user ${account.userId}:`, error);
+                            log.error({ err: error, userId: account.userId }, "Failed to sync group role mapping");
                         }
                     }
                 },
@@ -425,7 +429,7 @@ export const auth = betterAuth({
                         });
 
                         if (userRecord?.portalOnly) {
-                            console.log(`[Auth] Skipping personal org for portal-only user ${user.id}`);
+                            log.info({ userId: user.id }, "Skipping personal org for portal-only user");
                             return;
                         }
 
@@ -465,7 +469,7 @@ export const auth = betterAuth({
                                     role: domainConfig.autoJoinRole,
                                 });
 
-                                console.log(`[Auth] Auto-joined user ${user.id} to organisation ${domainConfig.organizationId} via domain ${emailDomain}`);
+                                log.info({ userId: user.id, organizationId: domainConfig.organizationId, emailDomain }, "Auto-joined user to organisation via domain");
 
                                 // Still create a personal org for the user
                                 const personalOrgId = crypto.randomUUID();
@@ -486,7 +490,7 @@ export const auth = betterAuth({
                                     role: "owner",
                                 });
 
-                                console.log(`[Auth] Also created Personal organisation for user ${user.id}`);
+                                log.info({ userId: user.id }, "Also created Personal organisation");
                                 return;
                             }
                         }
@@ -510,9 +514,9 @@ export const auth = betterAuth({
                             role: "owner",
                         });
 
-                        console.log(`[Auth] Created Personal organisation for user ${user.id}`);
+                        log.info({ userId: user.id }, "Created Personal organisation");
                     } catch (error) {
-                        console.error(`[Auth] Failed to create organisation for user ${user.id}:`, error);
+                        log.error({ err: error, userId: user.id }, "Failed to create organisation");
                     }
                 },
             },
