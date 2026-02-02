@@ -106,6 +106,90 @@ export function SubscriberMaintenanceEmail({
   );
 }
 
+interface SubscriberIncidentEmailProps {
+  statusPageName: string;
+  incidentTitle: string;
+  status: string;
+  severity: string;
+  message: string;
+  statusPageUrl: string;
+  unsubscribeUrl: string;
+}
+
+export function SubscriberIncidentEmail({
+  statusPageName,
+  incidentTitle,
+  status,
+  severity,
+  message,
+  statusPageUrl,
+  unsubscribeUrl,
+}: SubscriberIncidentEmailProps) {
+  const severityColors: Record<string, string> = {
+    critical: "#ef4444",
+    major: "#f97316",
+    minor: "#eab308",
+    maintenance: "#3b82f6",
+  };
+
+  const statusColors: Record<string, string> = {
+    investigating: "#eab308",
+    identified: "#f97316",
+    monitoring: "#3b82f6",
+    resolved: "#22c55e",
+  };
+
+  const severityColor = severityColors[severity] || "#6b7280";
+  const statusColor = statusColors[status] || "#6b7280";
+
+  const statusLabel: Record<string, string> = {
+    investigating: "Investigating",
+    identified: "Identified",
+    monitoring: "Monitoring",
+    resolved: "Resolved",
+  };
+
+  return (
+    <BaseEmail preview={`Incident: ${incidentTitle}`}>
+      <Section style={content}>
+        <Text style={typeLabel}>Service Incident</Text>
+        <Text style={heading}>{incidentTitle}</Text>
+
+        <Section style={detailsBox}>
+          <Text style={detailLabel}>Service</Text>
+          <Text style={detailValue}>{statusPageName}</Text>
+
+          <Text style={detailLabel}>Severity</Text>
+          <Text style={{ ...detailValue, color: severityColor, fontWeight: "600" }}>
+            {severity.charAt(0).toUpperCase() + severity.slice(1)}
+          </Text>
+
+          <Text style={detailLabel}>Status</Text>
+          <Text style={{ ...detailValue, color: statusColor, fontWeight: "600" }}>
+            {statusLabel[status] || status.charAt(0).toUpperCase() + status.slice(1)}
+          </Text>
+
+          <Text style={detailLabel}>Update</Text>
+          <Text style={detailValue}>{message}</Text>
+        </Section>
+
+        <Section style={buttonContainer}>
+          <Button style={button} href={statusPageUrl}>
+            View Status Page
+          </Button>
+        </Section>
+
+        <Text style={unsubscribeText}>
+          <Link href={unsubscribeUrl} style={unsubscribeLink}>
+            Unsubscribe
+          </Link>{" "}
+          from status updates
+        </Text>
+      </Section>
+    </BaseEmail>
+  );
+}
+
 const content = {
   padding: "0 24px",
 };

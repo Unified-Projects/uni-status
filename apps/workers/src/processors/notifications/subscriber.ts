@@ -1,7 +1,11 @@
 import { Job } from "bullmq";
 import * as React from "react";
-import { sendEmail, SubscriberMaintenanceEmail } from "@uni-status/email";
+import { sendEmail, SubscriberMaintenanceEmail, SubscriberIncidentEmail } from "@uni-status/email";
 import { getAppUrl } from "@uni-status/shared/config";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "notifications-subscriber" });
+
 
 // Subscriber notification job types
 type SubscriberNotificationType = "maintenance" | "incident";
@@ -126,6 +130,53 @@ async function processMaintenanceNotification(
   return { success: true, to: subscriberEmail };
 }
 
+// Process incident notification
+async function processIncidentNotification(
+  job: Job<IncidentNotificationJob>
+): Promise<{ success: boolean; to: string }> {
+  const {
+    incidentTitle,
+    status,
+    severity,
+    message,
+    subscriberEmail,
+    unsubscribeToken,
+    statusPageName,
+    statusPageSlug,
+  } = job.data;
+
+  const statusPageUrl = getStatusPageUrl(statusPageSlug);
+  const unsubscribeUrl = getUnsubscribeUrl(statusPageSlug, unsubscribeToken);
+
+  // Build the email component
+  const emailComponent = React.createElement(SubscriberIncidentEmail, {
+    statusPageName,
+    incidentTitle,
+    status,
+    severity,
+    message,
+    statusPageUrl,
+    unsubscribeUrl,
+  });
+
+  // Build subject line with severity indicator
+  const severityPrefix = severity === "critical" ? "[CRITICAL]" : severity === "major" ? "[MAJOR]" : "";
+  const subject = `[${statusPageName}] ${severityPrefix} Incident Update: ${incidentTitle}`.trim();
+
+  // Send the email
+  const result = await sendEmail({
+    to: subscriberEmail,
+    subject,
+    react: emailComponent,
+  });
+
+  if (!result.success) {
+    throw new Error(result.error || "Failed to send subscriber email");
+  }
+
+  return { success: true, to: subscriberEmail };
+}
+
 // Main processor function
 export async function processSubscriberNotification(
   job: Job<SubscriberNotificationJob>
@@ -133,7 +184,7 @@ export async function processSubscriberNotification(
   const { type } = job.data;
   const attemptsMade = job.attemptsMade;
 
-  console.log(
+  log.info(
     `[Subscriber] Processing ${type} notification (attempt ${attemptsMade + 1})`
   );
 
@@ -145,15 +196,16 @@ export async function processSubscriberNotification(
         );
 
       case "incident":
-        // Future: Implement incident notifications
-        throw new Error("Incident notifications not yet implemented");
+        return await processIncidentNotification(
+          job as Job<IncidentNotificationJob>
+        );
 
       default:
         throw new Error(`Unknown subscriber notification type: ${type}`);
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    console.error(
+    log.error(
       `[Subscriber] Error processing ${type} notification (attempt ${attemptsMade + 1}):`,
       errorMessage
     );

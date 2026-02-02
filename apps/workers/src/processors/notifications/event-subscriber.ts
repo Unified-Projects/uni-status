@@ -5,6 +5,10 @@ import { db } from "@uni-status/database";
 import { eventSubscriptions } from "@uni-status/database/schema";
 import { eq, and } from "drizzle-orm";
 import { getAppUrl, getApiUrl } from "@uni-status/shared/config";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "notifications-event-subscriber" });
+
 
 // Event subscription notification job data
 export interface EventSubscriptionNotificationJob {
@@ -53,11 +57,11 @@ async function processEventNotification(
   });
 
   if (subscribers.length === 0) {
-    console.log(`[EventSubscriber] No subscribers found for ${eventType}/${eventId}`);
+    log.info(`[EventSubscriber] No subscribers found for ${eventType}/${eventId}`);
     return { success: true, sent: 0, errors: 0 };
   }
 
-  console.log(
+  log.info(
     `[EventSubscriber] Sending ${eventType} update to ${subscribers.length} subscribers`
   );
 
@@ -69,7 +73,7 @@ async function processEventNotification(
   for (const subscriber of subscribers) {
     try {
       if (!subscriber.email) {
-        console.warn("[EventSubscriber] Missing subscriber email, skipping");
+        log.warn("[EventSubscriber] Missing subscriber email, skipping");
         errors++;
         continue;
       }
@@ -100,14 +104,14 @@ async function processEventNotification(
       if (result.success) {
         sent++;
       } else {
-        console.error(
+        log.error(
           `[EventSubscriber] Failed to send to ${subscriber.email}:`,
           result.error
         );
         errors++;
       }
     } catch (error) {
-      console.error(
+      log.error(
         `[EventSubscriber] Error sending to ${subscriber.email}:`,
         error instanceof Error ? error.message : "Unknown error"
       );
@@ -115,7 +119,7 @@ async function processEventNotification(
     }
   }
 
-  console.log(
+  log.info(
     `[EventSubscriber] Completed: sent=${sent}, errors=${errors}`
   );
 
@@ -129,7 +133,7 @@ export async function processEventSubscriptionNotification(
   const { eventType, eventId } = job.data;
   const attemptsMade = job.attemptsMade;
 
-  console.log(
+  log.info(
     `[EventSubscriber] Processing ${eventType}/${eventId} notification (attempt ${attemptsMade + 1})`
   );
 
@@ -137,7 +141,7 @@ export async function processEventSubscriptionNotification(
     return await processEventNotification(job);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    console.error(
+    log.error(
       `[EventSubscriber] Error processing ${eventType}/${eventId} notification (attempt ${attemptsMade + 1}):`,
       errorMessage
     );

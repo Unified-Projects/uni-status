@@ -2,6 +2,10 @@ import { Resend } from "resend";
 import { render } from "@react-email/components";
 import nodemailer from "nodemailer";
 import type { SmtpCredentials, ResendCredentials } from "@uni-status/shared/types/credentials";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "email-index" });
+
 
 // Initialize platform Resend client
 const platformResend = process.env.RESEND_API_KEY
@@ -125,7 +129,7 @@ export async function sendEmail({
 
   // Priority 3: Platform Resend
   if (!platformResend) {
-    console.warn("Resend API key not configured, email not sent");
+    log.warn("Resend API key not configured, email not sent");
     return { success: false, error: "Email service not configured" };
   }
 
