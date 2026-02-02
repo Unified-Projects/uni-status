@@ -7,6 +7,10 @@ import {
   incidents,
 } from "@uni-status/database/schema";
 import { eq, and, gte, lte, sql, inArray } from "drizzle-orm";
+import { createLogger } from "@uni-status/shared";
+
+const log = createLogger({ module: "deployment-correlator" });
+
 
 interface DeploymentCorrelateJobData {
   deploymentId: string;
@@ -121,7 +125,7 @@ export async function processDeploymentCorrelation(
 ): Promise<void> {
   const { deploymentId, organizationId, service, deployedAt, affectedMonitors } = job.data;
 
-  console.log(`Processing deployment correlation for ${deploymentId}`);
+  log.info(`Processing deployment correlation for ${deploymentId}`);
 
   // Get the deployment details
   const deployment = await db.query.deploymentEvents.findFirst({
@@ -129,7 +133,7 @@ export async function processDeploymentCorrelation(
   });
 
   if (!deployment) {
-    console.log(`Deployment ${deploymentId} not found`);
+    log.info(`Deployment ${deploymentId} not found`);
     return;
   }
 
@@ -145,7 +149,7 @@ export async function processDeploymentCorrelation(
     ),
   });
 
-  console.log(`Found ${potentialIncidents.length} potential incidents to correlate`);
+  log.info(`Found ${potentialIncidents.length} potential incidents to correlate`);
 
   for (const incident of potentialIncidents) {
     // Check if link already exists
@@ -157,7 +161,7 @@ export async function processDeploymentCorrelation(
     });
 
     if (existingLink) {
-      console.log(`Link already exists for incident ${incident.id}`);
+      log.info(`Link already exists for incident ${incident.id}`);
       continue;
     }
 
@@ -180,7 +184,7 @@ export async function processDeploymentCorrelation(
       deploymentStatusScore
     );
 
-    console.log(`Incident ${incident.id} correlation scores:`, {
+    log.info(`Incident ${incident.id} correlation scores:`, {
       timeProximity: timeProximityScore.toFixed(2),
       monitorOverlap: monitorOverlapScore.toFixed(2),
       severity: severityScore.toFixed(2),
@@ -205,13 +209,13 @@ export async function processDeploymentCorrelation(
         linkedAt: now,
       });
 
-      console.log(`Created auto-correlation: deployment ${deploymentId} -> incident ${incident.id} (${(confidence * 100).toFixed(0)}%)`);
+      log.info(`Created auto-correlation: deployment ${deploymentId} -> incident ${incident.id} (${(confidence * 100).toFixed(0)}%)`);
     } else {
-      console.log(`Confidence ${(confidence * 100).toFixed(0)}% below threshold ${(CORRELATION_CONFIG.minConfidence * 100).toFixed(0)}%, skipping`);
+      log.info(`Confidence ${(confidence * 100).toFixed(0)}% below threshold ${(CORRELATION_CONFIG.minConfidence * 100).toFixed(0)}%, skipping`);
     }
   }
 
-  console.log(`Deployment correlation complete for ${deploymentId}`);
+  log.info(`Deployment correlation complete for ${deploymentId}`);
 }
 
 // Batch processor to find correlations for recent deployments that may have been missed
@@ -222,7 +226,7 @@ export async function processDeploymentCorrelationBatch(
 
   const since = new Date(Date.now() - hours * 60 * 60 * 1000);
 
-  console.log(`Processing batch deployment correlation since ${since.toISOString()}`);
+  log.info(`Processing batch deployment correlation since ${since.toISOString()}`);
 
   // Get recent deployments
   let deploymentsQuery = db.query.deploymentEvents.findMany({
@@ -239,7 +243,7 @@ export async function processDeploymentCorrelationBatch(
     ? recentDeployments.filter((d) => d.organizationId === organizationId)
     : recentDeployments;
 
-  console.log(`Processing ${deployments.length} deployments`);
+  log.info(`Processing ${deployments.length} deployments`);
 
   for (const deployment of deployments) {
     try {
@@ -253,9 +257,9 @@ export async function processDeploymentCorrelationBatch(
         },
       } as Job<DeploymentCorrelateJobData>);
     } catch (error) {
-      console.error(`Error processing deployment ${deployment.id}:`, error);
+      log.error(`Error processing deployment ${deployment.id}:`, error);
     }
   }
 
-  console.log(`Batch deployment correlation complete`);
+  log.info(`Batch deployment correlation complete`);
 }

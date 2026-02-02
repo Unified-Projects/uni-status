@@ -44,7 +44,9 @@ export const alertChannels = pgTable(
     type: alertChannelTypeEnum("type").notNull(),
     config: jsonb("config").$type<{
       // Email
-      email?: string;
+      email?: string; // DEPRECATED - kept for backward compatibility
+      fromAddress?: string;
+      toAddresses?: string[];
       // Slack
       webhookUrl?: string;
       channel?: string;
@@ -169,6 +171,9 @@ export const alertHistory = pgTable(
       consecutiveFailures?: number;
       responseTimeMs?: number;
       statusCode?: number;
+      failureCount?: number;
+      lastFailureAt?: string;
+      failureTimestamps?: string[];
     }>().default({}),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
@@ -222,6 +227,20 @@ export const alertPoliciesRelations = relations(
       references: [organizations.id],
     }),
     monitorLinks: many(monitorAlertPolicies),
+  })
+);
+
+export const monitorAlertPoliciesRelations = relations(
+  monitorAlertPolicies,
+  ({ one }) => ({
+    monitor: one(monitors, {
+      fields: [monitorAlertPolicies.monitorId],
+      references: [monitors.id],
+    }),
+    policy: one(alertPolicies, {
+      fields: [monitorAlertPolicies.policyId],
+      references: [alertPolicies.id],
+    }),
   })
 );
 

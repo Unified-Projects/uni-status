@@ -22,7 +22,6 @@ import {
   createExpiredLicense,
   mockLicenseToDbLicense,
   PRO_ENTITLEMENTS,
-  PRO_ENTITLEMENTS,
 } from "../helpers/license";
 import {
   createValidKeygenResponse,

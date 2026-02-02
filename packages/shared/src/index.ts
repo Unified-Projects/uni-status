@@ -7,4 +7,6 @@ export * from "./templates";
 export * from "./og-templates";
 export * from "./lib/sli";
 export * from "./lib/url";
+export * from "./lib/status-icons";
+export * from "./lib/logger";
 // Note: crypto module is server-only - import directly from "@uni-status/shared/crypto" for Node.js usage

@@ -80,8 +80,8 @@ export const statusPages = pgTable(
       defaultTimezone: "local",
       localization: {
         defaultLocale: "en",
-        supportedLocales: ["en", "es", "fr", "ar"],
-        rtlLocales: ["ar"],
+        supportedLocales: ["en"],
+        rtlLocales: [],
         translations: {},
       },
       displayMode: "bars",
