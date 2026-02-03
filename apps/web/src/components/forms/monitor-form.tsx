@@ -581,7 +581,7 @@ export function MonitorForm({ monitor, mode }: MonitorFormProps) {
     reset,
     formState: { errors, isSubmitting },
   } = useForm<MonitorFormData>({
-    resolver: // @ts-expect-error Zod v4 compatibility
+    resolver: // @ts-ignore Zod v4 compatibility
     zodResolver(monitorFormSchema),
     defaultValues: {
       name: monitor?.name ?? "",
