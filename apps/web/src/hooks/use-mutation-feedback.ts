@@ -38,7 +38,9 @@ export function useMutationFeedback<TData = unknown, TError = Error, TVariables 
   useEffect(() => {
     if (mutation.isSuccess && !mutation.isPending) {
       if (showToast) {
-        toast.success(successMessage, {
+        toast({
+          description: successMessage,
+          variant: "success",
           duration: toastDuration,
         });
       }
@@ -64,7 +66,9 @@ export function useMutationFeedback<TData = unknown, TError = Error, TVariables 
         : errorMessage;
 
       if (showToast) {
-        toast.error(errorMsg, {
+        toast({
+          description: errorMsg,
+          variant: "destructive",
           duration: toastDuration,
         });
       }

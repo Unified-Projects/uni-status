@@ -116,7 +116,8 @@ export function AlertPolicyForm({
         control,
         formState: { errors },
     } = useForm<AlertPolicyFormData>({
-        resolver: zodResolver(alertPolicyFormSchema),
+        resolver: // @ts-expect-error Zod v4 compatibility
+    zodResolver(alertPolicyFormSchema),
         defaultValues,
         mode: "onSubmit",
     });

@@ -64,7 +64,8 @@ export function OrgSettingsForm({
     watch,
     formState: { errors, isDirty },
   } = useForm<OrgSettingsValues>({
-    resolver: zodResolver(orgSettingsSchema),
+    resolver: // @ts-expect-error Zod v4 compatibility
+    zodResolver(orgSettingsSchema),
     defaultValues: {
       name: organization.name,
       slug: organization.slug,

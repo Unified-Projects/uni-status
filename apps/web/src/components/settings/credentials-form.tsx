@@ -347,9 +347,9 @@ function CredentialConfigDialog({
       } else if (type === "twitter") {
         const twitter = credentials as MaskedTwitterCredentials;
         setTwitterForm({
-          apiKey: twitter.apiKey || "",
+          apiKey: "", // Don't pre-fill masked credential
           apiSecret: "", // Don't pre-fill secret for security
-          accessToken: twitter.accessToken || "",
+          accessToken: "", // Don't pre-fill masked credential
           accessSecret: "", // Don't pre-fill secret for security
           enabled: twitter.enabled ?? true,
         });

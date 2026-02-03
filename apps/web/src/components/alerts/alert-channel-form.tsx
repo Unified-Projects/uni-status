@@ -108,7 +108,8 @@ export function AlertChannelForm({
         control,
         formState: { errors },
     } = useForm<AlertChannelFormValues>({
-        resolver: zodResolver(alertChannelFormSchema) as any,
+        // @ts-ignore Zod v4 compatibility issue
+        resolver: zodResolver(alertChannelFormSchema),
         defaultValues: {
             name: channel?.name ?? "",
             type: effectiveType,
@@ -130,12 +131,12 @@ export function AlertChannelForm({
     });
 
     const { fields: toAddressFields, append: appendToAddress, remove: removeToAddress } = useFieldArray<AlertChannelFormValues>({
-        control,
+        control: control as any,
         name: "config.toAddresses" as any,
     }) as any;
 
     const { fields, append, remove } = useFieldArray<AlertChannelFormValues>({
-        control,
+        control: control as any,
         name: "config.headers",
     });
 
@@ -163,7 +164,9 @@ export function AlertChannelForm({
 
                 // Special handling for toAddresses array - filter out empty strings
                 if (key === "toAddresses" && Array.isArray(value)) {
-                    const filtered = value.filter((email) => email && email.trim() !== "");
+                    const filtered = value.filter((email): email is string => {
+                        return typeof email === "string" && email.trim() !== "";
+                    });
                     if (filtered.length > 0) {
                         cleaned[key] = filtered;
                     }
@@ -196,7 +199,7 @@ export function AlertChannelForm({
     };
 
     return (
-        <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
+        <form onSubmit={handleSubmit(handleFormSubmit as any)} className="space-y-6">
             {/* Basic Settings */}
             <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">

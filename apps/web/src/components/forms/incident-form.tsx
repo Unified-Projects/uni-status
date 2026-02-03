@@ -77,7 +77,8 @@ export function IncidentForm({ incident, mode }: IncidentFormProps) {
     setValue,
     formState: { errors, isSubmitting },
   } = useForm<IncidentFormData>({
-    resolver: zodResolver(incidentFormSchema),
+    resolver: // @ts-expect-error Zod v4 compatibility
+    zodResolver(incidentFormSchema),
     defaultValues: {
       title: incident?.title ?? "",
       status: (incident?.status as IncidentFormData["status"]) ?? "investigating",
@@ -342,7 +343,8 @@ export function IncidentUpdateForm({
     reset,
     formState: { errors, isSubmitting },
   } = useForm<IncidentUpdateFormData>({
-    resolver: zodResolver(incidentUpdateFormSchema),
+    resolver: // @ts-expect-error Zod v4 compatibility
+    zodResolver(incidentUpdateFormSchema),
     defaultValues: {
       status: currentStatus as IncidentUpdateFormData["status"],
       message: "",
