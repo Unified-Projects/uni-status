@@ -153,11 +153,11 @@ export async function processEmailNotification(
   job: Job<EmailNotificationJob>
 ): Promise<{ success: boolean; to: string | string[] }> {
   if (!job.data) {
-    log.error(`[Email] Job ${job.id} has no data`, {
+    log.error({
       jobId: job.id,
       jobName: job.name,
       attemptsMade: job.attemptsMade
-    });
+    }, `[Email] Job ${job.id} has no data`);
     throw new Error("Email job data is missing");
   }
 
@@ -174,12 +174,12 @@ export async function processEmailNotification(
 
   // Validate required fields
   if (!to || !subject || !emailType) {
-    log.error(`[Email] Job ${job.id} has invalid data`, {
+    log.error({
       hasTo: !!to,
       hasSubject: !!subject,
       hasEmailType: !!emailType,
       jobData: JSON.stringify(job.data)
-    });
+    }, `[Email] Job ${job.id} has invalid data`);
     throw new Error(`Email job missing required fields: ${!to ? 'to' : ''} ${!subject ? 'subject' : ''} ${!emailType ? 'emailType' : ''}`);
   }
 
@@ -196,11 +196,11 @@ export async function processEmailNotification(
         throw new Error(`buildEmailComponent returned null for emailType: ${emailType}`);
       }
     } catch (err) {
-      log.error(`[Email] Failed to build email component (attempt ${attemptsMade + 1})`, {
+      log.error({
         error: err instanceof Error ? err.message : String(err),
         emailType,
         to
-      });
+      }, `[Email] Failed to build email component (attempt ${attemptsMade + 1})`);
       throw err;
     }
 
@@ -215,14 +215,14 @@ export async function processEmailNotification(
 
     if (!result.success) {
       const errorMsg = result.error || "Email send failed";
-      log.error(`[Email] Failed to send ${emailType} email (attempt ${attemptsMade + 1})`, {
+      log.error({
         error: errorMsg,
         to,
         subject,
         hasOrgSmtp: !!orgSmtpCredentials,
         hasOrgResend: !!orgResendCredentials,
         hasPlatformResend: !!process.env.RESEND_API_KEY
-      });
+      }, `[Email] Failed to send ${emailType} email (attempt ${attemptsMade + 1})`);
 
       // Log failure on final attempt
       if (alertHistoryId && channelId && attemptsMade >= 4) {

@@ -39,12 +39,12 @@ async function sendViaSMTP(
   config: SmtpCredentials
 ): Promise<SendEmailResult> {
   try {
-    log.info(`[SMTP] Attempting to send email`, {
+    log.info({
       host: config.host,
       port: config.port,
       secure: config.secure ?? config.port === 465,
       to: Array.isArray(to) ? to.join(', ') : to
-    });
+    }, '[SMTP] Attempting to send email');
 
     const html = await render(react);
 
@@ -71,7 +71,7 @@ async function sendViaSMTP(
       html,
     });
 
-    log.info(`[SMTP] Successfully sent email to ${Array.isArray(to) ? to.join(', ') : to}`);
+    log.info({ to: Array.isArray(to) ? to.join(', ') : to }, '[SMTP] Successfully sent email');
     return { success: true, data: result };
   } catch (err) {
     const errorDetail = {
@@ -81,12 +81,12 @@ async function sendViaSMTP(
       response: (err as any)?.response,
     };
 
-    log.error(`[SMTP] Failed to send email`, {
+    log.error({
       ...errorDetail,
       host: config.host,
       port: config.port,
       to: Array.isArray(to) ? to.join(', ') : to
-    });
+    }, '[SMTP] Failed to send email');
 
     return {
       success: false,
