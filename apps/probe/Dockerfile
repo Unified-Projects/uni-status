@@ -1,4 +1,4 @@
-FROM node:25.3.0-alpine AS builder
+FROM node:25.6.0-alpine AS builder
 WORKDIR /app
 
 # Install pnpm directly via npm (avoids corepack signature issues)
@@ -14,7 +14,7 @@ RUN pnpm install --filter @uni-status/probe --frozen-lockfile
 RUN pnpm --filter @uni-status/probe build
 
 # ---- Runtime image ----
-FROM node:25.3.0-alpine
+FROM node:25.6.0-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 
