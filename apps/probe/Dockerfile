@@ -4,13 +4,19 @@ WORKDIR /app
 # Install pnpm directly via npm (avoids corepack signature issues)
 RUN npm install -g pnpm@9.15.4
 
-# Copy minimal workspace context needed to build the probe
+# Copy workspace package.json files for dependency resolution
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.json ./
 COPY apps/probe/package.json apps/probe/tsconfig.json ./apps/probe/
-COPY apps/probe/src ./apps/probe/src
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/licensing/package.json ./packages/licensing/
 
-# Install dependencies and build using lockfile
-RUN pnpm install --filter @uni-status/probe --frozen-lockfile
+# Install all dependencies with hoisting for proper workspace resolution
+RUN pnpm install --frozen-lockfile --shamefully-hoist
+
+# Copy all source code after dependencies are installed
+COPY . .
+
+# Build the probe
 RUN pnpm --filter @uni-status/probe build
 
 # ---- Runtime image ----
@@ -18,20 +24,16 @@ FROM node:25.6.0-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 
-# Install pnpm directly via npm (avoids corepack signature issues)
-RUN npm install -g pnpm@9.15.4
-
 # Create non-root user
 RUN addgroup -g 1001 -S appgroup && \
     adduser -u 1001 -S appuser -G appgroup && \
     chown -R appuser:appgroup /app
 
-# Copy built artifacts and package manifest
-COPY --from=builder --chown=appuser:appgroup /app/apps/probe/package.json ./package.json
+# Copy built artifacts and dependencies from builder
 COPY --from=builder --chown=appuser:appgroup /app/apps/probe/dist ./dist
-
-# Install runtime dependencies only
-RUN pnpm install --prod
+COPY --from=builder --chown=appuser:appgroup /app/apps/probe/package.json ./package.json
+COPY --from=builder --chown=appuser:appgroup /app/node_modules ./node_modules
+COPY --from=builder --chown=appuser:appgroup /app/packages ./packages
 
 USER appuser
 

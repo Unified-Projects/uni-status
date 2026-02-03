@@ -112,6 +112,9 @@ importers:
 
   apps/probe:
     dependencies:
+      '@uni-status/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       ping:
         specifier: ^1.0.0
         version: 1.0.0
@@ -122,6 +125,9 @@ importers:
       '@types/ping':
         specifier: ^0.4.4
         version: 0.4.4
+      esbuild:
+        specifier: ^0.27.1
+        version: 0.27.1
       tsx:
         specifier: ^4.19.2
         version: 4.21.0

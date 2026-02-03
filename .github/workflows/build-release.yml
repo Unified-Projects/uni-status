@@ -43,6 +43,8 @@ jobs:
             dockerfile: apps/workers/Dockerfile
           - name: migrations
             dockerfile: docker/db-migrate/Dockerfile
+          - name: probe
+            dockerfile: apps/probe/Dockerfile
 
     steps:
       - name: Checkout repository

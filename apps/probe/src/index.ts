@@ -4,8 +4,11 @@ import fs from "node:fs";
 import process from "node:process";
 import { performance } from "node:perf_hooks";
 import ping from "ping";
-import pkg from "../package.json" assert { type: "json" };
+import { createRequire } from "node:module";
 import { createLogger } from "@uni-status/shared";
+
+const require = createRequire(import.meta.url);
+const pkg = require("../package.json");
 
 const log = createLogger({ module: "probe-index" });
 
@@ -150,7 +153,7 @@ async function sendHeartbeat() {
       log.error(`[probe] Heartbeat failed: ${res.status} ${errorText}`);
     }
   } catch (error) {
-    log.error("[probe] Heartbeat error:", error instanceof Error ? error.message : error);
+    log.error({ error }, "[probe] Heartbeat error");
   }
 }
 
@@ -408,7 +411,7 @@ async function submitJobResult(job: PendingJob, result: JobResult) {
       log.error(`[probe] Failed to submit result for job ${job.id}: ${res.status} ${text}`);
     }
   } catch (error) {
-    log.error(`[probe] Error submitting result for job ${job.id}:`, error instanceof Error ? error.message : error);
+    log.error({ error, jobId: job.id }, "[probe] Error submitting result for job");
   }
 }
 
@@ -447,7 +450,7 @@ async function pollJobs() {
       await handleJob(job);
     }
   } catch (error) {
-    log.error("[probe] Error polling jobs:", error instanceof Error ? error.message : error);
+    log.error({ error }, "[probe] Error polling jobs");
   } finally {
     pollInFlight = false;
   }

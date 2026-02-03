@@ -7,16 +7,18 @@
     "uni-status-probe": "dist/index.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --outfile=dist/index.js --format=esm --external:ping --external:pino --external:pino-pretty",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts"
   },
   "dependencies": {
+    "@uni-status/shared": "workspace:*",
     "ping": "^1.0.0"
   },
   "devDependencies": {
     "@types/node": "^25.2.0",
     "@types/ping": "^0.4.4",
+    "esbuild": "^0.27.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3"
   },
