@@ -826,10 +826,45 @@ function validateAlertChannelWebhookUrl(
   }
 
   if (type === "teams") {
-    if (!webhookUrl.includes(".webhook.office.com/") && !webhookUrl.includes(".logic.azure.com/") && !webhookUrl.includes("outlook.office.com/webhook/")) {
+    let url: URL;
+    try {
+      url = new URL(webhookUrl);
+    } catch {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "Microsoft Teams webhook URL must be a valid Office 365 or Azure Logic Apps webhook",
+        message: "Microsoft Teams webhook URL must be a valid HTTPS URL",
+        path: ["config", "webhookUrl"],
+      });
+      return;
+    }
+
+    if (url.protocol !== "https:") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Microsoft Teams webhook URL must use HTTPS",
+        path: ["config", "webhookUrl"],
+      });
+      return;
+    }
+
+    const hostname = url.hostname.toLowerCase();
+    const isValidTeamsWebhook =
+      hostname.endsWith(".webhook.office.com") ||
+      hostname.endsWith(".logic.azure.com") ||
+      hostname === "outlook.office.com";
+
+    if (!isValidTeamsWebhook) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Microsoft Teams webhook URL must be from webhook.office.com, logic.azure.com, or outlook.office.com",
+        path: ["config", "webhookUrl"],
+      });
+    }
+
+    if (hostname === "outlook.office.com" && !url.pathname.startsWith("/webhook/")) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Outlook webhook URL must include /webhook/ path",
         path: ["config", "webhookUrl"],
       });
     }

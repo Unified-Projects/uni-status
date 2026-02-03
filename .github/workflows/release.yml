@@ -77,6 +77,8 @@ jobs:
   build-images:
     name: Build and push Docker images
     needs: create-release
+    permissions:
+      contents: read
     uses: ./.github/workflows/build-release.yml
     with:
       version: ${{ inputs.version }}

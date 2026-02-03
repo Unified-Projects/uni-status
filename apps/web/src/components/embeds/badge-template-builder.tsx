@@ -839,7 +839,6 @@ function sanitizeCss(css: string): string {
 
   // Only allow basic CSS properties for SVG styling
   // Strip anything that looks like it might break out of the style context
-  sanitized = sanitized.replace(/<[^>]*>/g, "");
   sanitized = sanitized.replace(/[<>]/g, "");
 
   return sanitized.trim();

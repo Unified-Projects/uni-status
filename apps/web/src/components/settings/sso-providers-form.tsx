@@ -79,11 +79,44 @@ export function SSOProvidersForm({ organizationId, canManage }: SSOProvidersForm
   }) => {
     // Build complete OIDC config with all endpoints for Better Auth compatibility
     let oidcConfig = undefined;
-    if (data.clientId && data.issuer && data.type === "oidc") {
-      // Determine the correct endpoints based on the issuer
-      let authEndpoint, tokenEndpoint, userinfoEndpoint, jwksEndpoint;
 
-      if (data.issuer.includes("microsoftonline.com")) {
+    // Helper function to validate issuer hostname
+    const validateIssuerHostname = (issuer: string, expectedHostname: string): boolean => {
+      try {
+        const url = new URL(issuer);
+        if (url.protocol !== "https:") return false;
+        const hostname = url.hostname.toLowerCase();
+        return hostname === expectedHostname || hostname.endsWith(`.${expectedHostname}`);
+      } catch {
+        return false;
+      }
+    };
+
+    if (data.clientId && data.issuer && data.type === "oidc") {
+      let issuerUrl: URL;
+      try {
+        issuerUrl = new URL(data.issuer);
+        if (issuerUrl.protocol !== "https:") {
+          toast({
+            title: "Invalid Issuer URL",
+            description: "Issuer URL must use HTTPS protocol",
+            variant: "destructive",
+          });
+          return;
+        }
+      } catch {
+        toast({
+          title: "Invalid Issuer URL",
+          description: "Please provide a valid HTTPS URL for the issuer",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      let authEndpoint, tokenEndpoint, userinfoEndpoint, jwksEndpoint;
+      const hostname = issuerUrl.hostname.toLowerCase();
+
+      if (validateIssuerHostname(data.issuer, "microsoftonline.com")) {
         // Microsoft Azure AD / Entra ID
         // Issuer should already include /v2.0 from template, but endpoints use base URL
         const msBaseUrl = data.issuer.replace(/\/v2\.0$/, "");
@@ -91,13 +124,13 @@ export function SSOProvidersForm({ organizationId, canManage }: SSOProvidersForm
         tokenEndpoint = `${msBaseUrl}/oauth2/v2.0/token`;
         userinfoEndpoint = "https://graph.microsoft.com/oidc/userinfo";
         jwksEndpoint = `${msBaseUrl}/discovery/v2.0/keys`;
-      } else if (data.issuer.includes("okta.com")) {
+      } else if (validateIssuerHostname(data.issuer, "okta.com")) {
         // Okta
         authEndpoint = `${data.issuer}/v1/authorize`;
         tokenEndpoint = `${data.issuer}/v1/token`;
         userinfoEndpoint = `${data.issuer}/v1/userinfo`;
         jwksEndpoint = `${data.issuer}/v1/keys`;
-      } else if (data.issuer.includes("auth0.com")) {
+      } else if (validateIssuerHostname(data.issuer, "auth0.com")) {
         // Auth0
         authEndpoint = `${data.issuer}/authorize`;
         tokenEndpoint = `${data.issuer}/oauth/token`;
@@ -113,7 +146,7 @@ export function SSOProvidersForm({ organizationId, canManage }: SSOProvidersForm
 
       // Build discovery URL - for Microsoft v2.0, ensure it uses v2.0 path
       let discoveryUrl = `${data.issuer}/.well-known/openid-configuration`;
-      if (data.issuer.includes("microsoftonline.com") && !data.issuer.includes("/v2.0")) {
+      if (validateIssuerHostname(data.issuer, "microsoftonline.com") && !data.issuer.includes("/v2.0")) {
         // Add v2.0 to discovery URL if not already present
         discoveryUrl = `${data.issuer}/v2.0/.well-known/openid-configuration`;
       }
