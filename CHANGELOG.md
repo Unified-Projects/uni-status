@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-02-03
+
+### Added
+- Probe to release builds with health check endpoints
+
+### Fixed
+- CodeQL security vulnerabilities in URL validation and sanitization
+- TypeScript type-check errors in CI
+- System and test issues
+- ESLint prefer-const violations in uptime-bar component
+- Zod v4 compatibility with explicit type assertions
+
+### Changed
+- Upgraded major dependencies: date-fns v4, recharts v3, vitest v4, mongodb v7
+- Fixed recharts compatibility after upgrade
+- Updated Docker images across multiple services
+- Bumped GitHub Actions dependencies
+- Updated dev dependencies (7 packages)
+- Updated production dependencies (26 packages)
+
 ## [0.1.0] - 2026-02-02
 
 ### Added

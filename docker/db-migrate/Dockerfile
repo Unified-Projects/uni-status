@@ -13,7 +13,7 @@ COPY --chown=node:node packages/shared/package.json ./packages/shared/
 COPY --chown=node:node packages/licensing/package.json ./packages/licensing/
 
 # Create minimal enterprise package.json for db-migrate (only needs database schema deps)
-RUN mkdir -p enterprise && echo '{"name":"@uni-status/enterprise","version":"0.1.0","private":true,"type":"module","dependencies":{"@uni-status/database":"workspace:*","@uni-status/shared":"workspace:*"},"peerDependencies":{"drizzle-orm":"^0.44.7"}}' > enterprise/package.json \
+RUN mkdir -p enterprise && echo '{"name":"@uni-status/enterprise","version":"0.1.1","private":true,"type":"module","dependencies":{"@uni-status/database":"workspace:*","@uni-status/shared":"workspace:*"},"peerDependencies":{"drizzle-orm":"^0.44.7"}}' > enterprise/package.json \
   && chown -R node:node enterprise
 
 # Don't use frozen-lockfile since we're creating a minimal enterprise package.json
