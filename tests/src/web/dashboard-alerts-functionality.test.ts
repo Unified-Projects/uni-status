@@ -354,13 +354,13 @@ describe("Dashboard Alerts Functionality", () => {
         {
           method: "PATCH",
           headers: ctx.headers,
-          body: JSON.stringify({ config: { email: "updated@example.com" } }),
+          body: JSON.stringify({ config: { toAddresses: ["updated@example.com"] } }),
         }
       );
 
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.data.config.email).toBe("updated@example.com");
+      expect(body.data.config.toAddresses).toEqual(["updated@example.com"]);
     });
 
     it("tests channel sends notification", async () => {

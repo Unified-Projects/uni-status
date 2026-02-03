@@ -344,10 +344,15 @@ export function checkResourceLimit(
     currentCount: number
 ): boolean {
     // Use orgLimits for the check (computed based on org type)
+    if (!context || !context.orgLimits) {
+        // If context is malformed, default to unlimited (self-hosted behavior)
+        return true;
+    }
+
     const limit = context.orgLimits[resource];
 
-    // -1 means unlimited
-    if (limit === -1) {
+    // -1 means unlimited, undefined also means unlimited (defensive)
+    if (limit === -1 || limit === undefined) {
         return true;
     }
 
@@ -366,11 +371,23 @@ export function requireResourceLimit(
     currentCount: number,
     resourceName?: string
 ): void {
-    if (!checkResourceLimit(context, resource, currentCount)) {
-        const limit = context.orgLimits[resource];
+    try {
+        if (!checkResourceLimit(context, resource, currentCount)) {
+            const limit = context?.orgLimits?.[resource] ?? 0;
+            const name = resourceName || resource;
+            throw new HTTPException(403, {
+                message: `${capitalize(name)} limit reached (${limit}). Upgrade your plan to add more.`,
+            });
+        }
+    } catch (error) {
+        // If it's already an HTTPException, re-throw it
+        if (error instanceof HTTPException) {
+            throw error;
+        }
+        // Otherwise, convert any error to a 403 (entitlement check failure)
         const name = resourceName || resource;
         throw new HTTPException(403, {
-            message: `${capitalize(name)} limit reached (${limit}). Upgrade your plan to add more.`,
+            message: `${capitalize(name)} limit check failed. Please contact support.`,
         });
     }
 }

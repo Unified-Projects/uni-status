@@ -293,7 +293,22 @@ licenseRoutes.post("/activate", async (c) => {
         );
     }
 
-    const body = await c.req.json();
+    let body;
+    try {
+        body = await c.req.json();
+    } catch (error) {
+        return c.json(
+            {
+                success: false,
+                error: {
+                    code: "INVALID_JSON",
+                    message: "Invalid JSON in request body",
+                },
+            },
+            400
+        );
+    }
+
     const licenseKey = body.licenseKey as string;
 
     if (!licenseKey || typeof licenseKey !== "string") {
@@ -1369,7 +1384,13 @@ licenseRoutes.post("/internal/license-sync", async (c) => {
         return c.json({ error: "Unauthorized" }, 401);
     }
 
-    const body = await c.req.json();
+    let body;
+    try {
+        body = await c.req.json();
+    } catch (error) {
+        return c.json({ error: "Invalid JSON in request body" }, 400);
+    }
+
     const { event, organizationId, timestamp } = body;
 
     if (!event || !organizationId) {

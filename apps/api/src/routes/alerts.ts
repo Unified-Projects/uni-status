@@ -53,11 +53,39 @@ alertsRoutes.get("/channels", async (c) => {
 });
 
 alertsRoutes.post("/channels", async (c) => {
-  const organizationId = await requireOrganization(c);
-  requireScope(c, "write");
+  try {
+    const organizationId = await requireOrganization(c);
+    requireScope(c, "write");
 
-  const body = await c.req.json();
-  const validated = createAlertChannelSchema.parse(body);
+    let body;
+    try {
+      body = await c.req.json();
+    } catch (error) {
+      return c.json({
+        success: false,
+        error: {
+          code: "INVALID_JSON",
+          message: "Invalid JSON in request body",
+        },
+      }, 400);
+    }
+
+    const result = createAlertChannelSchema.safeParse(body);
+  if (!result.success) {
+    return c.json({
+      success: false,
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Invalid request data",
+        details: result.error?.errors?.map((e) => ({
+          path: e.path.join("."),
+          message: e.message,
+        })) || [],
+      },
+    }, 400);
+  }
+
+  const validated = result.data;
 
   const id = nanoid();
   const now = new Date();
@@ -67,7 +95,10 @@ alertsRoutes.post("/channels", async (c) => {
     .values({
       id,
       organizationId,
-      ...validated,
+      name: validated.name,
+      type: validated.type,
+      config: validated.config,
+      enabled: validated.enabled,
       createdAt: now,
       updatedAt: now,
     })
@@ -100,6 +131,14 @@ alertsRoutes.post("/channels", async (c) => {
     },
     201
   );
+  } catch (error) {
+    // Re-throw HTTPException to be handled by error handler
+    if (error instanceof HTTPException) {
+      throw error;
+    }
+    // Log unexpected errors
+    throw error;
+  }
 });
 
 alertsRoutes.patch("/channels/:id", async (c) => {
@@ -107,8 +146,35 @@ alertsRoutes.patch("/channels/:id", async (c) => {
   requireScope(c, "write");
   const { id } = c.req.param();
 
-  const body = await c.req.json();
-  const validated = updateAlertChannelSchema.parse(body);
+  let body;
+  try {
+    body = await c.req.json();
+  } catch (error) {
+    return c.json({
+      success: false,
+      error: {
+        code: "INVALID_JSON",
+        message: "Invalid JSON in request body",
+      },
+    }, 400);
+  }
+
+  const result = updateAlertChannelSchema.safeParse(body);
+  if (!result.success) {
+    return c.json({
+      success: false,
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Invalid request data",
+        details: result.error?.errors?.map((e) => ({
+          path: e.path.join("."),
+          message: e.message,
+        })) || [],
+      },
+    }, 400);
+  }
+
+  const validated = result.data;
   const now = new Date();
 
   // Get existing channel for audit
@@ -120,12 +186,15 @@ alertsRoutes.patch("/channels/:id", async (c) => {
     throw new HTTPException(404, { message: "Channel not found" });
   }
 
+  const updateData: any = { updatedAt: now };
+  if (validated.name !== undefined) updateData.name = validated.name;
+  if (validated.type !== undefined) updateData.type = validated.type;
+  if (validated.config !== undefined) updateData.config = validated.config;
+  if (validated.enabled !== undefined) updateData.enabled = validated.enabled;
+
   const [channel] = await db
     .update(alertChannels)
-    .set({
-      ...validated,
-      updatedAt: now,
-    })
+    .set(updateData)
     .where(
       and(
         eq(alertChannels.id, id),

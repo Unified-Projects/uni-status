@@ -205,6 +205,7 @@ export async function bootstrapTestContext(): Promise<TestContext> {
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
+      "X-Organization-Id": organizationId,
     },
     apiUrl: `${API_BASE_URL}/api/v1`,
     dbClient,

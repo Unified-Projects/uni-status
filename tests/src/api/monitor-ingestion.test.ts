@@ -50,8 +50,8 @@ describe("Monitor ingestion & analytics", () => {
     expect(monitor).toBeDefined();
     // Uptime = (success + degraded) / total = 3/4 = 75%
     expect(monitor.uptimePercentage).toBeCloseTo(75, 2);
-    // Average response time = (100 + 300 + 400 + 600) / 4 = 350
-    expect(monitor.avgResponseTime).toBeCloseTo(350, 1);
+    // Average response time = (100 + 300 + 400) / 3 = 266.67 (excludes failures)
+    expect(monitor.avgResponseTime).toBeCloseTo(266.67, 1);
     expect(monitor.status).toBe("active");
   });
 

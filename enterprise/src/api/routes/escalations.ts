@@ -84,8 +84,35 @@ escalationsRoutes.post("/", async (c) => {
   const organizationId = await requireOrganization(c);
   requireScope(c, "write");
 
-  const body = await c.req.json();
-  const validated = createEscalationPolicySchema.parse(body);
+  let body;
+  try {
+    body = await c.req.json();
+  } catch (error) {
+    return c.json({
+      success: false,
+      error: {
+        code: "INVALID_JSON",
+        message: "Invalid JSON in request body",
+      },
+    }, 400);
+  }
+
+  const result = createEscalationPolicySchema.safeParse(body);
+  if (!result.success) {
+    return c.json({
+      success: false,
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Invalid request data",
+        details: result.error?.errors?.map((e) => ({
+          path: e.path.join("."),
+          message: e.message,
+        })) || [],
+      },
+    }, 400);
+  }
+
+  const validated = result.data;
 
   const policyId = nanoid();
   const now = new Date();

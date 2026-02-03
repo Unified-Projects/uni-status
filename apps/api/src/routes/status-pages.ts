@@ -1,4 +1,5 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
+import { HTTPException } from "hono/http-exception";
 import { nanoid } from "nanoid";
 import { db } from "@uni-status/database";
 import { statusPages, statusPageMonitors, subscribers, crowdsourcedSettings } from "@uni-status/database/schema";
@@ -72,16 +73,25 @@ statusPagesRoutes.post("/", async (c) => {
 
   // Check license entitlements for status page limit
   const licenseContext = getLicenseContext(c);
-  const currentStatusPageCount = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(statusPages)
-    .where(eq(statusPages.organizationId, organizationId));
-  requireResourceLimit(
-    licenseContext,
-    "statusPages",
-    Number(currentStatusPageCount[0]?.count ?? 0),
-    "Status page"
-  );
+  try {
+    const currentStatusPageCount = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(statusPages)
+      .where(eq(statusPages.organizationId, organizationId));
+    requireResourceLimit(
+      licenseContext,
+      "statusPages",
+      Number(currentStatusPageCount[0]?.count ?? 0),
+      "Status page"
+    );
+  } catch (error) {
+    // If it's an HTTPException (403 from requireResourceLimit), re-throw it
+    if (error instanceof HTTPException) {
+      throw error;
+    }
+    // Any other error during entitlement check should be treated as limit reached
+    throw new HTTPException(403, { message: "Status page limit check failed" });
+  }
 
   const body = await c.req.json();
   const validated = createStatusPageSchema.parse(body);

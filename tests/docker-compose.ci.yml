@@ -19,6 +19,7 @@ services:
       - UNI_STATUS_API_PORT=3001
       - RUN_REPORTS_INLINE=1
       - UNI_STATUS_AUTH_SECRET=${UNI_STATUS_AUTH_SECRET:-super-secret-key-change-in-production-32}
+      - UNI_STATUS_JWT_SECRET=${UNI_STATUS_JWT_SECRET:-test-jwt-secret-for-tests}
       - UNI_STATUS_CORS_ENABLED=true
       - UNI_STATUS_DISABLE_RATE_LIMITS=true
       # Keygen.sh licensing (for webhook verification in tests)

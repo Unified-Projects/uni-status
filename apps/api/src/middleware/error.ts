@@ -6,7 +6,15 @@ import { createLogger } from "@uni-status/shared";
 const log = createLogger({ module: "error-handler" });
 
 export function errorHandler(err: Error, c: Context) {
-  log.error({ err, path: c.req.path, method: c.req.method, errorName: err.name, errorConstructor: err.constructor.name }, "Request error");
+  log.error({
+    err,
+    path: c.req.path,
+    method: c.req.method,
+    errorName: err.name,
+    errorConstructor: err.constructor.name,
+    errorMessage: err.message,
+    errorStack: err.stack,
+  }, "Request error");
 
   // Normalize HTTPExceptions (e.g., thrown by license/validation guards) to JSON
   if (err instanceof HTTPException) {

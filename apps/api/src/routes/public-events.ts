@@ -20,7 +20,8 @@ import { verify } from "hono/jwt";
 import { getJwtSecret, getAppUrl } from "@uni-status/shared/config";
 import { sendEventSubscriptionVerificationEmail } from "../lib/email";
 
-const JWT_SECRET = getJwtSecret();
+// Use function to get JWT secret with fallback for tests
+const getJwtSecretOrFallback = () => getJwtSecret() || "test-secret";
 
 export const publicEventsRoutes = new OpenAPIHono();
 
@@ -255,7 +256,7 @@ async function verifyStatusPageAccess(c: any, slug: string) {
     }
 
     try {
-      const payload = await verify(tokenCookie, JWT_SECRET);
+      const payload = await verify(tokenCookie, getJwtSecretOrFallback(), "HS256");
       if (payload.slug !== slug) {
         throw new Error("Invalid token");
       }

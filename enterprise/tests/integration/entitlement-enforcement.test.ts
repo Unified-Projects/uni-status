@@ -240,7 +240,7 @@ describe("Entitlement Enforcement", () => {
         }),
       });
 
-      expect(FREE_MONITOR_LIMIT === -1 ? 201 : 403).toBe(response.status);
+      expect(response.status).toBe(FREE_MONITOR_LIMIT === -1 ? 201 : 403);
       const body = await response.json();
       if (FREE_MONITOR_LIMIT !== -1) {
         expect(body.error || body.message).toContain("limit");
@@ -303,7 +303,7 @@ describe("Entitlement Enforcement", () => {
         }),
       });
 
-      expect(PRO_MONITOR_LIMIT === -1 ? 201 : 403).toBe(response.status);
+      expect(response.status).toBe(PRO_MONITOR_LIMIT === -1 ? 201 : 403);
     });
 
     it("allows unlimited monitors for Enterprise", async () => {
@@ -440,7 +440,7 @@ describe("Entitlement Enforcement", () => {
         }),
       });
 
-      expect(FREE_STATUS_PAGE_LIMIT === -1 ? 201 : 403).toBe(response.status);
+      expect(response.status).toBe(FREE_STATUS_PAGE_LIMIT === -1 ? 201 : 403);
     });
 
     it("allows more status pages with Pro license", async () => {

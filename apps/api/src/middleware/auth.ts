@@ -1,4 +1,5 @@
 import { Context, Next } from "hono";
+import { HTTPException } from "hono/http-exception";
 import { auth } from "@uni-status/auth/server";
 import { db } from "@uni-status/database";
 import { apiKeys, organizationMembers, organizations, users, systemSettings } from "@uni-status/database/schema";
@@ -206,7 +207,7 @@ export function requireAuth(c: Context): AuthContext {
   const auth = c.get("auth");
 
   if (!auth.user && !auth.apiKey) {
-    throw new Error("Unauthorized");
+    throw new HTTPException(401, { message: "Unauthorized" });
   }
 
   return auth;
@@ -216,16 +217,25 @@ export async function requireOrganization(c: Context): Promise<string> {
   const auth = requireAuth(c);
 
   if (!auth.organizationId) {
-    throw new Error("Organization context required");
+    throw new HTTPException(400, { message: "Organization context required" });
   }
 
   // Verify the organization actually exists in the database
-  const org = await db.query.organizations.findFirst({
-    where: eq(organizations.id, auth.organizationId),
-  });
+  try {
+    const org = await db.query.organizations.findFirst({
+      where: eq(organizations.id, auth.organizationId),
+    });
 
-  if (!org) {
-    throw new Error("Organization not found - please select a valid organization");
+    if (!org) {
+      throw new HTTPException(404, { message: "Organization not found - please select a valid organization" });
+    }
+  } catch (error) {
+    // Re-throw HTTPException as-is
+    if (error instanceof HTTPException) {
+      throw error;
+    }
+    // Log and wrap other errors
+    throw new HTTPException(500, { message: "Database error while verifying organization" });
   }
 
   return auth.organizationId;
@@ -244,7 +254,7 @@ export function requireScope(c: Context, scope: string): void {
       (scope === "read" && (scopes.includes("write") || scopes.includes("admin")));
 
     if (!hasScope) {
-      throw new Error(`Insufficient permissions: ${scope} required`);
+      throw new HTTPException(403, { message: `Insufficient permissions: ${scope} required` });
     }
   }
 }
@@ -256,7 +266,7 @@ export async function requireRole(
   const auth = requireAuth(c);
 
   if (!auth.organizationId) {
-    throw new Error("Organization context required");
+    throw new HTTPException(400, { message: "Organization context required" });
   }
 
   // API keys with admin scope can access admin/owner-restricted endpoints
@@ -273,11 +283,11 @@ export async function requireRole(
         return "member"; // Return member role equivalent
       }
     }
-    throw new Error("Insufficient API key scope for this role-based operation");
+    throw new HTTPException(403, { message: "Insufficient API key scope for this role-based operation" });
   }
 
   if (!auth.user) {
-    throw new Error("User authentication required");
+    throw new HTTPException(401, { message: "User authentication required" });
   }
 
   // Get user's role in the organization
@@ -289,13 +299,11 @@ export async function requireRole(
   });
 
   if (!membership) {
-    throw new Error("Not a member of this organization");
+    throw new HTTPException(403, { message: "Not a member of this organization" });
   }
 
   if (!allowedRoles.includes(membership.role as any)) {
-    throw new Error(
-      `Insufficient permissions: requires ${allowedRoles.join(" or ")} role`
-    );
+    throw new HTTPException(403, { message: `Insufficient permissions: requires ${allowedRoles.join(" or ")} role` });
   }
 
   return membership.role;
@@ -305,7 +313,7 @@ export async function requireSuperAdmin(c: Context): Promise<void> {
   const auth = requireAuth(c);
 
   if (!auth.user) {
-    throw new Error("User authentication required");
+    throw new HTTPException(401, { message: "User authentication required" });
   }
 
   const user = await db.query.users.findFirst({
@@ -316,7 +324,7 @@ export async function requireSuperAdmin(c: Context): Promise<void> {
   });
 
   if (user?.systemRole !== "super_admin") {
-    throw new Error("Super admin access required");
+    throw new HTTPException(403, { message: "Super admin access required" });
   }
 }
 

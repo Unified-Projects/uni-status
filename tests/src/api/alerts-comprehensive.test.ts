@@ -33,7 +33,7 @@ describe("Alerts API - Comprehensive", () => {
           body: JSON.stringify({
             name: "Email Alerts",
             type: "email",
-            config: { email: "alerts@example.com" },
+            config: { toAddresses: ["alerts@example.com"] },
             enabled: true,
           }),
         });
@@ -42,7 +42,7 @@ describe("Alerts API - Comprehensive", () => {
         const body = await res.json();
         expect(body.success).toBe(true);
         expect(body.data.type).toBe("email");
-        expect(body.data.config.email).toBe("alerts@example.com");
+        expect(body.data.config.toAddresses).toEqual(["alerts@example.com"]);
       });
 
       it("creates a slack channel", async () => {
@@ -282,12 +282,12 @@ describe("Alerts API - Comprehensive", () => {
         const res = await fetch(`${API_BASE_URL}/api/v1/alerts/channels/${updateChannelId}`, {
           method: "PATCH",
           headers: ctx.headers,
-          body: JSON.stringify({ config: { email: "new-email@example.com" } }),
+          body: JSON.stringify({ config: { toAddresses: ["new-email@example.com"] } }),
         });
 
         expect(res.status).toBe(200);
         const body = await res.json();
-        expect(body.data.config.email).toBe("new-email@example.com");
+        expect(body.data.config.toAddresses).toEqual(["new-email@example.com"]);
       });
     });
 

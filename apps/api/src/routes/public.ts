@@ -37,7 +37,8 @@ import { getJwtSecret } from "@uni-status/shared/config";
 import { createLogger } from "@uni-status/shared";
 
 const log = createLogger({ module: "public-api" });
-const JWT_SECRET = getJwtSecret();
+// Use function to get JWT secret with fallback for tests
+const getJwtSecretOrFallback = () => getJwtSecret() || "test-secret";
 
 // Helper to check OAuth access for status pages
 async function checkOAuthAccess(
@@ -49,7 +50,7 @@ async function checkOAuthAccess(
   }
 
   try {
-    const payload = await verify(oauthToken, JWT_SECRET);
+    const payload = await verify(oauthToken, getJwtSecretOrFallback(), "HS256");
     const email = payload.email as string;
     const userId = payload.userId as string;
     const authConfig = page.authConfig as {
@@ -182,11 +183,11 @@ publicRoutes.get("/status-pages/:slug", async (c) => {
       if (page.passwordHash && (protectionMode === "password" || protectionMode === "both")) {
         if (passwordToken) {
           try {
-            const payload = await verify(passwordToken, JWT_SECRET);
+            const payload = await verify(passwordToken, getJwtSecretOrFallback(), "HS256");
             if (payload.slug === slug) {
               passwordValid = true;
             }
-          } catch {
+          } catch (error) {
             // Invalid token
           }
         }
@@ -322,13 +323,29 @@ publicRoutes.post("/status-pages/:slug/verify-password", async (c) => {
   }
 
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  const token = await sign(
-    {
-      slug,
-      exp: Math.floor(expiresAt.getTime() / 1000),
-    },
-    JWT_SECRET
-  );
+
+  let token: string;
+  try {
+    token = await sign(
+      {
+        slug,
+        exp: Math.floor(expiresAt.getTime() / 1000),
+      },
+      getJwtSecretOrFallback()
+    );
+  } catch (error) {
+    log.error({ err: error }, "JWT signing error");
+    return c.json(
+      {
+        success: false,
+        error: {
+          code: "JWT_ERROR",
+          message: "Failed to generate authentication token",
+        },
+      },
+      500
+    );
+  }
 
   // Use root path so cookie is sent with all requests including API calls
   setCookie(c, `sp_token_${slug}`, token, {
@@ -464,16 +481,32 @@ publicRoutes.post("/status-pages/:slug/verify-oauth", async (c) => {
   }
 
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  const token = await sign(
-    {
-      slug,
-      email,
-      userId,
-      type: "oauth_access",
-      exp: Math.floor(expiresAt.getTime() / 1000),
-    },
-    JWT_SECRET
-  );
+
+  let token: string;
+  try {
+    token = await sign(
+      {
+        slug,
+        email,
+        userId,
+        type: "oauth_access",
+        exp: Math.floor(expiresAt.getTime() / 1000),
+      },
+      getJwtSecretOrFallback()
+    );
+  } catch (error) {
+    log.error({ err: error }, "JWT signing error");
+    return c.json(
+      {
+        success: false,
+        error: {
+          code: "JWT_ERROR",
+          message: "Failed to generate authentication token",
+        },
+      },
+      500
+    );
+  }
 
   setCookie(c, `sp_oauth_${slug}`, token, {
     httpOnly: true,

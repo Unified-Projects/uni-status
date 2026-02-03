@@ -1,4 +1,5 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import { HTTPException } from "hono/http-exception";
 import { nanoid } from "nanoid";
 import { db } from "@uni-status/database";
 import { monitors, checkResults, incidents, heartbeatPings, monitorDependencies } from "@uni-status/database/schema";
@@ -222,16 +223,25 @@ monitorsRoutes.post("/", async (c) => {
 
   // Check license entitlements for monitor limit
   const licenseContext = getLicenseContext(c);
-  const currentMonitorCount = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(monitors)
-    .where(eq(monitors.organizationId, organizationId));
-  requireResourceLimit(
-    licenseContext,
-    "monitors",
-    Number(currentMonitorCount[0]?.count ?? 0),
-    "Monitor"
-  );
+  try {
+    const currentMonitorCount = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(monitors)
+      .where(eq(monitors.organizationId, organizationId));
+    requireResourceLimit(
+      licenseContext,
+      "monitors",
+      Number(currentMonitorCount[0]?.count ?? 0),
+      "Monitor"
+    );
+  } catch (error) {
+    // If it's an HTTPException (403 from requireResourceLimit), re-throw it
+    if (error instanceof HTTPException) {
+      throw error;
+    }
+    // Any other error during entitlement check should be treated as limit reached
+    throw new HTTPException(403, { message: "Monitor limit check failed" });
+  }
 
   const body = await c.req.json();
   const validated = createMonitorSchema.parse(body);

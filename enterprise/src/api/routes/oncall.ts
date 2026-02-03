@@ -32,8 +32,35 @@ oncallRoutes.post("/rotations", async (c) => {
   const organizationId = await requireOrganization(c);
   requireScope(c, "write");
 
-  const body = await c.req.json();
-  const validated = createOncallRotationSchema.parse(body);
+  let body;
+  try {
+    body = await c.req.json();
+  } catch (error) {
+    return c.json({
+      success: false,
+      error: {
+        code: "INVALID_JSON",
+        message: "Invalid JSON in request body",
+      },
+    }, 400);
+  }
+
+  const result = createOncallRotationSchema.safeParse(body);
+  if (!result.success) {
+    return c.json({
+      success: false,
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Invalid request data",
+        details: result.error?.errors?.map((e) => ({
+          path: e.path.join("."),
+          message: e.message,
+        })) || [],
+      },
+    }, 400);
+  }
+
+  const validated = result.data;
   const hasParticipants = validated.participants.length > 0;
   const now = new Date();
   const [rotation] = await db
@@ -73,8 +100,35 @@ oncallRoutes.patch("/rotations/:id", async (c) => {
   requireScope(c, "write");
   const { id } = c.req.param();
 
-  const body = await c.req.json();
-  const validated = updateOncallRotationSchema.parse(body);
+  let body;
+  try {
+    body = await c.req.json();
+  } catch (error) {
+    return c.json({
+      success: false,
+      error: {
+        code: "INVALID_JSON",
+        message: "Invalid JSON in request body",
+      },
+    }, 400);
+  }
+
+  const result = updateOncallRotationSchema.safeParse(body);
+  if (!result.success) {
+    return c.json({
+      success: false,
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Invalid request data",
+        details: result.error?.errors?.map((e) => ({
+          path: e.path.join("."),
+          message: e.message,
+        })) || [],
+      },
+    }, 400);
+  }
+
+  const validated = result.data;
 
   const [rotation] = await db
     .update(oncallRotations)
@@ -114,8 +168,35 @@ oncallRoutes.post("/rotations/:id/overrides", async (c) => {
   requireScope(c, "write");
   const { id } = c.req.param();
 
-  const body = await c.req.json();
-  const validated = createOncallOverrideSchema.parse(body);
+  let body;
+  try {
+    body = await c.req.json();
+  } catch (error) {
+    return c.json({
+      success: false,
+      error: {
+        code: "INVALID_JSON",
+        message: "Invalid JSON in request body",
+      },
+    }, 400);
+  }
+
+  const result = createOncallOverrideSchema.safeParse(body);
+  if (!result.success) {
+    return c.json({
+      success: false,
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Invalid request data",
+        details: result.error?.errors?.map((e) => ({
+          path: e.path.join("."),
+          message: e.message,
+        })) || [],
+      },
+    }, 400);
+  }
+
+  const validated = result.data;
 
   const now = new Date();
   const [override] = await db

@@ -88,8 +88,35 @@ reportsRoutes.post("/settings", async (c) => {
   const organizationId = await requireOrganization(c);
   requireScope(c, "write");
 
-  const body = await c.req.json();
-  const validated = createReportSettingsSchema.parse(body);
+  let body;
+  try {
+    body = await c.req.json();
+  } catch (error) {
+    return c.json({
+      success: false,
+      error: {
+        code: "INVALID_JSON",
+        message: "Invalid JSON in request body",
+      },
+    }, 400);
+  }
+
+  const result = createReportSettingsSchema.safeParse(body);
+  if (!result.success) {
+    return c.json({
+      success: false,
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Invalid request data",
+        details: result.error?.errors?.map((e) => ({
+          path: e.path.join("."),
+          message: e.message,
+        })) || [],
+      },
+    }, 400);
+  }
+
+  const validated = result.data;
 
   // Validate monitor IDs if provided
   if (validated.monitorIds && validated.monitorIds.length > 0) {
@@ -242,8 +269,35 @@ reportsRoutes.patch("/settings/:id", async (c) => {
   requireScope(c, "write");
   const { id } = c.req.param();
 
-  const body = await c.req.json();
-  const validated = updateReportSettingsSchema.parse(body);
+  let body;
+  try {
+    body = await c.req.json();
+  } catch (error) {
+    return c.json({
+      success: false,
+      error: {
+        code: "INVALID_JSON",
+        message: "Invalid JSON in request body",
+      },
+    }, 400);
+  }
+
+  const result = updateReportSettingsSchema.safeParse(body);
+  if (!result.success) {
+    return c.json({
+      success: false,
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Invalid request data",
+        details: result.error?.errors?.map((e) => ({
+          path: e.path.join("."),
+          message: e.message,
+        })) || [],
+      },
+    }, 400);
+  }
+
+  const validated = result.data;
   const now = new Date();
 
   const existing = await db.query.reportSettings.findFirst({
@@ -387,8 +441,35 @@ reportsRoutes.post("/generate", async (c) => {
   const organizationId = await requireOrganization(c);
   requireScope(c, "write");
 
-  const body = await c.req.json();
-  const validated = generateReportSchema.parse(body);
+  let body;
+  try {
+    body = await c.req.json();
+  } catch (error) {
+    return c.json({
+      success: false,
+      error: {
+        code: "INVALID_JSON",
+        message: "Invalid JSON in request body",
+      },
+    }, 400);
+  }
+
+  const result = generateReportSchema.safeParse(body);
+  if (!result.success) {
+    return c.json({
+      success: false,
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Invalid request data",
+        details: result.error?.errors?.map((e) => ({
+          path: e.path.join("."),
+          message: e.message,
+        })) || [],
+      },
+    }, 400);
+  }
+
+  const validated = result.data;
 
   // Validate monitor IDs if provided
   if (validated.monitorIds && validated.monitorIds.length > 0) {
@@ -513,7 +594,7 @@ reportsRoutes.post("/generate", async (c) => {
             .update(slaReports)
             .set({
               status: "failed",
-              error: error instanceof Error ? error.message : "Unknown error during report generation",
+              errorMessage: error instanceof Error ? error.message : "Unknown error during report generation",
             })
             .where(eq(slaReports.id, id));
         }
@@ -626,8 +707,35 @@ reportsRoutes.post("/templates", async (c) => {
   const organizationId = await requireOrganization(c);
   requireScope(c, "write");
 
-  const body = await c.req.json();
-  const validated = createReportTemplateSchema.parse(body);
+  let body;
+  try {
+    body = await c.req.json();
+  } catch (error) {
+    return c.json({
+      success: false,
+      error: {
+        code: "INVALID_JSON",
+        message: "Invalid JSON in request body",
+      },
+    }, 400);
+  }
+
+  const result = createReportTemplateSchema.safeParse(body);
+  if (!result.success) {
+    return c.json({
+      success: false,
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Invalid request data",
+        details: result.error?.errors?.map((e) => ({
+          path: e.path.join("."),
+          message: e.message,
+        })) || [],
+      },
+    }, 400);
+  }
+
+  const validated = result.data;
 
   const id = nanoid();
   const now = new Date();
@@ -714,8 +822,35 @@ reportsRoutes.patch("/templates/:id", async (c) => {
   requireScope(c, "write");
   const { id } = c.req.param();
 
-  const body = await c.req.json();
-  const validated = updateReportTemplateSchema.parse(body);
+  let body;
+  try {
+    body = await c.req.json();
+  } catch (error) {
+    return c.json({
+      success: false,
+      error: {
+        code: "INVALID_JSON",
+        message: "Invalid JSON in request body",
+      },
+    }, 400);
+  }
+
+  const result = updateReportTemplateSchema.safeParse(body);
+  if (!result.success) {
+    return c.json({
+      success: false,
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Invalid request data",
+        details: result.error?.errors?.map((e) => ({
+          path: e.path.join("."),
+          message: e.message,
+        })) || [],
+      },
+    }, 400);
+  }
+
+  const validated = result.data;
   const now = new Date();
 
   const existing = await db.query.reportTemplates.findFirst({
