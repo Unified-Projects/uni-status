@@ -12,7 +12,7 @@
     "dependencies": {
         "@aws-sdk/client-s3": "^3.981.0",
         "@hono/swagger-ui": "^0.5.3",
-        "@hono/zod-openapi": "^0.19.0",
+        "@hono/zod-openapi": "^1.2.1",
         "@resvg/resvg-js": "^2.6.2",
         "@uni-status/auth": "workspace:*",
         "@uni-status/database": "workspace:*",
