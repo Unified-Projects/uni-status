@@ -33,7 +33,7 @@ jobs:
 
         steps:
             - name: Checkout repository
-              uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+              uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
             - name: Setup pnpm
               uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061
@@ -57,7 +57,7 @@ jobs:
 
         steps:
             - name: Checkout repository
-              uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+              uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
             - name: Setup pnpm
               uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061
@@ -69,7 +69,7 @@ jobs:
                   cache: "pnpm"
 
             - name: Setup Bun
-              uses: oven-sh/setup-bun@f4d14e03ff726c06358e5557344e1da148b56cf7
+              uses: oven-sh/setup-bun@3d267786b128fe76c2f16a390aa2448b815359f3
               with:
                   bun-version: "1.3.2"
 
@@ -126,7 +126,7 @@ jobs:
                   docker system prune -f --filter "until=24h" || true
 
             - name: Checkout repository
-              uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98
+              uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
               with:
                   clean: true
 
