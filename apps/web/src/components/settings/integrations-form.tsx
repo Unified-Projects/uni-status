@@ -62,8 +62,7 @@ export function IntegrationsForm() {
     watch,
     formState: { isDirty },
   } = useForm<IntegrationsValues>({
-    resolver: // @ts-ignore Zod v4 compatibility
-    zodResolver(integrationsSchema),
+    resolver: zodResolver(integrationsSchema) as any,
     defaultValues: {
       pagespeed: {
         enabled: integrations?.pagespeed?.enabled ?? false,

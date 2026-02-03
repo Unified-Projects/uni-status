@@ -444,8 +444,7 @@ export function StatusPageForm({ statusPage, mode }: StatusPageFormProps) {
     setValue,
     formState: { errors, isSubmitting },
   } = useForm<StatusPageFormData>({
-    resolver: // @ts-ignore Zod v4 compatibility
-    zodResolver(statusPageFormSchema),
+    resolver: zodResolver(statusPageFormSchema) as any,
     defaultValues: {
       name: statusPage?.name ?? "",
       slug: statusPage?.slug ?? "",

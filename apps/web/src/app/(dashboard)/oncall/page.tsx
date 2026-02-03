@@ -431,8 +431,7 @@ function RotationForm({ rotation, onSubmit, isLoading, onCancel }: RotationFormP
     watch,
     formState: { errors },
   } = useForm<RotationFormData>({
-    resolver: // @ts-ignore Zod v4 compatibility
-    zodResolver(rotationFormSchema),
+    resolver: zodResolver(rotationFormSchema) as any,
     defaultValues: {
       name: rotation?.name || "",
       description: rotation?.description || "",

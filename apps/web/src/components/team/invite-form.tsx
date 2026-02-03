@@ -43,8 +43,7 @@ export function InviteForm({ onSubmit, onCancel, isSubmitting = false }: InviteF
     watch,
     formState: { errors },
   } = useForm<InviteFormValues>({
-    resolver: // @ts-ignore Zod v4 compatibility
-    zodResolver(inviteFormSchema),
+    resolver: zodResolver(inviteFormSchema) as any,
     defaultValues: {
       email: "",
       role: "member",

@@ -108,8 +108,7 @@ export function AlertChannelForm({
         control,
         formState: { errors },
     } = useForm<AlertChannelFormValues>({
-        // @ts-ignore Zod v4 compatibility issue
-        resolver: zodResolver(alertChannelFormSchema),
+        resolver: zodResolver(alertChannelFormSchema) as any,
         defaultValues: {
             name: channel?.name ?? "",
             type: effectiveType,

@@ -126,8 +126,7 @@ export function MaintenanceForm({ maintenance, mode }: MaintenanceFormProps) {
     setValue,
     formState: { errors },
   } = useForm<MaintenanceFormData>({
-    resolver: // @ts-ignore Zod v4 compatibility
-    zodResolver(maintenanceFormSchema),
+    resolver: zodResolver(maintenanceFormSchema) as any,
     defaultValues: {
       name: maintenance?.name ?? "",
       description: maintenance?.description ?? "",

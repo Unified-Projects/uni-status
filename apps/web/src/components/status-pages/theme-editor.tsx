@@ -192,8 +192,7 @@ export function ThemeEditor({ theme, onSave, onCancel, isSaving }: ThemeEditorPr
     reset,
     formState: { errors },
   } = useForm<ThemeFormData>({
-    resolver: // @ts-ignore Zod v4 compatibility
-    zodResolver(themeFormSchema),
+    resolver: zodResolver(themeFormSchema) as any,
     defaultValues: {
       name: theme?.name ?? "",
       description: theme?.description ?? "",

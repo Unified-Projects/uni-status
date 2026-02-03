@@ -137,8 +137,7 @@ export default function AccountPage() {
     handleSubmit: handleProfileSubmit,
     formState: { errors: profileErrors },
   } = useForm<ProfileFormData>({
-    // @ts-ignore Zod v4 compatibility
-    resolver: zodResolver(profileSchema),
+    resolver: zodResolver(profileSchema) as any,
     defaultValues: {
       name: session?.user?.name || "",
       email: session?.user?.email || "",
@@ -151,8 +150,7 @@ export default function AccountPage() {
     formState: { errors: passwordErrors },
     reset: resetPasswordForm,
   } = useForm<PasswordFormData>({
-    // @ts-ignore Zod v4 compatibility
-    resolver: zodResolver(passwordSchema),
+    resolver: zodResolver(passwordSchema) as any,
   });
 
   const onProfileSubmit = async (data: ProfileFormData) => {

@@ -141,7 +141,7 @@ importers:
         specifier: ^3.2.2
         version: 3.2.2(react@19.2.3)
       '@hookform/resolvers':
-        specifier: ^5.0.0
+        specifier: ^5.2.2
         version: 5.2.2(react-hook-form@7.69.0(react@19.2.3))
       '@tanstack/react-query':
         specifier: ^5.90.14
@@ -396,7 +396,7 @@ importers:
         version: 3.25.76
     devDependencies:
       '@hookform/resolvers':
-        specifier: ^5.0.0
+        specifier: ^5.2.2
         version: 5.2.2(react-hook-form@7.69.0(react@19.2.3))
       '@tanstack/react-query':
         specifier: ^5.90.14
