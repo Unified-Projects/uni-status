@@ -38,7 +38,7 @@ export async function rateLimiter(c: Context, next: Next) {
     if (currentCount >= MAX_REQUESTS) {
       // Get the oldest entry to calculate Retry-After
       const oldestEntries = await redis.zrange(key, 0, 0, "WITHSCORES");
-      const oldestTimestamp = oldestEntries.length >= 2 ? parseInt(oldestEntries[1], 10) : now;
+      const oldestTimestamp = oldestEntries.length >= 2 ? parseInt(oldestEntries[1]!, 10) : now;
       const retryAfter = Math.ceil((oldestTimestamp + WINDOW_MS - now) / 1000);
 
       c.header("X-RateLimit-Limit", MAX_REQUESTS.toString());

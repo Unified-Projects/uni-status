@@ -52,7 +52,7 @@ oncallRoutes.post("/rotations", async (c) => {
       error: {
         code: "VALIDATION_ERROR",
         message: "Invalid request data",
-        details: result.error?.errors?.map((e) => ({
+        details: result.error?.issues?.map((e: any) => ({
           path: e.path.join("."),
           message: e.message,
         })) || [],
@@ -120,7 +120,7 @@ oncallRoutes.patch("/rotations/:id", async (c) => {
       error: {
         code: "VALIDATION_ERROR",
         message: "Invalid request data",
-        details: result.error?.errors?.map((e) => ({
+        details: result.error?.issues?.map((e: any) => ({
           path: e.path.join("."),
           message: e.message,
         })) || [],
@@ -188,7 +188,7 @@ oncallRoutes.post("/rotations/:id/overrides", async (c) => {
       error: {
         code: "VALIDATION_ERROR",
         message: "Invalid request data",
-        details: result.error?.errors?.map((e) => ({
+        details: result.error?.issues?.map((e: any) => ({
           path: e.path.join("."),
           message: e.message,
         })) || [],

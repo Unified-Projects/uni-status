@@ -1,5 +1,6 @@
 import pino from "pino";
-import type { Logger as PinoLogger, LoggerOptions } from "pino";
+import type { LoggerOptions } from "pino";
+import type { Logger } from "./logger-types";
 
 const isDevelopment = process.env.NODE_ENV === "development";
 const logLevel = process.env.LOG_LEVEL || (isDevelopment ? "debug" : "info");
@@ -37,13 +38,13 @@ const transportConfig =
       }
     : {};
 
-export const logger: PinoLogger = pino({
+export const logger: Logger = pino({
   ...baseConfig,
   ...transportConfig,
-});
+}) as unknown as Logger;
 
-export function createLogger(context: Record<string, unknown>): PinoLogger {
-  return logger.child(context);
+export function createLogger(context: Record<string, unknown>): Logger {
+  return logger.child(context) as unknown as Logger;
 }
 
-export type Logger = PinoLogger;
+export type { Logger };

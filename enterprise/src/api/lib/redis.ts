@@ -3,6 +3,10 @@
  * Delegates to the main API's redis utilities when configured.
  */
 
+import { logger } from "@uni-status/shared";
+
+const log = logger.child({ module: "enterprise-redis" });
+
 type PublishEventFn = (channel: string, data: any) => Promise<void>;
 
 let _publishEvent: PublishEventFn | null = null;

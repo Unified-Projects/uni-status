@@ -871,7 +871,7 @@ async function resolveOncallUserEmail(
       (o: { startAt: Date; endAt: Date }) => o.startAt <= now && o.endAt >= now
     );
 
-    let currentUserId: string;
+    let currentUserId: string | undefined;
     if (activeOverride) {
       currentUserId = activeOverride.userId;
     } else {

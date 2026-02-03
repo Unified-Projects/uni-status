@@ -3,6 +3,10 @@
  * Delegates to the main API's audit utilities when configured.
  */
 
+import { logger } from "@uni-status/shared";
+
+const log = logger.child({ module: "enterprise-audit" });
+
 type AuditLogParams = {
   organizationId: string;
   userId: string | null;

@@ -167,7 +167,7 @@ sloRoutes.post("/", async (c) => {
       error: {
         code: "VALIDATION_ERROR",
         message: "Invalid request data",
-        details: result.error?.errors?.map((e) => ({
+        details: result.error?.issues?.map((e: any) => ({
           path: e.path.join("."),
           message: e.message,
         })) || [],
@@ -368,7 +368,7 @@ sloRoutes.patch("/:id", async (c) => {
       error: {
         code: "VALIDATION_ERROR",
         message: "Invalid request data",
-        details: result.error?.errors?.map((e) => ({
+        details: result.error?.issues?.map((e: any) => ({
           path: e.path.join("."),
           message: e.message,
         })) || [],

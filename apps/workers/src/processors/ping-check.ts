@@ -65,7 +65,7 @@ export async function processPingCheck(job: Job<PingCheckJob>) {
       packetLoss = 100;
     } else {
       // Parse timing information
-      if (result.time !== "unknown" && typeof result.time === "number") {
+      if (typeof result.time === "number") {
         responseTimeMs = Math.round(result.time);
       }
 

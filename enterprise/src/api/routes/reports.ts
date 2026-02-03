@@ -108,7 +108,7 @@ reportsRoutes.post("/settings", async (c) => {
       error: {
         code: "VALIDATION_ERROR",
         message: "Invalid request data",
-        details: result.error?.errors?.map((e) => ({
+        details: result.error?.issues?.map((e: any) => ({
           path: e.path.join("."),
           message: e.message,
         })) || [],
@@ -289,7 +289,7 @@ reportsRoutes.patch("/settings/:id", async (c) => {
       error: {
         code: "VALIDATION_ERROR",
         message: "Invalid request data",
-        details: result.error?.errors?.map((e) => ({
+        details: result.error?.issues?.map((e: any) => ({
           path: e.path.join("."),
           message: e.message,
         })) || [],
@@ -461,7 +461,7 @@ reportsRoutes.post("/generate", async (c) => {
       error: {
         code: "VALIDATION_ERROR",
         message: "Invalid request data",
-        details: result.error?.errors?.map((e) => ({
+        details: result.error?.issues?.map((e: any) => ({
           path: e.path.join("."),
           message: e.message,
         })) || [],
@@ -727,7 +727,7 @@ reportsRoutes.post("/templates", async (c) => {
       error: {
         code: "VALIDATION_ERROR",
         message: "Invalid request data",
-        details: result.error?.errors?.map((e) => ({
+        details: result.error?.issues?.map((e: any) => ({
           path: e.path.join("."),
           message: e.message,
         })) || [],
@@ -842,7 +842,7 @@ reportsRoutes.patch("/templates/:id", async (c) => {
       error: {
         code: "VALIDATION_ERROR",
         message: "Invalid request data",
-        details: result.error?.errors?.map((e) => ({
+        details: result.error?.issues?.map((e: any) => ({
           path: e.path.join("."),
           message: e.message,
         })) || [],

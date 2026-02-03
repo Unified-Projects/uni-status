@@ -36,10 +36,7 @@ export function errorHandler(err: Error, c: Context) {
         error: {
           code: "VALIDATION_ERROR",
           message: "Invalid request data",
-          details: zodError.errors?.map((e) => ({
-            path: e.path.join("."),
-            message: e.message,
-          })) || (zodError as any).issues?.map((e: any) => ({
+          details: zodError.issues?.map((e: any) => ({
             path: e.path.join("."),
             message: e.message,
           })) || [],

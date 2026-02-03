@@ -1287,7 +1287,7 @@ ogRoutes.get("/:slug", async (c) => {
     c.header("Content-Type", "image/png");
     c.header("Cache-Control", `public, max-age=${cacheSeconds}, s-maxage=${cacheSeconds}, stale-while-revalidate=600`);
     c.header("CDN-Cache-Control", `max-age=${cacheSeconds * 2}`);
-    return c.body(pngBuffer);
+    return c.body(pngBuffer as any);
   } catch (error) {
     log.error({ context: 'og', slug, err: error }, 'Error generating image');
     return c.text("Failed to generate OG image", 500);

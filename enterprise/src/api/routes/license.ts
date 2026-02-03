@@ -70,8 +70,6 @@ function getDisplayEntitlements(
             reports: hasEnterpriseLicense,
             multiRegion: hasEnterpriseLicense,
             oncall: hasEnterpriseLicense,
-            hideBranding: hasEnterpriseLicense,
-            customDomain: hasEnterpriseLicense,
         };
     }
     // Hosted mode: use license entitlements or free defaults

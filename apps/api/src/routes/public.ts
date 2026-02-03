@@ -2341,7 +2341,7 @@ publicRoutes.get("/internal/domain-lookup", async (c) => {
     const page = await db.query.statusPages.findFirst({
       where: or(
         eq(statusPages.customDomain, domain),
-        eq(statusPages.customDomain, domain.split(":")[0]) // Without port
+        eq(statusPages.customDomain, domain.split(":")[0]!) // Without port
       ),
       columns: { slug: true, published: true },
     });
