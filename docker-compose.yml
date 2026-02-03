@@ -71,7 +71,7 @@ services:
     environment:
       - DEPLOYMENT_TYPE=SELF-HOSTED
       - UNI_STATUS_URL=http://localhost
-      - UNI_STATUS_DB_URL=postgresql://${POSTGRES_USER:-uni_status}:${POSTGRES_PASSWORD:-uni_status_dev}@postgres:5432/${POSTGRES_DB:-uni_status}
+      - UNI_STATUS_DB_URL=postgresql://${POSTGRES_USER:-uni_status}:${POSTGRES_PASSWORD:-uni_status_dev}@postgres:5432/${POSTGRES_DB:-uni_status}?sslmode=disable
       - UNI_STATUS_REDIS_URL=redis://redis:6379
       - UNI_STATUS_API_PORT=3001
       - UNI_STATUS_AUTH_SECRET=${UNI_STATUS_AUTH_SECRET:-super-secret-key-change-in-production-32}
@@ -85,8 +85,11 @@ services:
         condition: service_healthy
     volumes:
       - ./apps/api/src:/app/apps/api/src
-      - ./packages:/app/packages
-      - /app/node_modules
+      - ./enterprise/src:/app/enterprise/src
+      - ./packages/database/src:/app/packages/database/src
+      - ./packages/shared/src:/app/packages/shared/src
+      - ./packages/auth/src:/app/packages/auth/src
+      - ./packages/email/src:/app/packages/email/src
       - reports_data:/app/reports
       - uploads_data:/app/apps/api/uploads
     networks:
@@ -101,8 +104,9 @@ services:
     environment:
       - DEPLOYMENT_TYPE=SELF-HOSTED
       - UNI_STATUS_URL=http://localhost
-      - UNI_STATUS_DB_URL=postgresql://${POSTGRES_USER:-uni_status}:${POSTGRES_PASSWORD:-uni_status_dev}@postgres:5432/${POSTGRES_DB:-uni_status}
+      - UNI_STATUS_DB_URL=postgresql://${POSTGRES_USER:-uni_status}:${POSTGRES_PASSWORD:-uni_status_dev}@postgres:5432/${POSTGRES_DB:-uni_status}?sslmode=disable
       - UNI_STATUS_AUTH_SECRET=${UNI_STATUS_AUTH_SECRET:-super-secret-key-change-in-production-32}
+      - INTERNAL_API_URL=http://api:3001
     expose:
       - "3000"
     depends_on:
@@ -125,12 +129,12 @@ services:
     environment:
       - DEPLOYMENT_TYPE=SELF-HOSTED
       - UNI_STATUS_URL=http://localhost
-      - UNI_STATUS_DB_URL=postgresql://${POSTGRES_USER:-uni_status}:${POSTGRES_PASSWORD:-uni_status_dev}@postgres:5432/${POSTGRES_DB:-uni_status}
+      - UNI_STATUS_DB_URL=postgresql://${POSTGRES_USER:-uni_status}:${POSTGRES_PASSWORD:-uni_status_dev}@postgres:5432/${POSTGRES_DB:-uni_status}?sslmode=disable
       - UNI_STATUS_REDIS_URL=redis://redis:6379
       - UNI_STATUS_SMTP_HOST=${SMTP_HOST:-mailhog}
       - UNI_STATUS_SMTP_PORT=${SMTP_PORT:-1025}
       # Legacy vars for backwards compatibility
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-uni_status}:${POSTGRES_PASSWORD:-uni_status_dev}@postgres:5432/${POSTGRES_DB:-uni_status}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-uni_status}:${POSTGRES_PASSWORD:-uni_status_dev}@postgres:5432/${POSTGRES_DB:-uni_status}?sslmode=disable
       - REDIS_URL=redis://redis:6379
       - SMTP_HOST=${SMTP_HOST:-mailhog}
       - SMTP_PORT=${SMTP_PORT:-1025}
@@ -141,8 +145,9 @@ services:
         condition: service_healthy
     volumes:
       - ./apps/workers/src:/app/apps/workers/src
-      - ./packages:/app/packages
-      - /app/node_modules
+      - ./packages/database/src:/app/packages/database/src
+      - ./packages/shared/src:/app/packages/shared/src
+      - ./packages/email/src:/app/packages/email/src
       - reports_data:/app/reports
     networks:
       - uni-status-network

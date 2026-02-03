@@ -55,21 +55,21 @@ function getDisplayEntitlements(
     hasEnterpriseLicense: boolean = false
 ): LicenseEntitlements {
     if (isSelfHosted()) {
-        // Self-hosted mode always gets unlimited resources and ALL features
-        // The deployment itself is enterprise - no cloud restrictions
+        // Self-hosted mode gets unlimited basic features
+        // Enterprise features require a license even in self-hosted mode
         return {
             monitors: -1, // Unlimited
             statusPages: -1, // Unlimited
             teamMembers: -1, // Unlimited
             regions: -1, // Unlimited
-            auditLogs: true, // Always enabled in self-hosted
-            sso: true, // Always enabled in self-hosted
-            oauthProviders: true, // Always enabled in self-hosted
-            customRoles: true, // Always enabled in self-hosted
-            slo: true, // Always enabled in self-hosted
-            reports: true, // Always enabled in self-hosted
-            multiRegion: true, // Always enabled in self-hosted
-            oncall: true, // Always enabled in self-hosted
+            auditLogs: hasEnterpriseLicense,
+            sso: hasEnterpriseLicense,
+            oauthProviders: hasEnterpriseLicense,
+            customRoles: hasEnterpriseLicense,
+            slo: hasEnterpriseLicense,
+            reports: hasEnterpriseLicense,
+            multiRegion: hasEnterpriseLicense,
+            oncall: hasEnterpriseLicense,
         };
     }
     // Hosted mode: use license entitlements or free defaults

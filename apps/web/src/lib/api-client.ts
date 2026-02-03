@@ -1756,7 +1756,7 @@ export const apiClient = {
 
   regions: {
     list: () =>
-      unwrap(apiGet<{ regions: string[]; default: string; isEmpty: boolean }>("/api/public/regions")),
+      unwrap(apiGet<{ regions: string[]; default: string; isEmpty: boolean }>("/public/regions")),
   },
 
   deployments: {
