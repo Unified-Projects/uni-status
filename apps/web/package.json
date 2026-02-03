@@ -21,7 +21,7 @@
         "@uni-status/enterprise": "workspace:*",
         "@uni-status/shared": "workspace:*",
         "@uni-status/ui": "workspace:*",
-        "date-fns": "^3.6.0",
+        "date-fns": "^4.1.0",
         "framer-motion": "^12.31.0",
         "leaflet": "^1.9.4",
         "lucide-react": "^0.563.0",
