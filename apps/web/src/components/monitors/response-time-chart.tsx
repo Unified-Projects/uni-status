@@ -154,18 +154,13 @@ export function ResponseTimeChart({
   }, [chartData.length]);
 
   // Handle mouse move to show the actual data point time (not interpolated)
-  const handleMouseMove = useCallback((state: {
-    activeTooltipIndex?: number;
-    chartX?: number;
-    chartY?: number;
-    activeCoordinate?: { x: number; y: number };
-  }) => {
+  const handleMouseMove = useCallback((state: any) => {
     if (chartData.length === 0) {
       return;
     }
 
     const index = state.activeTooltipIndex;
-    if (index !== undefined && index >= 0 && index < chartData.length) {
+    if (typeof index === 'number' && index >= 0 && index < chartData.length) {
       // Use the actual timestamp from the data point being hovered
       // This ensures the hover time matches the recorded data point time
       const currentPoint = chartData[index];
