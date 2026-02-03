@@ -86,9 +86,9 @@ function calculateSegmentHeights(
   const failurePct = failureCount / totalCount;
 
   // Calculate initial heights based on percentages
-  let successHeight = successPct * totalHeight;
-  let degradedHeight = degradedPct * totalHeight;
-  let failureHeight = failurePct * totalHeight;
+  const successHeight = successPct * totalHeight;
+  const degradedHeight = degradedPct * totalHeight;
+  const failureHeight = failurePct * totalHeight;
 
   // Track which segments need minimum height adjustment
   const segments: { key: keyof SegmentHeights; count: number; height: number }[] = [
