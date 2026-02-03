@@ -21,18 +21,18 @@
         "type-check": "tsc --noEmit"
     },
     "dependencies": {
-        "@better-auth/core": "^1.4.9",
-        "@better-auth/sso": "^1.4.9",
+        "@better-auth/core": "^1.4.18",
+        "@better-auth/sso": "^1.4.18",
         "@uni-status/database": "workspace:*",
         "@uni-status/email": "workspace:*",
         "@uni-status/shared": "workspace:*",
-        "better-auth": "^1.4.9",
-        "pg": "^8.11.0",
-        "react": "^19.2.1"
+        "better-auth": "^1.4.18",
+        "pg": "^8.18.0",
+        "react": "^19.2.4"
     },
     "devDependencies": {
         "@types/pg": "^8.10.0",
-        "@types/react": "^19.2.1",
+        "@types/react": "^19.2.10",
         "typescript": "^5.7.3"
     }
 }
