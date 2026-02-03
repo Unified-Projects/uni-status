@@ -77,7 +77,7 @@ jobs:
   build-images:
     name: Build and push Docker images
     needs: create-release
-    uses: ./.github/workflows/build-release-blacksmith.yml
+    uses: ./.github/workflows/build-release.yml
     with:
       version: ${{ inputs.version }}
     secrets: inherit

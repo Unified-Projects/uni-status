@@ -39,6 +39,13 @@ async function sendViaSMTP(
   config: SmtpCredentials
 ): Promise<SendEmailResult> {
   try {
+    log.info(`[SMTP] Attempting to send email`, {
+      host: config.host,
+      port: config.port,
+      secure: config.secure ?? config.port === 465,
+      to: Array.isArray(to) ? to.join(', ') : to
+    });
+
     const html = await render(react);
 
     const transporter = nodemailer.createTransport({
@@ -64,11 +71,26 @@ async function sendViaSMTP(
       html,
     });
 
+    log.info(`[SMTP] Successfully sent email to ${Array.isArray(to) ? to.join(', ') : to}`);
     return { success: true, data: result };
   } catch (err) {
+    const errorDetail = {
+      message: err instanceof Error ? err.message : String(err),
+      name: err instanceof Error ? err.name : 'Unknown',
+      code: (err as any)?.code,
+      response: (err as any)?.response,
+    };
+
+    log.error(`[SMTP] Failed to send email`, {
+      ...errorDetail,
+      host: config.host,
+      port: config.port,
+      to: Array.isArray(to) ? to.join(', ') : to
+    });
+
     return {
       success: false,
-      error: err instanceof Error ? err.message : "SMTP error",
+      error: `SMTP error: ${errorDetail.message}`,
     };
   }
 }

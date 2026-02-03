@@ -171,6 +171,7 @@ monitorsRoutes.get("/", async (c) => {
         inArray(checkResults.monitorId, monitorIds),
         gte(checkResults.createdAt, twentyFourHoursAgo),
         isNotNull(checkResults.responseTimeMs),
+        inArray(checkResults.status, ['success', 'degraded']),
         sql`COALESCE(${checkResults.metadata} ->> 'checkType', '') <> 'certificate_transparency'`
       )
     )

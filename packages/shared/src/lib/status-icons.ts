@@ -12,6 +12,8 @@ import {
   Pause,
   Clock,
 } from "lucide-react";
+import { renderToStaticMarkup } from 'react-dom/server';
+import * as React from 'react';
 
 export type StatusIconType =
   | "operational"
@@ -29,16 +31,8 @@ export interface SvgAttributes {
   stroke?: string;
   fill?: string;
   strokeWidth?: string | number;
+  size?: number;
   [key: string]: string | number | undefined;
-}
-
-// Icon nodes from lucide-react (internal structure)
-type IconNode = [elementName: string, attrs: Record<string, string | number>][];
-
-// Access the internal icon structure
-function getIconNode(Icon: any): IconNode {
-  // Lucide icons have an internal __iconNode property
-  return Icon.__iconNode || [];
 }
 
 // Status to icon mappings
@@ -56,68 +50,49 @@ const STATUS_ICON_MAP: Record<StatusIconType, any> = {
 };
 
 /**
- * Convert icon node structure to SVG path string
- */
-export function renderIconNodeToSvg(
-  nodes: IconNode,
-  attributes?: SvgAttributes
-): string {
-  const defaultAttrs: SvgAttributes = {
-    stroke: attributes?.stroke || "currentColor",
-    strokeWidth: attributes?.strokeWidth || 2,
-    fill: attributes?.fill || "none",
-    strokeLinecap: "round",
-    strokeLinejoin: "round",
-  };
-
-  const mergedAttrs = { ...defaultAttrs, ...attributes };
-
-  return nodes
-    .map(([elementName, attrs]) => {
-      // Apply custom attributes, but preserve element-specific ones
-      const finalAttrs: Record<string, string | number> = { ...attrs };
-
-      // Apply stroke, fill, etc. to path elements
-      if (elementName === "path" || elementName === "circle" || elementName === "polyline" || elementName === "line" || elementName === "rect") {
-        if (mergedAttrs.stroke !== undefined) finalAttrs.stroke = mergedAttrs.stroke;
-        if (mergedAttrs.strokeWidth !== undefined) finalAttrs["stroke-width"] = mergedAttrs.strokeWidth;
-        if (mergedAttrs.fill !== undefined && elementName !== "circle") {
-          // Preserve fill="none" for circles unless explicitly overridden
-          if (attrs.fill !== "none" || mergedAttrs.fill !== "none") {
-            finalAttrs.fill = mergedAttrs.fill;
-          }
-        }
-        if (mergedAttrs.strokeLinecap) finalAttrs["stroke-linecap"] = mergedAttrs.strokeLinecap;
-        if (mergedAttrs.strokeLinejoin) finalAttrs["stroke-linejoin"] = mergedAttrs.strokeLinejoin;
-      }
-
-      const attrString = Object.entries(finalAttrs)
-        .map(([key, value]) => `${key}="${value}"`)
-        .join(" ");
-
-      return `<${elementName} ${attrString}/>`;
-    })
-    .join("");
-}
-
-/**
- * Get SVG string for a status icon
+ * Get SVG string for a status icon using React server-side rendering
  * @param status - Status type
- * @param attributes - Custom SVG attributes (stroke, fill, etc.)
+ * @param attributes - Custom SVG attributes (stroke, fill, strokeWidth, size, etc.)
  */
 export function getStatusIconSvg(
   status: StatusIconType,
   attributes?: SvgAttributes
 ): string {
   const Icon = STATUS_ICON_MAP[status] || Circle;
-  const nodes = getIconNode(Icon);
-  return renderIconNodeToSvg(nodes, attributes);
+
+  // Render React component to SVG string
+  const iconElement = React.createElement(Icon, {
+    size: attributes?.size || 24,
+    strokeWidth: attributes?.strokeWidth || 2,
+    color: attributes?.stroke || 'currentColor',
+    fill: attributes?.fill || 'none',
+  });
+
+  const svgString = renderToStaticMarkup(iconElement);
+
+  // Extract inner SVG content for embedding (remove outer svg tags if needed for embedding)
+  // For most use cases, we want just the inner content
+  const match = svgString.match(/<svg[^>]*>(.*)<\/svg>/s);
+  return match ? match[1] : svgString;
 }
 
-// Export icon nodes for direct access if needed
-export const STATUS_ICON_NODES: Record<StatusIconType, IconNode> = Object.fromEntries(
-  Object.entries(STATUS_ICON_MAP).map(([key, Icon]) => [
-    key,
-    getIconNode(Icon),
-  ])
-) as Record<StatusIconType, IconNode>;
+/**
+ * Get complete SVG element (including outer <svg> tags) for a status icon
+ * @param status - Status type
+ * @param attributes - Custom SVG attributes
+ */
+export function getStatusIconSvgElement(
+  status: StatusIconType,
+  attributes?: SvgAttributes
+): string {
+  const Icon = STATUS_ICON_MAP[status] || Circle;
+
+  const iconElement = React.createElement(Icon, {
+    size: attributes?.size || 24,
+    strokeWidth: attributes?.strokeWidth || 2,
+    color: attributes?.stroke || 'currentColor',
+    fill: attributes?.fill || 'none',
+  });
+
+  return renderToStaticMarkup(iconElement);
+}

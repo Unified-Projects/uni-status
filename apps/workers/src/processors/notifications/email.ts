@@ -153,26 +153,56 @@ export async function processEmailNotification(
   job: Job<EmailNotificationJob>
 ): Promise<{ success: boolean; to: string | string[] }> {
   if (!job.data) {
-    log.error(`[Email] Job ${job.id} has no data`);
+    log.error(`[Email] Job ${job.id} has no data`, {
+      jobId: job.id,
+      jobName: job.name,
+      attemptsMade: job.attemptsMade
+    });
     throw new Error("Email job data is missing");
   }
 
+  // Defensive destructuring with defaults
   const {
-    to,
-    subject,
+    to = '',
+    subject = '',
     emailType,
     alertHistoryId,
     channelId,
     orgSmtpCredentials,
     orgResendCredentials,
-  } = job.data;
+  } = job.data || {};
+
+  // Validate required fields
+  if (!to || !subject || !emailType) {
+    log.error(`[Email] Job ${job.id} has invalid data`, {
+      hasTo: !!to,
+      hasSubject: !!subject,
+      hasEmailType: !!emailType,
+      jobData: JSON.stringify(job.data)
+    });
+    throw new Error(`Email job missing required fields: ${!to ? 'to' : ''} ${!subject ? 'subject' : ''} ${!emailType ? 'emailType' : ''}`);
+  }
+
   const attemptsMade = job.attemptsMade;
 
   log.info(`[Email] Processing ${emailType} email to ${to} (attempt ${attemptsMade + 1}): ${subject}`);
 
   try {
     // Build the email component
-    const emailComponent = buildEmailComponent(job.data);
+    let emailComponent;
+    try {
+      emailComponent = buildEmailComponent(job.data);
+      if (!emailComponent) {
+        throw new Error(`buildEmailComponent returned null for emailType: ${emailType}`);
+      }
+    } catch (err) {
+      log.error(`[Email] Failed to build email component (attempt ${attemptsMade + 1})`, {
+        error: err instanceof Error ? err.message : String(err),
+        emailType,
+        to
+      });
+      throw err;
+    }
 
     // Send the email with org credentials if provided
     const result = await sendEmail({
@@ -185,7 +215,14 @@ export async function processEmailNotification(
 
     if (!result.success) {
       const errorMsg = result.error || "Email send failed";
-      log.error(`[Email] Failed to send ${emailType} email (attempt ${attemptsMade + 1}):`, errorMsg);
+      log.error(`[Email] Failed to send ${emailType} email (attempt ${attemptsMade + 1})`, {
+        error: errorMsg,
+        to,
+        subject,
+        hasOrgSmtp: !!orgSmtpCredentials,
+        hasOrgResend: !!orgResendCredentials,
+        hasPlatformResend: !!process.env.RESEND_API_KEY
+      });
 
       // Log failure on final attempt
       if (alertHistoryId && channelId && attemptsMade >= 4) {
