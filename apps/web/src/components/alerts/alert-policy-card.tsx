@@ -187,27 +187,27 @@ export function AlertPolicyCard({
           </h4>
           <div className="flex flex-wrap gap-2">
             {policy.conditions.consecutiveFailures && (
-              <Badge variant="outline" className="gap-1">
+              <Badge variant="outline" className="gap-1 bg-red-500/10 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800">
                 <AlertTriangle className="h-3 w-3" />
                 {policy.conditions.consecutiveFailures} consecutive failures
               </Badge>
             )}
             {policy.conditions.failuresInWindow && (
-              <Badge variant="outline" className="gap-1">
+              <Badge variant="outline" className="gap-1 bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-800">
                 <Activity className="h-3 w-3" />
                 {policy.conditions.failuresInWindow.count} failures in{" "}
                 {policy.conditions.failuresInWindow.windowMinutes}min
               </Badge>
             )}
             {policy.conditions.degradedDuration && (
-              <Badge variant="outline" className="gap-1">
+              <Badge variant="outline" className="gap-1 bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800">
                 <Clock className="h-3 w-3" />
                 Degraded for {policy.conditions.degradedDuration}min
               </Badge>
             )}
             {policy.conditions.consecutiveSuccesses && (
-              <Badge variant="outline" className="gap-1 bg-green-50">
-                <CheckCircle className="h-3 w-3 text-green-600" />
+              <Badge variant="outline" className="gap-1 bg-green-500/10 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800">
+                <CheckCircle className="h-3 w-3" />
                 {policy.conditions.consecutiveSuccesses} consecutive recoveries
               </Badge>
             )}

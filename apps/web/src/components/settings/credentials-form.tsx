@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Button,
   Input,
@@ -21,6 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
   cn,
+  toast,
 } from "@uni-status/ui";
 import {
   Mail,
@@ -295,6 +296,73 @@ function CredentialConfigDialog({
     enabled: true,
   });
 
+  // Populate forms with existing credentials when dialog opens
+  useEffect(() => {
+    if (credentials && type) {
+      if (type === "smtp") {
+        const smtp = credentials as MaskedSmtpCredentials;
+        setSmtpForm({
+          host: smtp.host || "",
+          port: smtp.port?.toString() || "587",
+          username: smtp.username || "",
+          password: "", // Don't pre-fill password for security
+          fromAddress: smtp.fromAddress || "",
+          fromName: smtp.fromName || "",
+          secure: smtp.secure || false,
+          enabled: smtp.enabled ?? true,
+        });
+      } else if (type === "resend") {
+        const resend = credentials as MaskedResendCredentials;
+        setResendForm({
+          apiKey: "", // Don't pre-fill API key for security
+          fromAddress: resend.fromAddress || "",
+          enabled: resend.enabled ?? true,
+        });
+      } else if (type === "twilio") {
+        const twilio = credentials as MaskedTwilioCredentials;
+        setTwilioForm({
+          accountSid: twilio.accountSid || "",
+          authToken: "", // Don't pre-fill auth token for security
+          fromNumber: twilio.fromNumber || "",
+          enabled: twilio.enabled ?? true,
+        });
+      } else if (type === "ntfy") {
+        const ntfy = credentials as MaskedNtfyCredentials;
+        setNtfyForm({
+          serverUrl: ntfy.serverUrl || "",
+          username: ntfy.username || "",
+          password: "", // Don't pre-fill password for security
+          enabled: ntfy.enabled ?? true,
+        });
+      } else if (type === "irc") {
+        const irc = credentials as MaskedIrcCredentials;
+        setIrcForm({
+          defaultServer: irc.defaultServer || "",
+          defaultPort: irc.defaultPort?.toString() || "6667",
+          defaultNickname: irc.defaultNickname || "",
+          defaultPassword: "", // Don't pre-fill password for security
+          useSsl: irc.useSsl || false,
+          enabled: irc.enabled ?? true,
+        });
+      } else if (type === "twitter") {
+        const twitter = credentials as MaskedTwitterCredentials;
+        setTwitterForm({
+          apiKey: twitter.apiKey || "",
+          apiSecret: "", // Don't pre-fill secret for security
+          accessToken: twitter.accessToken || "",
+          accessSecret: "", // Don't pre-fill secret for security
+          enabled: twitter.enabled ?? true,
+        });
+      } else if (type === "webhook") {
+        const webhook = credentials as MaskedWebhookCredentials;
+        setWebhookForm({
+          defaultSigningKey: "", // Don't pre-fill key for security
+          enabled: webhook.enabled ?? true,
+        });
+      }
+    }
+  }, [credentials, type]);
+
   if (!type || !config) return null;
 
   const smtpCreds = type === "smtp" ? credentials as MaskedSmtpCredentials | null : null;
@@ -317,7 +385,7 @@ function CredentialConfigDialog({
           password: smtpForm.password || undefined,
           fromAddress: smtpForm.fromAddress || smtpCreds?.fromAddress,
           fromName: smtpForm.fromName || smtpCreds?.fromName,
-          secure: smtpForm.secure || smtpCreds?.secure || false,
+          secure: smtpForm.secure,
           enabled: smtpForm.enabled,
         };
         break;
@@ -468,10 +536,15 @@ function CredentialConfigDialog({
                   <div className="flex items-center gap-2">
                     <Switch
                       id="smtp-secure"
-                      checked={smtpForm.secure || smtpCreds?.secure || false}
+                      checked={smtpForm.secure}
                       onCheckedChange={(checked) => setSmtpForm((prev) => ({ ...prev, secure: checked }))}
                     />
-                    <Label htmlFor="smtp-secure">Use TLS/SSL</Label>
+                    <Label htmlFor="smtp-secure" className="cursor-pointer">
+                      Direct TLS (Port 465)
+                      <span className="block text-xs text-muted-foreground font-normal">
+                        OFF = STARTTLS (Port 587) - Still encrypted
+                      </span>
+                    </Label>
                   </div>
                   <div className="flex items-center gap-2">
                     <Switch
@@ -784,17 +857,22 @@ function CredentialConfigDialog({
                 <>
                   <Button
                     type="button"
-                    variant="outline"
+                    variant={testResult?.success ? "default" : "outline"}
                     size="sm"
                     onClick={() => onTest(type)}
                     disabled={isTesting}
+                    className={testResult?.success ? "bg-green-600 hover:bg-green-700" : ""}
                   >
                     {isTesting ? (
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : testResult?.success ? (
+                      <CheckCircle2 className="h-4 w-4 mr-2" />
+                    ) : testResult?.success === false ? (
+                      <XCircle className="h-4 w-4 mr-2" />
                     ) : (
                       <TestTube2 className="h-4 w-4 mr-2" />
                     )}
-                    Test
+                    {testResult?.success ? "Success" : testResult?.success === false ? "Failed" : "Test"}
                   </Button>
                   <Button
                     type="button"
@@ -937,19 +1015,43 @@ export function CredentialsForm() {
     if (!organizationId) return;
 
     setTestResults((prev) => ({ ...prev, [type]: null }));
-    await updateCredentials.mutateAsync({
-      orgId: organizationId,
-      data: { [type]: data },
-    });
+    try {
+      await updateCredentials.mutateAsync({
+        orgId: organizationId,
+        data: { [type]: data },
+      });
+      toast({
+        title: "Credentials saved",
+        description: `${type.toUpperCase()} credentials have been updated`,
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to save credentials",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleDelete = async (type: CredentialType) => {
     if (!organizationId) return;
 
-    await deleteCredential.mutateAsync({
-      orgId: organizationId,
-      type,
-    });
+    try {
+      await deleteCredential.mutateAsync({
+        orgId: organizationId,
+        type,
+      });
+      toast({
+        title: "Credentials removed",
+        description: `${type.toUpperCase()} credentials have been removed`,
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to remove credentials",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleTest = async (type: CredentialType) => {
@@ -963,14 +1065,32 @@ export function CredentialsForm() {
         type,
       });
       setTestResults((prev) => ({ ...prev, [type]: result }));
+      if (result.success) {
+        toast({
+          title: "Test successful",
+          description: result.message || `${type.toUpperCase()} credentials are working correctly`,
+        });
+      } else {
+        toast({
+          title: "Test failed",
+          description: result.message || "Credentials test did not pass",
+          variant: "destructive",
+        });
+      }
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Test failed";
       setTestResults((prev) => ({
         ...prev,
         [type]: {
           success: false,
-          message: error instanceof Error ? error.message : "Test failed",
+          message: errorMessage,
         },
       }));
+      toast({
+        title: "Test failed",
+        description: errorMessage,
+        variant: "destructive",
+      });
     }
   };
 

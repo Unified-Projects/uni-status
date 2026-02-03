@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
-  Button,
+  LoadingButton,
   Input,
   Label,
   Select,
@@ -30,6 +30,8 @@ interface OrgSettingsFormProps {
   organization: Organization;
   onSubmit: (data: Partial<OrgSettingsValues>) => void;
   isSubmitting?: boolean;
+  isSuccess?: boolean;
+  isError?: boolean;
 }
 
 const COMMON_TIMEZONES = [
@@ -52,6 +54,8 @@ export function OrgSettingsForm({
   organization,
   onSubmit,
   isSubmitting = false,
+  isSuccess = false,
+  isError = false,
 }: OrgSettingsFormProps) {
   const {
     register,
@@ -148,9 +152,18 @@ export function OrgSettingsForm({
       </div>
 
       <div className="flex items-center justify-end pt-4">
-        <Button type="submit" disabled={isSubmitting || !isDirty}>
-          {isSubmitting ? "Saving..." : "Save Changes"}
-        </Button>
+        <LoadingButton
+          type="submit"
+          disabled={!isDirty}
+          isLoading={isSubmitting}
+          isSuccess={isSuccess}
+          isError={isError}
+          loadingText="Saving..."
+          successText="Saved"
+          errorText="Save Failed"
+        >
+          Save Changes
+        </LoadingButton>
       </div>
     </form>
   );

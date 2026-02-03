@@ -25,6 +25,7 @@ import {
   Switch,
   Alert,
   AlertDescription,
+  toast,
 } from "@uni-status/ui";
 import {
   Plus,
@@ -79,20 +80,32 @@ export function DomainsForm({ organizationId, canManage }: DomainsFormProps) {
   const deleteDomain = useDeleteDomain();
 
   const handleAddDomain = async (domain: string) => {
-    const result = await addDomain.mutateAsync({
-      orgId: organizationId,
-      data: { domain },
-    });
-    setAddDialogOpen(false);
-    // Show verification instructions
-    setNewDomainInfo({
-      domain: result.domain,
-      verificationToken: result.verificationToken || "",
-      instructions: {
-        name: result.verificationInstructions?.name || "",
-        value: result.verificationInstructions?.value || "",
-      },
-    });
+    try {
+      const result = await addDomain.mutateAsync({
+        orgId: organizationId,
+        data: { domain },
+      });
+      setAddDialogOpen(false);
+      // Show verification instructions
+      setNewDomainInfo({
+        domain: result.domain,
+        verificationToken: result.verificationToken || "",
+        instructions: {
+          name: result.verificationInstructions?.name || "",
+          value: result.verificationInstructions?.value || "",
+        },
+      });
+      toast({
+        title: "Domain added",
+        description: `${domain} has been added. Please verify it to activate.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to add domain",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleVerifyDomain = async (domainId: string) => {
@@ -107,11 +120,29 @@ export function DomainsForm({ organizationId, canManage }: DomainsFormProps) {
         success: result.verified,
         message: result.message,
       });
+      if (result.verified) {
+        toast({
+          title: "Domain verified",
+          description: "Your domain has been successfully verified",
+        });
+      } else {
+        toast({
+          title: "Verification incomplete",
+          description: result.message || "Domain verification did not complete",
+          variant: "destructive",
+        });
+      }
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Verification failed";
       setVerifyResult({
         domainId,
         success: false,
-        message: error instanceof Error ? error.message : "Verification failed",
+        message: errorMessage,
+      });
+      toast({
+        title: "Verification failed",
+        description: errorMessage,
+        variant: "destructive",
       });
     }
   };
@@ -122,22 +153,46 @@ export function DomainsForm({ organizationId, canManage }: DomainsFormProps) {
     ssoProviderId?: string | null;
     ssoRequired?: boolean;
   }) => {
-    await updateDomain.mutateAsync({
-      orgId: organizationId,
-      domainId,
-      data,
-    });
-    setEditDomain(null);
+    try {
+      await updateDomain.mutateAsync({
+        orgId: organizationId,
+        domainId,
+        data,
+      });
+      setEditDomain(null);
+      toast({
+        title: "Domain updated",
+        description: "Domain settings have been saved",
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to update domain",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleDeleteDomain = async () => {
     if (!domainToDelete) return;
-    await deleteDomain.mutateAsync({
-      orgId: organizationId,
-      domainId: domainToDelete.id,
-    });
-    setDeleteDialogOpen(false);
-    setDomainToDelete(null);
+    try {
+      await deleteDomain.mutateAsync({
+        orgId: organizationId,
+        domainId: domainToDelete.id,
+      });
+      setDeleteDialogOpen(false);
+      setDomainToDelete(null);
+      toast({
+        title: "Domain removed",
+        description: `${domainToDelete.domain} has been removed`,
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to remove domain",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
+    }
   };
 
   const copyToClipboard = async (text: string) => {

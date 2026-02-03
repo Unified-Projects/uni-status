@@ -12,6 +12,7 @@ import {
   Input,
   Button,
   Separator,
+  toast,
 } from "@uni-status/ui";
 import { MessageSquareWarning, Users, Clock, Shield, Zap, Save, Loader2 } from "lucide-react";
 import { useCrowdsourcedSettings, useUpdateCrowdsourcedSettings } from "@/hooks/use-status-pages";
@@ -58,24 +59,50 @@ export function CrowdsourcedSettingsCard({ statusPageId }: CrowdsourcedSettingsC
 
   // Handle enabled toggle - auto-save immediately
   const handleEnabledChange = async (newEnabled: boolean) => {
+    const previousEnabled = enabled;
     setEnabled(newEnabled);
-    await updateSettings.mutateAsync({
-      statusPageId,
-      data: { enabled: newEnabled },
-    });
+    try {
+      await updateSettings.mutateAsync({
+        statusPageId,
+        data: { enabled: newEnabled },
+      });
+      toast({
+        title: "Settings updated",
+        description: `Crowdsourced reporting ${newEnabled ? "enabled" : "disabled"}`,
+      });
+    } catch (error) {
+      setEnabled(previousEnabled);
+      toast({
+        title: "Failed to update settings",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleSave = async () => {
-    await updateSettings.mutateAsync({
-      statusPageId,
-      data: {
-        enabled,
-        reportThreshold,
-        timeWindowMinutes,
-        rateLimitPerIp,
-        autoDegradeEnabled,
-      },
-    });
+    try {
+      await updateSettings.mutateAsync({
+        statusPageId,
+        data: {
+          enabled,
+          reportThreshold,
+          timeWindowMinutes,
+          rateLimitPerIp,
+          autoDegradeEnabled,
+        },
+      });
+      toast({
+        title: "Settings saved",
+        description: "Crowdsourced reporting settings have been updated",
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to save settings",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
+    }
   };
 
   if (isLoading) {

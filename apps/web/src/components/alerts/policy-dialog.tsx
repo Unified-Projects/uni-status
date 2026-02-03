@@ -46,15 +46,17 @@ export function PolicyDialog({
               : "Configure a new alert policy with conditions and channels"}
           </DialogDescription>
         </DialogHeader>
-        <AlertPolicyForm
-          policy={policy}
-          availableChannels={availableChannels}
-          availableMonitors={availableMonitors}
-          availableOncallRotations={availableOncallRotations}
-          onSubmit={onSubmit}
-          onCancel={() => onOpenChange(false)}
-          isSubmitting={isSubmitting}
-        />
+        {open && (
+          <AlertPolicyForm
+            policy={policy}
+            availableChannels={availableChannels}
+            availableMonitors={availableMonitors}
+            availableOncallRotations={availableOncallRotations}
+            onSubmit={onSubmit}
+            onCancel={() => onOpenChange(false)}
+            isSubmitting={isSubmitting}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );

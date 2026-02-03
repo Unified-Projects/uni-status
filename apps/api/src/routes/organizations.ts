@@ -1759,6 +1759,18 @@ organizationsRoutes.post("/:id/credentials/test", async (c) => {
                 pass: smtpCred.password,
               }
             : undefined,
+          tls: {
+            // Handle certificates that don't have subject field (Azure SMTP, etc.)
+            checkServerIdentity: (host: string, cert: any) => {
+              const tls = require("tls");
+              // If cert has no subject, skip validation gracefully
+              if (!cert || !cert.subject) {
+                return undefined;
+              }
+              // Otherwise use Node's default validation
+              return tls.checkServerIdentity(host, cert);
+            },
+          },
         });
         await transporter.verify();
         testResult = { success: true, message: "SMTP connection successful" };

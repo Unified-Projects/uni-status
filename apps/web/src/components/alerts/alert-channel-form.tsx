@@ -26,7 +26,6 @@ const alertChannelFormSchema = z.object({
     type: z.enum(["email", "slack", "discord", "teams", "pagerduty", "webhook", "sms", "ntfy", "irc", "twitter"]),
     enabled: z.boolean(),
     config: z.object({
-        email: z.string().email("Invalid email address").optional().or(z.literal("")), // DEPRECATED - kept for backward compatibility
         fromAddress: z.string().email("Invalid email address").optional().or(z.literal("")),
         toAddresses: z.array(z.string().email("Invalid email address")).optional(),
         webhookUrl: z.string().url("Invalid URL").optional().or(z.literal("")),
@@ -50,7 +49,6 @@ type AlertChannelFormValues = {
     type: "email" | "slack" | "discord" | "teams" | "pagerduty" | "webhook" | "sms" | "ntfy" | "irc" | "twitter";
     enabled: boolean;
     config: {
-        email?: string | "";
         fromAddress?: string | "";
         toAddresses: string[];
         webhookUrl?: string | "";
@@ -100,12 +98,7 @@ export function AlertChannelForm({
         ? Object.entries(channel.config.headers).map(([key, value]) => ({ key, value }))
         : [];
 
-    // Handle backward compatibility for email addresses
-    const initialToAddresses: string[] = channel?.config?.toAddresses
-        ? channel.config.toAddresses
-        : channel?.config?.email
-            ? [channel.config.email]
-            : [""];
+    const initialToAddresses: string[] = channel?.config?.toAddresses ?? [""];
 
     const {
         register,
@@ -121,7 +114,6 @@ export function AlertChannelForm({
             type: effectiveType,
             enabled: channel?.enabled ?? true,
             config: {
-                email: channel?.config?.email ?? "",
                 fromAddress: channel?.config?.fromAddress ?? "",
                 toAddresses: initialToAddresses,
                 webhookUrl: channel?.config?.webhookUrl ?? "",
@@ -168,6 +160,15 @@ export function AlertChannelForm({
             for (const [key, value] of Object.entries(config)) {
                 // Skip headers - we handle that separately
                 if (key === "headers") continue;
+
+                // Special handling for toAddresses array - filter out empty strings
+                if (key === "toAddresses" && Array.isArray(value)) {
+                    const filtered = value.filter((email) => email && email.trim() !== "");
+                    if (filtered.length > 0) {
+                        cleaned[key] = filtered;
+                    }
+                    continue;
+                }
 
                 // Convert empty strings to undefined (skip them)
                 if (value === "") continue;

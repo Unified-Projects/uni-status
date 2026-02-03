@@ -396,6 +396,8 @@ export default function SettingsPage() {
                   organization={organization}
                   onSubmit={handleOrgSettingsSubmit}
                   isSubmitting={updateOrganization.isPending}
+                  isSuccess={updateOrganization.isSuccess}
+                  isError={updateOrganization.isError}
                 />
               ) : null}
             </CardContent>

@@ -156,9 +156,9 @@ export function useLicenseStatus() {
       return FEATURE_PLAN_MAP[feature] || "Pro";
     },
     /**
-     * Check if on a paid plan
+     * Check if on a paid plan (has active license)
      */
-    isPaidPlan: license.plan !== "free",
+    isPaidPlan: license.hasLicense,
     /**
      * Check if in grace period
      */

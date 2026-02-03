@@ -121,9 +121,14 @@ const config: Config = {
         "scale-up": "scaleUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards",
         "slide-in-left": "slideInLeft 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards",
         "slide-in-right": "slideInRight 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards",
+        "slide-in-bottom": "slideInBottom 0.3s cubic-bezier(0.22, 1, 0.36, 1) forwards",
+        "slide-in-top": "slideInTop 0.3s cubic-bezier(0.22, 1, 0.36, 1) forwards",
         "float": "float 6s ease-in-out infinite",
         "pulse-slow": "pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite",
         "glow": "glow 2s ease-in-out infinite alternate",
+        "bounce-gentle": "bounceGentle 0.6s ease-out",
+        "shake": "shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97)",
+        "shimmer": "shimmer 2s infinite",
       },
       keyframes: {
         fadeUp: {
@@ -146,6 +151,14 @@ const config: Config = {
           "0%": { opacity: "0", transform: "translateX(30px)" },
           "100%": { opacity: "1", transform: "translateX(0)" },
         },
+        slideInBottom: {
+          "0%": { opacity: "0", transform: "translateY(20px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        slideInTop: {
+          "0%": { opacity: "0", transform: "translateY(-20px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
         float: {
           "0%, 100%": { transform: "translateY(0)" },
           "50%": { transform: "translateY(-10px)" },
@@ -154,11 +167,29 @@ const config: Config = {
           "0%": { boxShadow: "0 0 20px hsl(var(--primary) / 0.2)" },
           "100%": { boxShadow: "0 0 40px hsl(var(--primary) / 0.4)" },
         },
+        bounceGentle: {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-5px)" },
+        },
+        shake: {
+          "0%, 100%": { transform: "translateX(0)" },
+          "10%, 30%, 50%, 70%, 90%": { transform: "translateX(-5px)" },
+          "20%, 40%, 60%, 80%": { transform: "translateX(5px)" },
+        },
+        shimmer: {
+          "0%": { backgroundPosition: "-1000px 0" },
+          "100%": { backgroundPosition: "1000px 0" },
+        },
       },
       transitionTimingFunction: {
         "smooth-out": "cubic-bezier(0.22, 1, 0.36, 1)",
         "snappy": "cubic-bezier(0.25, 0.1, 0.25, 1)",
         "gentle": "cubic-bezier(0.4, 0, 0.2, 1)",
+      },
+      transitionDuration: {
+        "150": "150ms",
+        "250": "250ms",
+        "350": "350ms",
       },
     },
   },

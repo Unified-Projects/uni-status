@@ -71,6 +71,8 @@ const HISTORY_STATUS_OPTIONS: { value: AlertHistoryStatus | "all"; label: string
   { value: "resolved", label: "Resolved" },
 ];
 
+const EMPTY_ARRAY: never[] = [];
+
 export default function AlertsPage() {
   type EditableAlertPolicy = AlertPolicy & {
     channelIds?: string[];
@@ -137,6 +139,7 @@ export default function AlertsPage() {
 
   // Track test pending state per channel
   const [testingChannelId, setTestingChannelId] = useState<string | null>(null);
+  const [testResults, setTestResults] = useState<Record<string, { success: boolean; timestamp: number }>>({});
 
   // Handlers
   const handleCreateChannel = () => {
@@ -171,8 +174,33 @@ export default function AlertsPage() {
 
   const handleTestChannel = async (id: string) => {
     setTestingChannelId(id);
+    setTestResults(prev => {
+      const newResults = { ...prev };
+      delete newResults[id];
+      return newResults;
+    });
+
     try {
       await testChannel.mutateAsync(id);
+      setTestResults(prev => ({ ...prev, [id]: { success: true, timestamp: Date.now() } }));
+      // Clear success state after 3 seconds
+      setTimeout(() => {
+        setTestResults(prev => {
+          const newResults = { ...prev };
+          delete newResults[id];
+          return newResults;
+        });
+      }, 3000);
+    } catch (error) {
+      setTestResults(prev => ({ ...prev, [id]: { success: false, timestamp: Date.now() } }));
+      // Clear failure state after 5 seconds
+      setTimeout(() => {
+        setTestResults(prev => {
+          const newResults = { ...prev };
+          delete newResults[id];
+          return newResults;
+        });
+      }, 5000);
     } finally {
       setTestingChannelId(null);
     }
@@ -388,6 +416,7 @@ export default function AlertsPage() {
                     onTest={() => handleTestChannel(channel.id)}
                     onToggleEnabled={() => handleToggleChannelEnabled(channel)}
                     isTestPending={testingChannelId === channel.id}
+                    testResult={testResults[channel.id]}
                   />
                 ))}
               </div>
@@ -542,9 +571,9 @@ export default function AlertsPage() {
         open={policyDialogOpen}
         onOpenChange={setPolicyDialogOpen}
         policy={selectedPolicy}
-        availableChannels={channels || []}
-        availableMonitors={monitors || []}
-        availableOncallRotations={oncallRotations || []}
+        availableChannels={channels ?? EMPTY_ARRAY}
+        availableMonitors={monitors ?? EMPTY_ARRAY}
+        availableOncallRotations={oncallRotations ?? EMPTY_ARRAY}
         onSubmit={handlePolicySubmit}
         isSubmitting={createPolicy.isPending || updatePolicy.isPending}
       />

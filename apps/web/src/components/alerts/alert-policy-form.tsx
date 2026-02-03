@@ -1,7 +1,8 @@
 "use client";
 
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import {
     Button,
@@ -74,37 +75,55 @@ export function AlertPolicyForm({
 }: AlertPolicyFormProps) {
     const isEditMode = !!policy;
 
+    // Local state to prevent circular updates
+    const [enabled, setEnabled] = useState(policy?.enabled ?? true);
+    const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>(policy?.channelIds ?? []);
+    const [selectedMonitorIds, setSelectedMonitorIds] = useState<string[]>(policy?.monitorIds ?? []);
+
+    // Sync local state when policy changes (for edit mode)
+    useEffect(() => {
+        setEnabled(policy?.enabled ?? true);
+        setSelectedChannelIds(policy?.channelIds ?? []);
+        setSelectedMonitorIds(policy?.monitorIds ?? []);
+    }, [policy?.id]); // Only re-sync when policy ID changes, not on every policy reference change
+
+    // Stabilize Switch callback
+    const handleEnabledChange = useCallback((checked: boolean) => {
+        setEnabled(checked);
+    }, []);
+
+    // Memoize defaultValues to prevent creating new array references
+    const defaultValues = useMemo(() => ({
+        name: policy?.name ?? "",
+        description: policy?.description ?? "",
+        enabled: policy?.enabled ?? true,
+        conditions: {
+            consecutiveFailures: policy?.conditions.consecutiveFailures,
+            failuresInWindow: policy?.conditions.failuresInWindow,
+            degradedDuration: policy?.conditions.degradedDuration,
+            consecutiveSuccesses: policy?.conditions.consecutiveSuccesses,
+        },
+        cooldownMinutes: policy?.cooldownMinutes ?? 15,
+        channelIds: policy?.channelIds ?? [],
+        monitorIds: policy?.monitorIds ?? [],
+        oncallRotationId: policy?.oncallRotationId ?? undefined,
+    }), [policy]);
+
     const {
         register,
         handleSubmit,
-        watch,
         setValue,
+        control,
         formState: { errors },
     } = useForm<AlertPolicyFormData>({
         resolver: zodResolver(alertPolicyFormSchema),
-        defaultValues: {
-            name: policy?.name ?? "",
-            description: policy?.description ?? "",
-            enabled: policy?.enabled ?? true,
-            conditions: {
-                consecutiveFailures: policy?.conditions.consecutiveFailures,
-                failuresInWindow: policy?.conditions.failuresInWindow,
-                degradedDuration: policy?.conditions.degradedDuration,
-                consecutiveSuccesses: policy?.conditions.consecutiveSuccesses,
-            },
-            cooldownMinutes: policy?.cooldownMinutes ?? 15,
-            channelIds: policy?.channelIds ?? [],
-            monitorIds: policy?.monitorIds ?? [],
-            oncallRotationId: policy?.oncallRotationId ?? undefined,
-        },
+        defaultValues,
+        mode: "onSubmit",
     });
 
-    const watchedEnabled = watch("enabled");
-    const watchedConditions = watch("conditions");
-    const watchedCooldown = watch("cooldownMinutes");
-    const watchedChannelIds = watch("channelIds") ?? [];
-    const watchedMonitorIds = watch("monitorIds") ?? [];
-    const watchedOncallRotationId = watch("oncallRotationId");
+    const watchedConditions = useWatch({ control, name: "conditions" });
+    const watchedCooldown = useWatch({ control, name: "cooldownMinutes" });
+    const watchedOncallRotationId = useWatch({ control, name: "oncallRotationId" });
 
     // Condition toggles
     const hasConsecutiveFailures = watchedConditions.consecutiveFailures !== undefined;
@@ -125,51 +144,55 @@ export function AlertPolicyForm({
     };
 
     const toggleChannel = (channelId: string) => {
-        const current = watchedChannelIds || [];
-        if (current.includes(channelId)) {
-            setValue(
-                "channelIds",
-                current.filter((id) => id !== channelId)
-            );
-        } else {
-            setValue("channelIds", [...current, channelId]);
-        }
+        setSelectedChannelIds(current =>
+            current.includes(channelId)
+                ? current.filter((id) => id !== channelId)
+                : [...current, channelId]
+        );
     };
 
     const toggleMonitor = (monitorId: string) => {
-        const current = watchedMonitorIds || [];
-        if (current.includes(monitorId)) {
-            setValue(
-                "monitorIds",
-                current.filter((id) => id !== monitorId)
-            );
-        } else {
-            setValue("monitorIds", [...current, monitorId]);
-        }
+        setSelectedMonitorIds(current =>
+            current.includes(monitorId)
+                ? current.filter((id) => id !== monitorId)
+                : [...current, monitorId]
+        );
     };
 
     const toggleAllMonitors = () => {
-        const current = watchedMonitorIds || [];
-        if (current.length === availableMonitors.length) {
-            setValue("monitorIds", []);
-        } else {
-            setValue("monitorIds", availableMonitors.map((m) => m.id));
-        }
+        setSelectedMonitorIds(current =>
+            current.length === availableMonitors.length
+                ? []
+                : availableMonitors.map((m) => m.id)
+        );
     };
 
     const toggleAllChannels = () => {
         const allChannelIds = availableChannels.map((ch) => ch.id);
-        const currentChannelIds = watchedChannelIds || [];
+        setSelectedChannelIds(current =>
+            current.length === availableChannels.length ? [] : allChannelIds
+        );
+    };
 
-        if (currentChannelIds.length === availableChannels.length) {
-            setValue("channelIds", []);
-        } else {
-            setValue("channelIds", allChannelIds);
-        }
+    const handleFormSubmit = async () => {
+        // Sync local state to form before validation
+        setValue("enabled", enabled);
+        setValue("channelIds", selectedChannelIds);
+        setValue("monitorIds", selectedMonitorIds);
+
+        // Now validate and submit
+        return handleSubmit((data) => {
+            return onSubmit({
+                ...data,
+                enabled,
+                channelIds: selectedChannelIds,
+                monitorIds: selectedMonitorIds,
+            });
+        })();
     };
 
     return (
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        <div className="space-y-6">
             {/* Basic Settings */}
             <div className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-2">
@@ -192,9 +215,9 @@ export function AlertPolicyForm({
                                 Activate this policy
                             </p>
                         </div>
-                        <Switch
-                            checked={watchedEnabled}
-                            onCheckedChange={(checked) => setValue("enabled", checked)}
+                        <Checkbox
+                            checked={enabled}
+                            onCheckedChange={handleEnabledChange}
                         />
                     </div>
                 </div>
@@ -436,7 +459,7 @@ export function AlertPolicyForm({
                                 size="sm"
                                 onClick={toggleAllChannels}
                             >
-                                {(watchedChannelIds?.length || 0) === availableChannels.length
+                                {(selectedChannelIds?.length || 0) === availableChannels.length
                                     ? "Deselect All"
                                     : "Select All"}
                             </Button>
@@ -451,24 +474,20 @@ export function AlertPolicyForm({
                     ) : (
                         <div className="space-y-2">
                             {availableChannels.map((channel) => (
-                                <div
+                                <button
                                     key={channel.id}
+                                    type="button"
+                                    onClick={() => toggleChannel(channel.id)}
                                     className={cn(
-                                        "flex items-center gap-3 p-3 rounded-lg border transition-colors",
-                                        watchedChannelIds.includes(channel.id)
+                                        "flex items-center gap-3 p-3 rounded-lg border transition-colors cursor-pointer w-full text-left",
+                                        selectedChannelIds.includes(channel.id)
                                             ? "border-primary bg-primary/5"
                                             : "border-border hover:border-primary/50"
                                     )}
                                 >
                                     <Checkbox
-                                        checked={watchedChannelIds.includes(channel.id)}
-                                        onCheckedChange={() => {
-                                            try {
-                                                toggleChannel(channel.id);
-                                            } catch (err) {
-                                                console.error('Error toggling channel:', err);
-                                            }
-                                        }}
+                                        checked={selectedChannelIds.includes(channel.id)}
+                                        className="pointer-events-none"
                                     />
                                     <ChannelTypeIcon
                                         type={channel.type as AlertChannelType}
@@ -484,7 +503,7 @@ export function AlertPolicyForm({
                                             </span>
                                         )}
                                     </div>
-                                </div>
+                                </button>
                             ))}
                         </div>
                     )}
@@ -554,7 +573,7 @@ export function AlertPolicyForm({
                                 size="sm"
                                 onClick={toggleAllMonitors}
                             >
-                                {(watchedMonitorIds?.length || 0) === availableMonitors.length
+                                {(selectedMonitorIds?.length || 0) === availableMonitors.length
                                     ? "Deselect All"
                                     : "Select All"}
                             </Button>
@@ -569,22 +588,20 @@ export function AlertPolicyForm({
                     ) : (
                         <div className="grid gap-2 md:grid-cols-2">
                             {availableMonitors.map((monitor) => (
-                                <div
+                                <button
                                     key={monitor.id}
+                                    type="button"
                                     className={cn(
-                                        "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors",
-                                        watchedMonitorIds?.includes(monitor.id)
+                                        "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors text-left",
+                                        selectedMonitorIds?.includes(monitor.id)
                                             ? "border-primary bg-primary/5"
                                             : "border-border hover:border-primary/50"
                                     )}
                                     onClick={() => toggleMonitor(monitor.id)}
                                 >
                                     <Checkbox
-                                        checked={watchedMonitorIds?.includes(monitor.id)}
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            toggleMonitor(monitor.id);
-                                        }}
+                                        checked={selectedMonitorIds?.includes(monitor.id)}
+                                        className="pointer-events-none"
                                     />
                                     <div className="flex-1 min-w-0">
                                         <span className="font-medium truncate block">
@@ -594,14 +611,14 @@ export function AlertPolicyForm({
                                             {monitor.url}
                                         </span>
                                     </div>
-                                </div>
+                                </button>
                             ))}
                         </div>
                     )}
                     <p className="mt-2 text-xs text-muted-foreground">
-                        {(watchedMonitorIds?.length || 0) === 0
+                        {(selectedMonitorIds?.length || 0) === 0
                             ? "Policy will apply to all monitors"
-                            : `Policy will apply to ${watchedMonitorIds?.length} selected monitor(s)`}
+                            : `Policy will apply to ${selectedMonitorIds?.length} selected monitor(s)`}
                     </p>
                 </CardContent>
             </Card>
@@ -613,7 +630,7 @@ export function AlertPolicyForm({
                         Cancel
                     </Button>
                 )}
-                <Button type="submit" disabled={isSubmitting}>
+                <Button type="button" onClick={handleFormSubmit} disabled={isSubmitting}>
                     {isSubmitting
                         ? isEditMode
                             ? "Saving..."
@@ -623,6 +640,6 @@ export function AlertPolicyForm({
                             : "Create Policy"}
                 </Button>
             </div>
-        </form>
+        </div>
     );
 }

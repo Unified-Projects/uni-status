@@ -9,6 +9,7 @@ import { z } from "zod";
 import { Plus, Trash2, Settings2, ChevronDown, ChevronUp, Shield, Zap } from "lucide-react";
 import {
   Button,
+  LoadingButton,
   Card,
   CardContent,
   CardDescription,
@@ -27,6 +28,7 @@ import {
   Separator,
   Badge,
   cn,
+  toast,
 } from "@uni-status/ui";
 import { useCreateMonitor, useUpdateMonitor } from "@/hooks/use-monitors";
 import { useBulkCreateDependencies, useDeleteDependency } from "@/hooks/use-dependencies";
@@ -1504,28 +1506,56 @@ export function MonitorForm({ monitor, mode }: MonitorFormProps) {
       assertions,
     };
 
-    if (mode === "create") {
-      await createMonitor.mutateAsync(payload);
-      router.push("/monitors");
-    } else if (monitor) {
-      // Update monitor first
-      await updateMonitor.mutateAsync({ id: monitor.id, data: payload });
-
-      // Handle dependency changes (batch save)
-      // Delete removed dependencies
-      for (const depId of removedDependencyIds) {
-        await deleteDependency.mutateAsync(depId);
-      }
-
-      // Create new dependencies
-      if (pendingUpstreamIds.length > 0) {
-        await bulkCreateDependencies.mutateAsync({
-          downstreamMonitorId: monitor.id,
-          upstreamMonitorIds: pendingUpstreamIds,
+    try {
+      if (mode === "create") {
+        await createMonitor.mutateAsync(payload);
+        toast({
+          title: "Monitor created",
+          description: `${data.name} is now being monitored`,
         });
-      }
+        router.push("/monitors");
+      } else if (monitor) {
+        // Update monitor first
+        await updateMonitor.mutateAsync({ id: monitor.id, data: payload });
 
-      router.push(`/monitors/${monitor.id}`);
+        // Handle dependency changes (batch save)
+        let dependencyError = false;
+        try {
+          // Delete removed dependencies
+          for (const depId of removedDependencyIds) {
+            await deleteDependency.mutateAsync(depId);
+          }
+
+          // Create new dependencies
+          if (pendingUpstreamIds.length > 0) {
+            await bulkCreateDependencies.mutateAsync({
+              downstreamMonitorId: monitor.id,
+              upstreamMonitorIds: pendingUpstreamIds,
+            });
+          }
+        } catch (error) {
+          dependencyError = true;
+          toast({
+            title: "Warning",
+            description: "Monitor updated, but some dependencies failed to save",
+            variant: "destructive",
+          });
+        }
+
+        if (!dependencyError) {
+          toast({
+            title: "Monitor updated",
+            description: `Changes to ${data.name} have been saved`,
+          });
+        }
+        router.push(`/monitors/${monitor.id}`);
+      }
+    } catch (error) {
+      toast({
+        title: mode === "create" ? "Failed to create monitor" : "Failed to update monitor",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
     }
   };
 
@@ -3375,15 +3405,17 @@ export function MonitorForm({ monitor, mode }: MonitorFormProps) {
         >
           Cancel
         </Button>
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting
-            ? mode === "create"
-              ? "Creating..."
-              : "Saving..."
-            : mode === "create"
-              ? "Create Monitor"
-              : "Save Changes"}
-        </Button>
+        <LoadingButton
+          type="submit"
+          isLoading={isSubmitting || createMonitor.isPending || updateMonitor.isPending}
+          isSuccess={createMonitor.isSuccess || updateMonitor.isSuccess}
+          isError={createMonitor.isError || updateMonitor.isError}
+          loadingText={mode === "create" ? "Creating..." : "Saving..."}
+          successText={mode === "create" ? "Created" : "Saved"}
+          errorText="Failed"
+        >
+          {mode === "create" ? "Create Monitor" : "Save Changes"}
+        </LoadingButton>
       </div>
     </form>
   );

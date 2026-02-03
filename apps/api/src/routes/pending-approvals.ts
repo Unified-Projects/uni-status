@@ -29,23 +29,49 @@ pendingApprovalsRoutes.get("/", async (c) => {
     );
   }
 
-  const settings = await getSystemSettings();
-  if (!settings?.primaryOrganizationId) {
+  const auth = requireAuth(c);
+
+  if (!auth.user) {
     return c.json(
       {
         success: false,
         error: {
-          code: "SETUP_REQUIRED",
-          message: "System setup not completed",
+          code: "UNAUTHORIZED",
+          message: "Authentication required",
         },
       },
-      503
+      401
     );
   }
 
-  // Temporarily set organization context for role check
-  const auth = requireAuth(c);
-  const orgId = settings.primaryOrganizationId;
+  const settings = await getSystemSettings();
+
+  // Fallback: if no primary org set, use user's first organization
+  let orgId = settings?.primaryOrganizationId;
+
+  if (!orgId) {
+    const userMembership = await db.query.organizationMembers.findFirst({
+      where: eq(organizationMembers.userId, auth.user.id),
+      with: {
+        organization: true,
+      },
+    });
+
+    if (!userMembership) {
+      return c.json(
+        {
+          success: false,
+          error: {
+            code: "NO_ORGANIZATION",
+            message: "User is not a member of any organization",
+          },
+        },
+        400
+      );
+    }
+
+    orgId = userMembership.organizationId;
+  }
 
   // Check if user is admin or owner
   if (!auth.user) {

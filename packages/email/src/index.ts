@@ -58,6 +58,18 @@ async function sendViaSMTP(
             pass: config.password,
           }
         : undefined,
+      tls: {
+        // Handle certificates that don't have subject field (Azure SMTP, etc.)
+        checkServerIdentity: (host: string, cert: any) => {
+          const tls = require("tls");
+          // If cert has no subject, skip validation gracefully
+          if (!cert || !cert.subject) {
+            return undefined;
+          }
+          // Otherwise use Node's default validation
+          return tls.checkServerIdentity(host, cert);
+        },
+      },
     });
 
     const from = config.fromName

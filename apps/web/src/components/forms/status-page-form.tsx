@@ -8,6 +8,7 @@ import { z } from "zod";
 import { Eye, EyeOff, Lock, Unlock, Shield, Users, Mail } from "lucide-react";
 import {
   Button,
+  LoadingButton,
   Card,
   CardContent,
   CardDescription,
@@ -24,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
   cn,
+  toast,
 } from "@uni-status/ui";
 import { useCreateStatusPage, useUpdateStatusPage } from "@/hooks/use-status-pages";
 import { useStatusPageThemes } from "@/hooks/use-status-page-themes";
@@ -610,12 +612,28 @@ export function StatusPageForm({ statusPage, mode }: StatusPageFormProps) {
       },
     };
 
-    if (mode === "create") {
-      const newStatusPage = await createStatusPage.mutateAsync(payload);
-      router.push(`/status-pages/${newStatusPage.id}`);
-    } else if (statusPage) {
-      await updateStatusPage.mutateAsync({ id: statusPage.id, data: payload });
-      router.push(`/status-pages/${statusPage.id}`);
+    try {
+      if (mode === "create") {
+        const newStatusPage = await createStatusPage.mutateAsync(payload);
+        toast({
+          title: "Status page created",
+          description: `${data.name} has been created`,
+        });
+        router.push(`/status-pages/${newStatusPage.id}`);
+      } else if (statusPage) {
+        await updateStatusPage.mutateAsync({ id: statusPage.id, data: payload });
+        toast({
+          title: "Status page updated",
+          description: `Changes to ${data.name} have been saved`,
+        });
+        router.push(`/status-pages/${statusPage.id}`);
+      }
+    } catch (error) {
+      toast({
+        title: mode === "create" ? "Failed to create status page" : "Failed to update status page",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
     }
   };
 
@@ -663,10 +681,11 @@ export function StatusPageForm({ statusPage, mode }: StatusPageFormProps) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="customDomain">Custom Domain</Label>
+            <Label htmlFor="customDomain">Custom Domain {!isPaidPlan && "(Premium)"}</Label>
             <Input
               id="customDomain"
               placeholder="status.example.com"
+              disabled={!isPaidPlan}
               {...register("customDomain")}
             />
             <p className="text-xs text-muted-foreground">
@@ -1147,9 +1166,9 @@ export function StatusPageForm({ statusPage, mode }: StatusPageFormProps) {
 
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
-                <Label>Hide Branding</Label>
+                <Label>Hide Branding {!isPaidPlan && "(Premium)"}</Label>
                 <p className="text-sm text-muted-foreground">
-                  Remove Uni-Status branding from the page { !isPaidPlan && "(Paid plan)" }
+                  Remove Uni-Status branding from the page
                 </p>
               </div>
               <Switch
@@ -1441,15 +1460,17 @@ export function StatusPageForm({ statusPage, mode }: StatusPageFormProps) {
         >
           Cancel
         </Button>
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting
-            ? mode === "create"
-              ? "Creating..."
-              : "Saving..."
-            : mode === "create"
-              ? "Create Status Page"
-              : "Save Changes"}
-        </Button>
+        <LoadingButton
+          type="submit"
+          isLoading={isSubmitting || createStatusPage.isPending || updateStatusPage.isPending}
+          isSuccess={createStatusPage.isSuccess || updateStatusPage.isSuccess}
+          isError={createStatusPage.isError || updateStatusPage.isError}
+          loadingText={mode === "create" ? "Creating..." : "Saving..."}
+          successText={mode === "create" ? "Created" : "Saved"}
+          errorText="Failed"
+        >
+          {mode === "create" ? "Create Status Page" : "Save Changes"}
+        </LoadingButton>
       </div>
     </form>
   );

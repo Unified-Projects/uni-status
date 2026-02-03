@@ -99,7 +99,7 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
-      # target: dev
+      target: dev
     container_name: uni-status-web
     environment:
       - DEPLOYMENT_TYPE=SELF-HOSTED
@@ -111,12 +111,13 @@ services:
       - "3000"
     depends_on:
       - api
-    # volumes:
-    # - ./apps/web/src:/app/apps/web/src
-    # - ./packages:/app/packages
-    # - /app/node_modules
-    # - /app/apps/web/node_modules
-    # - /app/apps/web/.next
+    volumes:
+      - ./apps/web/src:/app/apps/web/src
+      - ./packages/shared/src:/app/packages/shared/src
+      - ./packages/ui/src:/app/packages/ui/src
+      - ./packages/auth/src:/app/packages/auth/src
+      - ./packages/database/src:/app/packages/database/src
+      - ./enterprise/src:/app/enterprise/src
     networks:
       - uni-status-network
 

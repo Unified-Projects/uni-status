@@ -73,6 +73,8 @@ export interface LicenseEntitlements {
   reports: boolean;
   multiRegion: boolean;
   oncall: boolean;
+  hideBranding: boolean;
+  customDomain: boolean;
 }
 
 /**
@@ -95,6 +97,8 @@ export const DEFAULT_FREE_ENTITLEMENTS: LicenseEntitlements = {
   reports: false,
   multiRegion: false,
   oncall: false,
+  hideBranding: false,
+  customDomain: false,
 };
 
 // ==========================================

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import {
   Button,
+  LoadingButton,
   Badge,
   Card,
   CardContent,
@@ -304,23 +305,31 @@ export default function SystemSettingsPage() {
                   <div className="flex items-center gap-2">
                     {approval.status === "pending" ? (
                       <>
-                        <Button
+                        <LoadingButton
                           variant="outline"
                           size="sm"
                           onClick={() => handleRejectClick(approval)}
-                          disabled={rejectUser.isPending}
+                          isLoading={rejectUser.isPending}
+                          isSuccess={rejectUser.isSuccess}
+                          isError={rejectUser.isError}
+                          successText="Rejected"
+                          errorText="Failed"
                         >
                           <X className="h-4 w-4 mr-1" />
                           Reject
-                        </Button>
-                        <Button
+                        </LoadingButton>
+                        <LoadingButton
                           size="sm"
                           onClick={() => handleApprove(approval)}
-                          disabled={approveUser.isPending}
+                          isLoading={approveUser.isPending}
+                          isSuccess={approveUser.isSuccess}
+                          isError={approveUser.isError}
+                          successText="Approved"
+                          errorText="Failed"
                         >
                           <Check className="h-4 w-4 mr-1" />
                           Approve
-                        </Button>
+                        </LoadingButton>
                       </>
                     ) : (
                       <Badge

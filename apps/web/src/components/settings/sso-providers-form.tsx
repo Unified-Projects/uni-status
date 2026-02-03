@@ -25,6 +25,7 @@ import {
   Switch,
   Alert,
   AlertDescription,
+  toast,
 } from "@uni-status/ui";
 import {
   Plus,
@@ -130,17 +131,29 @@ export function SSOProvidersForm({ organizationId, canManage }: SSOProvidersForm
       } as any; // Type will be updated
     }
 
-    await createProvider.mutateAsync({
-      orgId: organizationId,
-      data: {
-        name: data.name,
-        type: data.type,
-        providerId: data.providerId,
-        issuer: data.issuer,
-        oidcConfig,
-      },
-    });
-    setCreateDialogOpen(false);
+    try {
+      await createProvider.mutateAsync({
+        orgId: organizationId,
+        data: {
+          name: data.name,
+          type: data.type,
+          providerId: data.providerId,
+          issuer: data.issuer,
+          oidcConfig,
+        },
+      });
+      setCreateDialogOpen(false);
+      toast({
+        title: "SSO provider created",
+        description: `${data.name} has been added`,
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to create SSO provider",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleUpdateProvider = async (providerId: string, data: {
@@ -151,31 +164,55 @@ export function SSOProvidersForm({ organizationId, canManage }: SSOProvidersForm
     clientSecret?: string;
     groupRoleMapping?: GroupRoleMappingConfig;
   }) => {
-    await updateProvider.mutateAsync({
-      orgId: organizationId,
-      providerId,
-      data: {
-        name: data.name,
-        issuer: data.issuer,
-        enabled: data.enabled,
-        oidcConfig: data.clientId ? {
-          clientId: data.clientId,
-          clientSecret: data.clientSecret,
-        } : undefined,
-        groupRoleMapping: data.groupRoleMapping,
-      },
-    });
-    setEditProvider(null);
+    try {
+      await updateProvider.mutateAsync({
+        orgId: organizationId,
+        providerId,
+        data: {
+          name: data.name,
+          issuer: data.issuer,
+          enabled: data.enabled,
+          oidcConfig: data.clientId ? {
+            clientId: data.clientId,
+            clientSecret: data.clientSecret,
+          } : undefined,
+          groupRoleMapping: data.groupRoleMapping,
+        },
+      });
+      setEditProvider(null);
+      toast({
+        title: "SSO provider updated",
+        description: "Provider settings have been saved",
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to update SSO provider",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleDeleteProvider = async () => {
     if (!providerToDelete) return;
-    await deleteProvider.mutateAsync({
-      orgId: organizationId,
-      providerId: providerToDelete.id,
-    });
-    setDeleteDialogOpen(false);
-    setProviderToDelete(null);
+    try {
+      await deleteProvider.mutateAsync({
+        orgId: organizationId,
+        providerId: providerToDelete.id,
+      });
+      setDeleteDialogOpen(false);
+      setProviderToDelete(null);
+      toast({
+        title: "SSO provider removed",
+        description: `${providerToDelete.name} has been removed`,
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to remove SSO provider",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleTestProvider = async (providerId: string) => {
@@ -186,11 +223,29 @@ export function SSOProvidersForm({ organizationId, canManage }: SSOProvidersForm
         providerId,
       });
       setTestResult({ providerId, status: result.status, message: result.message });
+      if (result.status === "success") {
+        toast({
+          title: "Connection successful",
+          description: result.message || "SSO provider connection test passed",
+        });
+      } else {
+        toast({
+          title: "Connection test completed",
+          description: result.message || "Check the results",
+          variant: "destructive",
+        });
+      }
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Connection test failed";
       setTestResult({
         providerId,
         status: "error",
-        message: error instanceof Error ? error.message : "Connection test failed",
+        message: errorMessage,
+      });
+      toast({
+        title: "Connection test failed",
+        description: errorMessage,
+        variant: "destructive",
       });
     }
   };

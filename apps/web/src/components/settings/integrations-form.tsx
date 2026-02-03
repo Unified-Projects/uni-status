@@ -7,6 +7,7 @@ import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Button,
+  LoadingButton,
   Input,
   Label,
   Switch,
@@ -18,6 +19,7 @@ import {
   Badge,
   Alert,
   AlertDescription,
+  toast,
 } from "@uni-status/ui";
 import { Zap, Key, Eye, EyeOff, ExternalLink, CheckCircle2, XCircle } from "lucide-react";
 import { apiClient, queryKeys } from "@/lib/api-client";
@@ -94,6 +96,17 @@ export function IntegrationsForm() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.organizations.integrations(organizationId) });
       setApiKeyValue("");
+      toast({
+        title: "Integrations updated",
+        description: "Your integration settings have been saved",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to update integrations",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
     },
   });
 
@@ -245,12 +258,18 @@ export function IntegrationsForm() {
           )}
 
           <div className="flex items-center justify-end pt-4">
-            <Button
+            <LoadingButton
               type="submit"
-              disabled={updateMutation.isPending || (!isDirty && !apiKeyValue)}
+              disabled={!isDirty && !apiKeyValue}
+              isLoading={updateMutation.isPending}
+              isSuccess={updateMutation.isSuccess}
+              isError={updateMutation.isError}
+              loadingText="Saving..."
+              successText="Saved"
+              errorText="Save Failed"
             >
-              {updateMutation.isPending ? "Saving..." : "Save Changes"}
-            </Button>
+              Save Changes
+            </LoadingButton>
           </div>
         </CardContent>
       </Card>

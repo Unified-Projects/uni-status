@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient, queryKeys, type Monitor, type CheckResult, type PaginationParams } from "@/lib/api-client";
 import type { CreateMonitorInput, UpdateMonitorInput } from "@uni-status/shared/validators";
 import { useDashboardStore } from "@/stores/dashboard-store";
+import { toast } from "@uni-status/ui";
 
 export function useMonitors(params?: PaginationParams) {
   const organizationId = useDashboardStore((state) => state.currentOrganizationId);
@@ -144,6 +145,12 @@ export function usePauseMonitor() {
   return useMutation({
     mutationFn: (id: string) =>
       apiClient.monitors.pause(id, organizationId ?? undefined),
+    onSuccess: () => {
+      toast({
+        title: "Monitor paused",
+        description: "Monitoring has been paused for this monitor.",
+      });
+    },
     onMutate: async (id) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.monitors.detail(id) });
       await queryClient.cancelQueries({ queryKey: queryKeys.monitors.lists() });
@@ -173,10 +180,15 @@ export function usePauseMonitor() {
 
       return { previous };
     },
-    onError: (_, id, context) => {
+    onError: (error, id, context) => {
       if (context?.previous) {
         queryClient.setQueryData(queryKeys.monitors.detail(id), context.previous);
       }
+      toast({
+        title: "Failed to pause monitor",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
     },
     onSettled: (_, __, id) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.monitors.detail(id) });
@@ -192,6 +204,12 @@ export function useResumeMonitor() {
   return useMutation({
     mutationFn: (id: string) =>
       apiClient.monitors.resume(id, organizationId ?? undefined),
+    onSuccess: () => {
+      toast({
+        title: "Monitor resumed",
+        description: "Monitoring has been resumed for this monitor.",
+      });
+    },
     onMutate: async (id) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.monitors.detail(id) });
       await queryClient.cancelQueries({ queryKey: queryKeys.monitors.lists() });
@@ -221,10 +239,15 @@ export function useResumeMonitor() {
 
       return { previous };
     },
-    onError: (_, id, context) => {
+    onError: (error, id, context) => {
       if (context?.previous) {
         queryClient.setQueryData(queryKeys.monitors.detail(id), context.previous);
       }
+      toast({
+        title: "Failed to resume monitor",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
     },
     onSettled: (_, __, id) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.monitors.detail(id) });
@@ -241,11 +264,22 @@ export function useCheckMonitorNow() {
     mutationFn: (id: string) =>
       apiClient.monitors.checkNow(id, organizationId ?? undefined),
     onSuccess: (_, id) => {
+      toast({
+        title: "Check started",
+        description: "Monitor check is running. Results will appear shortly.",
+      });
       // Refresh results after a short delay to allow check to complete
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: queryKeys.monitors.detail(id) });
         queryClient.invalidateQueries({ queryKey: queryKeys.monitors.results(id) });
       }, 2000);
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to start check",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
     },
   });
 }

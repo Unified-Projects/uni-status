@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import {
   Button,
+  LoadingButton,
   Card,
   CardContent,
   CardDescription,
@@ -20,6 +21,7 @@ import {
   SelectValue,
   Checkbox,
   cn,
+  toast,
 } from "@uni-status/ui";
 import { useCreateIncident, useUpdateIncident, useAddIncidentUpdate } from "@/hooks/use-incidents";
 import { useMonitors } from "@/hooks/use-monitors";
@@ -96,20 +98,36 @@ export function IncidentForm({ incident, mode }: IncidentFormProps) {
   };
 
   const onSubmit = async (data: IncidentFormData) => {
-    const payload = {
-      title: data.title,
-      status: data.status,
-      severity: data.severity,
-      message: data.message || undefined,
-      affectedMonitors: data.affectedMonitors?.length ? data.affectedMonitors : undefined,
-    };
+    try {
+      const payload = {
+        title: data.title,
+        status: data.status,
+        severity: data.severity,
+        message: data.message || undefined,
+        affectedMonitors: data.affectedMonitors?.length ? data.affectedMonitors : undefined,
+      };
 
-    if (mode === "create") {
-      const newIncident = await createIncident.mutateAsync(payload);
-      router.push(`/incidents/${newIncident.id}`);
-    } else if (incident) {
-      await updateIncident.mutateAsync({ id: incident.id, data: payload });
-      router.push(`/incidents/${incident.id}`);
+      if (mode === "create") {
+        const newIncident = await createIncident.mutateAsync(payload);
+        toast({
+          title: "Incident created",
+          description: `${data.title} has been created`,
+        });
+        router.push(`/incidents/${newIncident.id}`);
+      } else if (incident) {
+        await updateIncident.mutateAsync({ id: incident.id, data: payload });
+        toast({
+          title: "Incident updated",
+          description: `Changes to ${data.title} have been saved`,
+        });
+        router.push(`/incidents/${incident.id}`);
+      }
+    } catch (error) {
+      toast({
+        title: mode === "create" ? "Failed to create incident" : "Failed to update incident",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
     }
   };
 
@@ -284,15 +302,17 @@ export function IncidentForm({ incident, mode }: IncidentFormProps) {
         >
           Cancel
         </Button>
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting
-            ? mode === "create"
-              ? "Creating..."
-              : "Saving..."
-            : mode === "create"
-              ? "Create Incident"
-              : "Save Changes"}
-        </Button>
+        <LoadingButton
+          type="submit"
+          isLoading={isSubmitting || createIncident.isPending || updateIncident.isPending}
+          isSuccess={createIncident.isSuccess || updateIncident.isSuccess}
+          isError={createIncident.isError || updateIncident.isError}
+          loadingText={mode === "create" ? "Creating..." : "Saving..."}
+          successText={mode === "create" ? "Created" : "Saved"}
+          errorText="Failed"
+        >
+          {mode === "create" ? "Create Incident" : "Save Changes"}
+        </LoadingButton>
       </div>
     </form>
   );
@@ -387,9 +407,17 @@ export function IncidentUpdateForm({
             Cancel
           </Button>
         )}
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? "Posting..." : "Post Update"}
-        </Button>
+        <LoadingButton
+          type="submit"
+          isLoading={isSubmitting || addUpdate.isPending}
+          isSuccess={addUpdate.isSuccess}
+          isError={addUpdate.isError}
+          loadingText="Posting..."
+          successText="Posted"
+          errorText="Failed"
+        >
+          Post Update
+        </LoadingButton>
       </div>
     </form>
   );

@@ -7,6 +7,8 @@ import {
   Send,
   Power,
   PowerOff,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 import {
   Card,
@@ -34,6 +36,7 @@ export interface AlertChannelCardProps {
   onTest?: () => void;
   onToggleEnabled?: () => void;
   isTestPending?: boolean;
+  testResult?: { success: boolean; timestamp: number };
   showActions?: boolean;
   variant?: "default" | "compact";
   className?: string;
@@ -46,6 +49,7 @@ export function AlertChannelCard({
   onTest,
   onToggleEnabled,
   isTestPending = false,
+  testResult,
   showActions = true,
   variant = "default",
   className,
@@ -192,14 +196,33 @@ export function AlertChannelCard({
         {showActions && onTest && (
           <div className="mt-4 pt-4 border-t">
             <Button
-              variant="outline"
+              variant={testResult?.success ? "default" : "outline"}
               size="sm"
               onClick={onTest}
               disabled={isTestPending || !channel.enabled}
-              className="w-full"
+              className={cn("w-full", testResult?.success && "bg-green-600 hover:bg-green-700")}
             >
-              <Send className={cn("mr-2 h-4 w-4", isTestPending && "animate-pulse")} />
-              {isTestPending ? "Sending..." : "Send Test Notification"}
+              {isTestPending ? (
+                <>
+                  <Send className="mr-2 h-4 w-4 animate-pulse" />
+                  Sending...
+                </>
+              ) : testResult?.success ? (
+                <>
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                  Test Sent Successfully
+                </>
+              ) : testResult?.success === false ? (
+                <>
+                  <XCircle className="mr-2 h-4 w-4" />
+                  Test Failed
+                </>
+              ) : (
+                <>
+                  <Send className="mr-2 h-4 w-4" />
+                  Send Test Notification
+                </>
+              )}
             </Button>
           </div>
         )}

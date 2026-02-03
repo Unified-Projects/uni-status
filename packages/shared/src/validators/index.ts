@@ -779,7 +779,8 @@ export const alertChannelTypeSchema = z.enum([
 ]);
 
 export const alertChannelConfigSchema = z.object({
-  email: z.string().email().optional(),
+  fromAddress: z.string().email().optional(),
+  toAddresses: z.array(z.string().email()).optional(),
   webhookUrl: urlSchema.optional(),
   channel: z.string().optional(),
   routingKey: z.string().optional(),
