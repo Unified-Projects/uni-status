@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Updated Next.js to >=16.1.5 to address HTTP request deserialization DoS vulnerability
+- Updated Next.js to >=16.1.5 to fix unbounded memory consumption via PPR Resume endpoint
+- Updated Next.js to >=16.1.5 to fix DoS via Image Optimizer remotePatterns configuration
+- Updated esbuild to >=0.25.0 to address development server access vulnerability
+- Updated lodash to >=4.17.23 to resolve prototype pollution vulnerability in _.unset and _.omit
+- Updated @isaacs/brace-expansion to >=5.0.1 to resolve uncontrolled resource consumption vulnerability
+
 ## [0.1.1] - 2026-02-03
 
 ### Added
