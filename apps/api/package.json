@@ -33,8 +33,8 @@
     },
     "devDependencies": {
         "@types/bun": "^1.3.8",
-        "@types/react": "^19.2.10",
-        "bun-types": "^1.3.8",
+        "@types/react": "^19.2.13",
+        "bun-types": "^1.3.9",
         "typescript": "^5.7.3"
     }
 }
