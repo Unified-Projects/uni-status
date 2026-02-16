@@ -82,7 +82,7 @@
   },
   "dependencies": {
     "@uni-status/licensing": "workspace:*",
-    "lucide-react": "^0.563.0",
+    "lucide-react": "^0.564.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
