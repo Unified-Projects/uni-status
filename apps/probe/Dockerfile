@@ -1,4 +1,4 @@
-FROM node:25.6.0-alpine AS builder
+FROM node:25.6.1-alpine AS builder
 WORKDIR /app
 
 # Install pnpm directly via npm (avoids corepack signature issues)
@@ -20,7 +20,7 @@ COPY . .
 RUN pnpm --filter @uni-status/probe build
 
 # ---- Runtime image ----
-FROM node:25.6.0-alpine
+FROM node:25.6.1-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 
