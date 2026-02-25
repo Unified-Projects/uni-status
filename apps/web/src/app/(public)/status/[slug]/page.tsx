@@ -321,41 +321,80 @@ async function getStatusPageData(
     : `/api/public/status-pages/${slug}`;
   const fullUrl = `${apiUrl}${path}`;
 
-  try {
-    const response = await fetch(fullUrl, {
-      headers: cookies ? { Cookie: cookies } : {},
-      cache: "no-store",
-    });
+  const fetchWithTimeout = async (url: string, options: RequestInit, timeoutMs = 15000): Promise<Response> => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-    // Check if response is JSON
-    const contentType = response.headers.get("content-type");
-    if (!contentType?.includes("application/json")) {
-      console.error(
-        `[Status Page] Non-JSON response from API: status=${response.status}, content-type=${contentType}, url=${fullUrl}`
-      );
-      const text = await response.text();
-      console.error(`[Status Page] Response body (first 500 chars): ${text.slice(0, 500)}`);
-      return {
-        success: false,
-        error: {
-          code: "INVALID_RESPONSE",
-          message: "Invalid response from API",
-        },
-      };
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+      return response;
+    } finally {
+      clearTimeout(timeout);
     }
+  };
 
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error(`[Status Page] Fetch error for ${fullUrl}:`, error);
-    return {
-      success: false,
-      error: {
-        code: "FETCH_ERROR",
-        message: `Failed to fetch status page data: ${error instanceof Error ? error.message : "Unknown error"}`,
-      },
-    };
+  const maxRetries = 3;
+  const retryDelay = 1000;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetchWithTimeout(fullUrl, {
+        headers: cookies ? { Cookie: cookies } : {},
+        cache: "no-store",
+      });
+
+      // Check if response is JSON
+      const contentType = response.headers.get("content-type");
+      if (!contentType?.includes("application/json")) {
+        console.error(
+          `[Status Page] Non-JSON response from API: status=${response.status}, content-type=${contentType}, url=${fullUrl}`
+        );
+        const text = await response.text();
+        console.error(`[Status Page] Response body (first 500 chars): ${text.slice(0, 500)}`);
+        return {
+          success: false,
+          error: {
+            code: "INVALID_RESPONSE",
+            message: "Invalid response from API",
+          },
+        };
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      const isTimeout = error instanceof Error && error.name === "AbortError";
+
+      console.error(`[Status Page] Fetch attempt ${attempt}/${maxRetries} for ${fullUrl} failed:`, errorMessage);
+
+      // If this is the last attempt, return error
+      if (attempt === maxRetries) {
+        return {
+          success: false,
+          error: {
+            code: isTimeout ? "TIMEOUT" : "FETCH_ERROR",
+            message: `Failed to fetch status page data: ${errorMessage}`,
+          },
+        };
+      }
+
+      // Wait before retrying
+      await new Promise(resolve => setTimeout(resolve, retryDelay * attempt));
+    }
   }
+
+  // Should not reach here, but TypeScript needs this
+  return {
+    success: false,
+    error: {
+      code: "FETCH_ERROR",
+      message: "Failed to fetch status page data after retries",
+    },
+  };
 }
 
 export async function generateMetadata({
@@ -451,8 +490,10 @@ export async function generateMetadata({
     },
   };
 
-  // Only set icons if a custom favicon is configured, otherwise inherit from parent
-  const faviconUrl = normalizeAssetUrl(data.favicon, ogBaseUrl);
+  // Set favicon: custom favicon > organization logo > default icon
+  const customFaviconUrl = normalizeAssetUrl(data.favicon, ogBaseUrl);
+  const orgLogoUrl = normalizeAssetUrl(data.orgLogo, ogBaseUrl);
+  const faviconUrl = customFaviconUrl || orgLogoUrl;
   if (faviconUrl) {
     metadata.icons = { icon: faviconUrl };
   }

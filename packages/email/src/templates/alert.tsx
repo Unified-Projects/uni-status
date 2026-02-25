@@ -15,6 +15,8 @@ export interface AlertEmailProps {
   statusCode?: number;
   dashboardUrl: string;
   timestamp: string;
+  logo?: string | null;
+  primaryColor?: string;
 }
 
 const defaultAlertProps: AlertEmailProps = {
@@ -40,6 +42,8 @@ export const AlertEmail: React.FC<AlertEmailProps> = (
     statusCode,
     dashboardUrl,
     timestamp,
+    logo,
+    primaryColor,
   } = { ...defaultAlertProps, ...props };
   const statusConfig = {
     down: {
@@ -53,7 +57,7 @@ export const AlertEmail: React.FC<AlertEmailProps> = (
       description: `${monitorName} is experiencing degraded performance`,
     },
     recovered: {
-      color: "#10b981",
+      color: primaryColor || "#10b981",
       title: "Monitor Recovered",
       description: `${monitorName} is back online`,
     },
@@ -62,7 +66,7 @@ export const AlertEmail: React.FC<AlertEmailProps> = (
   const config = statusConfig[status];
 
   return (
-    <BaseEmail preview={config.description}>
+    <BaseEmail preview={config.description} logo={logo} primaryColor={primaryColor}>
       <Section style={content}>
         <div style={{ ...statusBadge, backgroundColor: config.color }}>
           <Text style={statusText}>{config.title}</Text>

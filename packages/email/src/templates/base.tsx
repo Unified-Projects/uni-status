@@ -8,29 +8,45 @@ import {
   Text,
   Hr,
   Link,
+  Img,
 } from "@react-email/components";
 import * as React from "react";
 
 interface BaseEmailProps {
   preview: string;
   children: React.ReactNode;
+  logo?: string | null;
+  primaryColor?: string;
+  backgroundColor?: string;
 }
 
-export function BaseEmail({ preview, children }: BaseEmailProps) {
+export function BaseEmail({ preview, children, logo, primaryColor, backgroundColor }: BaseEmailProps) {
+  const brandColor = primaryColor || "#10b981";
+  const bgColor = backgroundColor || "#f6f9fc";
+
   return (
     <Html>
       <Head />
       <Preview>{preview}</Preview>
-      <Body style={main}>
-        <Container style={container}>
+      <Body style={{ ...main, backgroundColor: bgColor }}>
+        <Container style={{ ...container, backgroundColor: "#ffffff" }}>
           <Section style={header}>
-            <Text style={logo}>Uni-Status</Text>
+            {logo ? (
+              <Img
+                src={logo}
+                alt="Logo"
+                width="120"
+                style={{ maxWidth: "120px", height: "auto", margin: "0 auto" }}
+              />
+            ) : (
+              <Text style={{ ...logoStyle, color: brandColor }}>Uni-Status</Text>
+            )}
           </Section>
           {children}
           <Hr style={hr} />
           <Section style={footer}>
             <Text style={footerText}>
-              Sent by <Link href="https://status.unified.sh" style={link}>Uni-Status</Link>
+              Sent by <Link href="https://status.unified.sh" style={{ ...linkStyle, color: brandColor }}>Uni-Status</Link>
             </Text>
             <Text style={footerText}>
               You received this email because you are subscribed to updates.
@@ -61,7 +77,7 @@ const header = {
   textAlign: "center" as const,
 };
 
-const logo = {
+const logoStyle = {
   fontSize: "24px",
   fontWeight: "bold",
   color: "#10b981",
@@ -85,7 +101,7 @@ const footerText = {
   textAlign: "center" as const,
 };
 
-const link = {
+const linkStyle = {
   color: "#10b981",
   textDecoration: "underline",
 };

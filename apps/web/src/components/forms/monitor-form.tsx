@@ -256,6 +256,7 @@ const monitorFormSchema = z.object({
         fid: z.number().min(0).optional(),
         cls: z.number().min(0).max(1).optional(),
       }).optional(),
+      intervalSeconds: z.number().min(60).max(86400).optional(), // Run pagespeed independently, default 24h
     }).optional(),
     // Security Headers Configuration
     securityHeaders: z.object({
@@ -1093,6 +1094,7 @@ export function MonitorForm({ monitor, mode }: MonitorFormProps) {
         categories: data.config.pagespeed.categories ?? ["performance"],
         ...(Object.keys(thresholds).length > 0 && { thresholds }),
         ...(Object.keys(webVitalsThresholds).length > 0 && { webVitalsThresholds }),
+        ...(data.config.pagespeed.intervalSeconds && { intervalSeconds: data.config.pagespeed.intervalSeconds }),
       };
     }
 
@@ -2438,6 +2440,28 @@ export function MonitorForm({ monitor, mode }: MonitorFormProps) {
                     </Select>
                     <p className="text-xs text-muted-foreground">
                       Choose which device strategy to analyze
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Run Interval</Label>
+                    <Select
+                      value={String(watch("config.pagespeed.intervalSeconds") ?? 86400)}
+                      onValueChange={(v) => setValue("config.pagespeed.intervalSeconds", Number(v))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="3600">Every hour</SelectItem>
+                        <SelectItem value="43200">Every 12 hours</SelectItem>
+                        <SelectItem value="86400">Every day</SelectItem>
+                        <SelectItem value="172800">Every 2 days</SelectItem>
+                        <SelectItem value="604800">Every week</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      How often to run PageSpeed checks (default: daily)
                     </p>
                   </div>
 

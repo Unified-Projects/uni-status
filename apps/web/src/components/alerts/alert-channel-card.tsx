@@ -247,7 +247,9 @@ function getConfigSummary(channel: AlertChannel): string | null {
         ? `Key: ${config.routingKey.substring(0, 10)}...`
         : null;
     case "webhook":
-      return config.url || null;
+      return config.url
+        ? `${config.url.substring(0, 40)}...`
+        : null;
     case "sms":
       return config.phoneNumber || null;
     case "ntfy":

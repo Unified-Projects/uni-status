@@ -311,6 +311,7 @@ export const pagespeedConfigSchema = z.object({
   categories: z.array(pagespeedCategorySchema).optional(),
   thresholds: pagespeedThresholdsSchema.optional(),
   webVitalsThresholds: webVitalsThresholdsSchema.optional(),
+  intervalSeconds: z.number().min(60).max(86400).optional(), // Run pagespeed independently, default 24h
 });
 
 // HTTP Security Headers config schema

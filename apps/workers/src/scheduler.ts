@@ -130,6 +130,7 @@ async function pollMonitors() {
             regions: monitor.regions,
             config: monitor.config,  // Extended config for new monitor types
             degradedThresholdMs: monitor.degradedThresholdMs,  // Degraded threshold
+            lastPagespeedAt: monitor.lastPagespeedAt,  // Track when pagespeed was last run
           },
           {
             jobId: `${monitor.id}-${now.getTime()}`,

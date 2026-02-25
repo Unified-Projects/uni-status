@@ -240,6 +240,12 @@ publicRoutes.get("/status-pages/:slug", async (c) => {
 
     const data = await buildPublicStatusPagePayload({ page, organization: org });
 
+    // Cache only for non-protected pages to reduce load on expensive data building
+    // Protected pages need to vary by auth state, so we skip caching for those
+    if (protectionMode === "none") {
+      c.header("Cache-Control", "public, max-age=30, s-maxage=30");
+    }
+
     return c.json({
       success: true,
       data,

@@ -56,6 +56,7 @@ interface HttpCheckJob {
         fid?: number;
         cls?: number;
       };
+      intervalSeconds?: number;  // Run pagespeed independently, default 86400 (24 hours)
     };
     securityHeaders?: {
       enabled?: boolean;
@@ -121,6 +122,8 @@ interface HttpCheckJob {
       requireStatusMatch?: boolean;
     };
   };
+  // Track when pagespeed was last run
+  lastPagespeedAt?: Date | string | null;
 }
 
 interface TimingMetrics {
@@ -144,6 +147,7 @@ export async function processHttpCheck(job: Job<HttpCheckJob>) {
     regions,
     degradedThresholdMs,
     config,
+    lastPagespeedAt,
   } = job.data;
 
   const defaultRegion = process.env.MONITOR_DEFAULT_REGION || "uk";
@@ -573,9 +577,17 @@ export async function processHttpCheck(job: Job<HttpCheckJob>) {
   }
 
   // PageSpeed Insights check (only if enabled and HTTP check was successful)
-  if (config?.pagespeed?.enabled && (status === "success" || status === "degraded")) {
+  // Only run if enough time has passed since last pagespeed run (default 24 hours)
+  const pagespeedIntervalSeconds = config?.pagespeed?.intervalSeconds ?? 86400; // Default 24 hours
+  const lastPagespeedTime = lastPagespeedAt ? new Date(lastPagespeedAt).getTime() : 0;
+  const timeSinceLastPagespeed = lastPagespeedTime ? Date.now() - lastPagespeedTime : Infinity;
+  const shouldRunPagespeed = config?.pagespeed?.enabled &&
+    (status === "success" || status === "degraded") &&
+    timeSinceLastPagespeed >= (pagespeedIntervalSeconds * 1000);
+
+  if (shouldRunPagespeed) {
     try {
-      log.info(`Fetching PageSpeed data for ${monitorId}: ${url}`);
+      log.info(`Fetching PageSpeed data for ${monitorId}: ${url} (last run: ${lastPagespeedAt || 'never'})`);
 
       // Get organization's PageSpeed API key
       let pagespeedApiKey: string | undefined;
@@ -860,12 +872,20 @@ export async function processHttpCheck(job: Job<HttpCheckJob>) {
       ? "degraded"
       : "down";
 
+  // Update monitor status and lastPagespeedAt if pagespeed was run
+  const monitorUpdate: Record<string, unknown> = {
+    status: newStatus,
+    updatedAt: new Date(),
+  };
+
+  // Update lastPagespeedAt if pagespeed was run in this check
+  if (shouldRunPagespeed) {
+    monitorUpdate.lastPagespeedAt = new Date();
+  }
+
   await db
     .update(monitors)
-    .set({
-      status: newStatus,
-      updatedAt: new Date(),
-    })
+    .set(monitorUpdate)
     .where(eq(monitors.id, monitorId));
 
   // Publish event for real-time updates

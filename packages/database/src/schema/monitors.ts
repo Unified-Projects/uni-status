@@ -307,6 +307,7 @@ export const monitors = pgTable(
           fid?: number;   // ms, default 100 (good), 300 (needs improvement)
           cls?: number;   // unitless, default 0.1 (good), 0.25 (needs improvement)
         };
+        intervalSeconds?: number;  // Run pagespeed independently, default 86400 (24 hours)
       };
       // CDN/Edge vs Origin comparison
       cdn?: {
@@ -404,6 +405,7 @@ export const monitors = pgTable(
     status: monitorStatusEnum("status").notNull().default("pending"),
     paused: boolean("paused").notNull().default(false),
     lastCheckedAt: timestamp("last_checked_at"),
+    lastPagespeedAt: timestamp("last_pagespeed_at"),  // Track when pagespeed was last run
     nextCheckAt: timestamp("next_check_at"),
     createdBy: text("created_by").notNull(),
     createdAt: timestamp("created_at").notNull().defaultNow(),

@@ -28,6 +28,8 @@ interface AlertEmailData {
   statusCode?: number;
   dashboardUrl: string;
   timestamp: string;
+  logo?: string | null;
+  primaryColor?: string;
 }
 
 // Incident email data
