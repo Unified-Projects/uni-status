@@ -45,7 +45,7 @@
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^2.1.8",
-    "@types/react": "^19.2.10",
+    "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.1",
     "pg": "^8.18.0",
     "nanoid": "^5.0.9",
