@@ -24,10 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Dependencies
 - Updated Docker base image from `node:25.6.0-alpine` to `node:25.6.1-alpine` across all services
-- Updated GitHub Actions: `actions/checkout` v6.0.2, `actions/upload-artifact` v7.0.0
-- Updated production dependencies: `@aws-sdk/client-s3` 3.1000.0, `@better-auth/core` + `better-auth` 1.5.1, `@elastic/elasticsearch` 9.3.2, `@hono/zod-openapi` 1.2.2, `bullmq` 5.70.1, `graphql` 16.13.0, `hono` 4.12.3, `ioredis` 5.10.0, `mongodb` 7.1.0, `mysql2` 3.18.2, `pg` 8.19.0, `pino` 10.3.1, `puppeteer` 24.37.5, `react` 19.2.4, `react-day-picker` 9.14.0, `react-email` + `@react-email/components` 5.2.9/1.0.8, `react-hook-form` 7.71.2, `resend` 6.9.3, `satori` 0.21.0, `@vercel/og` 0.10.0
-- Updated dev dependencies: `@tanstack/react-query` 5.90.21, `@types/bun` 1.3.9, `@types/node` 25.3.3, `@types/react` 19.2.14, `drizzle-kit` 0.31.9, `esbuild` 0.27.3, `framer-motion` 12.34.4, `lucide-react` 0.576.0, `tailwindcss` + `@tailwindcss/postcss` 4.2.1, `tailwind-merge` 3.5.0, `turbo` 2.8.12, `typescript-eslint` 8.56.1, `bun-types` 1.3.10, `autoprefixer` 10.4.27
-- Skipped major version bumps: `nodemailer` (7→8), `react-leaflet` (4→5), `@vitest/coverage-v8` (2→4)
+- Updated GitHub Actions: `actions/checkout` v6.0.2, `actions/upload-artifact` v7.0.0, `actions/setup-node` v6.3.0, `oven-sh/setup-bun` v2.1.3, `docker/login-action` v4, `docker/setup-qemu-action` v4, `docker/setup-buildx-action` v4, `docker/metadata-action` v6, `docker/build-push-action` v7
+- Updated production dependencies: `@aws-sdk/client-s3` 3.1000.0, `@better-auth/core` + `better-auth` 1.5.1, `@elastic/elasticsearch` 9.3.2, `@hono/zod-openapi` 1.2.2, `bullmq` 5.70.1, `graphql` 16.13.0, `hono` 4.12.5, `@hono/node-server` 1.19.11, `ioredis` 5.10.0, `mongodb` 7.1.0, `mysql2` 3.18.2, `nodemailer` 8.0.1, `pg` 8.19.0, `pino` 10.3.1, `puppeteer` 24.37.5, `react` 19.2.4, `react-day-picker` 9.14.0, `react-email` + `@react-email/components` 5.2.9/1.0.8, `react-hook-form` 7.71.2, `react-leaflet` 5.0.0, `resend` 6.9.3, `satori` 0.21.0, `@vercel/og` 0.10.0
+- Updated dev dependencies: `@tanstack/react-query` 5.90.21, `@types/bun` 1.3.10, `@types/node` 25.3.5, `@types/nodemailer` 7.0.11, `@types/react` 19.2.14, `drizzle-kit` 0.31.9, `esbuild` 0.27.3, `framer-motion` 12.34.4, `lucide-react` 0.576.0, `postcss` 8.5.8, `tailwindcss` + `@tailwindcss/postcss` 4.2.1, `tailwind-merge` 3.5.0, `turbo` 2.8.14, `typescript-eslint` 8.56.1, `bun-types` 1.3.10, `autoprefixer` 10.4.27
 
 ## [0.1.2] - 2026-02-25
 
