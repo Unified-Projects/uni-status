@@ -43,7 +43,7 @@
         "@radix-ui/react-tooltip": "^1.1.8",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
-        "lucide-react": "^0.576.0",
+        "lucide-react": "^0.577.0",
         "react-day-picker": "^9.14.0",
         "tailwind-merge": "^3.5.0"
     },
