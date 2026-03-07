@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, type CSSProperties } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -11,24 +11,23 @@ import {
   Search,
   Clock,
   CheckCircle,
-  Wrench,
   Filter,
   X,
   Bell,
 } from "lucide-react";
 import { cn, Button, Input, Badge } from "@uni-status/ui";
-import type { UnifiedEvent, EventType } from "@uni-status/shared";
+import type { UnifiedEvent } from "@uni-status/shared";
 import { PublicEventCard } from "@/components/public-status/events/public-event-card";
 import { PublicEventTimeline } from "@/components/public-status/events/public-event-timeline";
 import {
   PublicEventFilters,
   type PublicEventFiltersState,
 } from "@/components/public-status/events/public-event-filters";
+import { useStatusPage } from "../status-page-context";
 
 // Default API URL - will be overridden to relative URL on custom domains
 const DEFAULT_API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
 
-// Helper to get API URL - uses relative URL on custom domains to avoid CORS issues
 function getApiUrl(): string {
   if (typeof window === "undefined") return DEFAULT_API_URL;
 
@@ -36,7 +35,6 @@ function getApiUrl(): string {
   try {
     const appHostname = new URL(appUrl).hostname;
     const currentHostname = window.location.hostname;
-    // On custom domains, use relative URLs so requests go through the same domain
     if (currentHostname !== appHostname && currentHostname !== "localhost") {
       return "/api";
     }
@@ -44,76 +42,6 @@ function getApiUrl(): string {
     // If URL parsing fails, use default
   }
   return DEFAULT_API_URL;
-}
-
-const DEFAULT_PRIMARY = "#3b82f6";
-
-function hexToHsl(hex: string): { h: number; s: number; l: number } | null {
-  const cleaned = hex.replace("#", "");
-  if (cleaned.length !== 6) return null;
-  const r = parseInt(cleaned.substring(0, 2), 16) / 255;
-  const g = parseInt(cleaned.substring(2, 4), 16) / 255;
-  const b = parseInt(cleaned.substring(4, 6), 16) / 255;
-
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  let h = 0;
-  let s = 0;
-  const l = (max + min) / 2;
-  const d = max - min;
-
-  if (d !== 0) {
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    switch (max) {
-      case r:
-        h = (g - b) / d + (g < b ? 6 : 0);
-        break;
-      case g:
-        h = (b - r) / d + 2;
-        break;
-      case b:
-        h = (r - g) / d + 4;
-        break;
-    }
-    h /= 6;
-  }
-
-  return {
-    h: Math.round(h * 360),
-    s: Math.round(s * 100),
-    l: Math.round(l * 100),
-  };
-}
-
-const hslToString = (hsl: { h: number; s: number; l: number }) =>
-  `${hsl.h} ${hsl.s}% ${hsl.l}%`;
-
-const getContrastingText = (hex: string): string => {
-  const cleaned = hex.replace("#", "");
-  const r = parseInt(cleaned.substring(0, 2), 16);
-  const g = parseInt(cleaned.substring(2, 4), 16);
-  const b = parseInt(cleaned.substring(4, 6), 16);
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return luminance > 0.6 ? "#111827" : "#ffffff";
-};
-
-function buildThemeStyles(theme?: { primaryColor?: string }): CSSProperties {
-  if (!theme) return {};
-  const styles: CSSProperties & Record<string, string> = {};
-  const primaryHex = theme.primaryColor || DEFAULT_PRIMARY;
-  const primaryHsl = hexToHsl(primaryHex);
-  if (primaryHsl) {
-    const primaryString = hslToString(primaryHsl);
-    styles["--primary"] = primaryString;
-    styles["--ring"] = primaryString;
-
-    const primaryForeground = hexToHsl(getContrastingText(primaryHex));
-    if (primaryForeground) {
-      styles["--primary-foreground"] = hslToString(primaryForeground);
-    }
-  }
-
-  return styles;
 }
 
 interface EventsResponse {
@@ -144,60 +72,18 @@ async function fetchPublicEvents(
 ): Promise<EventsResponse> {
   const searchParams = new URLSearchParams();
 
-  if (params.types?.length) {
-    searchParams.set("types", params.types.join(","));
-  }
-  if (params.status?.length) {
-    searchParams.set("status", params.status.join(","));
-  }
-  if (params.search) {
-    searchParams.set("search", params.search);
-  }
-  if (params.severity?.length) {
-    searchParams.set("severity", params.severity.join(","));
-  }
-  if (params.monitors?.length) {
-    searchParams.set("monitors", params.monitors.join(","));
-  }
-  if (params.regions?.length) {
-    searchParams.set("regions", params.regions.join(","));
-  }
+  if (params.types?.length) searchParams.set("types", params.types.join(","));
+  if (params.status?.length) searchParams.set("status", params.status.join(","));
+  if (params.search) searchParams.set("search", params.search);
+  if (params.severity?.length) searchParams.set("severity", params.severity.join(","));
+  if (params.monitors?.length) searchParams.set("monitors", params.monitors.join(","));
+  if (params.regions?.length) searchParams.set("regions", params.regions.join(","));
 
   const response = await fetch(
     `${getApiUrl()}/public/status-pages/${slug}/events?${searchParams.toString()}`,
-    {
-      credentials: "include",
-    }
+    { credentials: "include" }
   );
 
-  return response.json();
-}
-
-interface StatusPageResponse {
-  success: boolean;
-  data?: {
-    id: string;
-    name: string;
-    slug: string;
-    theme?: {
-      name: string;
-      primaryColor?: string;
-      customCss?: string;
-      colorMode?: "system" | "light" | "dark";
-    };
-    monitors: Array<{
-      id: string;
-      name: string;
-      regions: string[];
-    }>;
-  };
-  error?: { code: string; message: string };
-}
-
-async function fetchStatusPageData(slug: string): Promise<StatusPageResponse> {
-  const response = await fetch(`${getApiUrl()}/public/status-pages/${slug}`, {
-    credentials: "include",
-  });
   return response.json();
 }
 
@@ -205,8 +91,11 @@ type TabFilter = "all" | "active" | "resolved" | "incidents" | "maintenance";
 
 export default function PublicEventsPage() {
   const params = useParams<{ slug: string }>();
-  const searchParams = useSearchParams();
   const slug = params.slug;
+
+  // Monitor/region data and page name come from the server-rendered layout via context.
+  // Theme CSS variables are also applied server-side by layout.tsx — no client fetch needed.
+  const { monitors: contextMonitors } = useStatusPage();
 
   const [tabFilter, setTabFilter] = useState<TabFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -224,51 +113,24 @@ export default function PublicEventsPage() {
       const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
       const appHostname = new URL(appUrl).hostname;
       const currentHostname = window.location.hostname;
-      // If we're on a custom domain, use empty basePath
       if (currentHostname !== appHostname && currentHostname !== "localhost") {
         setBasePath("");
       }
     }
   }, []);
 
-  // Fetch status page data for monitors and regions
-  const { data: statusPageData } = useQuery({
-    queryKey: ["public-status-page", slug],
-    queryFn: () => fetchStatusPageData(slug),
-    enabled: !!slug,
-    staleTime: 60000,
-  });
-
-  const themeStyles = useMemo(
-    () => buildThemeStyles(statusPageData?.data?.theme),
-    [statusPageData?.data?.theme]
+  // Derive monitor/region filter options from context (server-fetched, zero extra API call)
+  const availableMonitors = useMemo(
+    () => contextMonitors.map((m) => ({ id: m.id, name: m.name })),
+    [contextMonitors]
   );
 
-  useEffect(() => {
-    const colorMode = statusPageData?.data?.theme?.colorMode;
-    if (!colorMode || colorMode === "system") return;
-    document.documentElement.classList.toggle("dark", colorMode === "dark");
-  }, [statusPageData?.data?.theme?.colorMode]);
-
-  // Extract available monitors and regions
-  const availableMonitors = useMemo(() => {
-    if (!statusPageData?.data?.monitors) return [];
-    return statusPageData.data.monitors.map((m) => ({
-      id: m.id,
-      name: m.name,
-    }));
-  }, [statusPageData]);
-
   const availableRegions = useMemo(() => {
-    if (!statusPageData?.data?.monitors) return [];
     const regionSet = new Set<string>();
-    statusPageData.data.monitors.forEach((m) => {
-      (m.regions || []).forEach((r) => regionSet.add(r));
-    });
+    contextMonitors.forEach((m) => m.regions.forEach((r) => regionSet.add(r)));
     return Array.from(regionSet).sort();
-  }, [statusPageData]);
+  }, [contextMonitors]);
 
-  // Build query params based on tab filter and advanced filters
   const queryParams = useMemo(() => {
     const p: FetchEventsParams = {};
 
@@ -287,20 +149,10 @@ export default function PublicEventsPage() {
         break;
     }
 
-    if (searchQuery.trim()) {
-      p.search = searchQuery.trim();
-    }
-
-    // Add advanced filters
-    if (advancedFilters.severity.length > 0) {
-      p.severity = advancedFilters.severity;
-    }
-    if (advancedFilters.monitors.length > 0) {
-      p.monitors = advancedFilters.monitors;
-    }
-    if (advancedFilters.regions.length > 0) {
-      p.regions = advancedFilters.regions;
-    }
+    if (searchQuery.trim()) p.search = searchQuery.trim();
+    if (advancedFilters.severity.length > 0) p.severity = advancedFilters.severity;
+    if (advancedFilters.monitors.length > 0) p.monitors = advancedFilters.monitors;
+    if (advancedFilters.regions.length > 0) p.regions = advancedFilters.regions;
 
     return p;
   }, [tabFilter, searchQuery, advancedFilters]);
@@ -309,18 +161,18 @@ export default function PublicEventsPage() {
     queryKey: ["public-events", slug, queryParams],
     queryFn: () => fetchPublicEvents(slug, queryParams),
     enabled: !!slug,
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: 30000,
   });
 
-  const events = data?.data?.events || [];
-
-  // Calculate counts for tabs (from all data, not filtered)
+  // Fetch all events unfiltered for accurate tab counts
   const { data: allData } = useQuery({
     queryKey: ["public-events", slug, {}],
     queryFn: () => fetchPublicEvents(slug, {}),
     enabled: !!slug,
     staleTime: 30000,
   });
+
+  const events = data?.data?.events || [];
 
   const counts = useMemo(() => {
     if (!allData?.data?.events) {
@@ -360,10 +212,7 @@ export default function PublicEventsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background" style={themeStyles}>
-      {statusPageData?.data?.theme?.customCss && (
-        <style dangerouslySetInnerHTML={{ __html: statusPageData.data.theme.customCss }} />
-      )}
+    <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8">
@@ -475,10 +324,7 @@ export default function PublicEventsPage() {
         {isLoading ? (
           <div className="space-y-4">
             {[1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="h-32 animate-pulse rounded-lg bg-muted"
-              />
+              <div key={i} className="h-32 animate-pulse rounded-lg bg-muted" />
             ))}
           </div>
         ) : events.length === 0 ? (
@@ -493,9 +339,7 @@ export default function PublicEventsPage() {
               <div className="text-center py-12 border rounded-lg bg-muted/30">
                 <CheckCircle className="mx-auto h-12 w-12 text-status-success-solid" />
                 <h2 className="mt-4 text-lg font-semibold">
-                  {hasAnyFilters
-                    ? "No events match your filters"
-                    : "All systems operational"}
+                  {hasAnyFilters ? "No events match your filters" : "All systems operational"}
                 </h2>
                 <p className="mt-2 text-muted-foreground">
                   {hasAnyFilters
@@ -564,14 +408,7 @@ interface TabButtonProps {
   icon?: React.ReactNode;
 }
 
-function TabButton({
-  active,
-  onClick,
-  children,
-  count,
-  highlight,
-  icon,
-}: TabButtonProps) {
+function TabButton({ active, onClick, children, count, highlight, icon }: TabButtonProps) {
   return (
     <button
       onClick={onClick}

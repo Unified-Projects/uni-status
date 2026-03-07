@@ -26,6 +26,10 @@ function isValidStatusPagePath(pathname: string): boolean {
   return false;
 }
 
+// In-memory cache for domain → slug lookups
+// Positive hits cached for 5 minutes, negative (unknown) for 30 seconds
+const domainCache = new Map<string, { slug: string | null; expiresAt: number }>();
+
 // Lookup status page slug by custom domain via internal API
 // This is needed because middleware runs in Edge runtime which cannot use postgres.js
 async function lookupDomainSlug(domain: string): Promise<string | null> {
@@ -132,8 +136,16 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  // This is a custom domain - look up status page via API
-  const slug = await lookupDomainSlug(effectiveHostname);
+  // This is a custom domain - look up status page via API (with in-memory cache)
+  let slug: string | null;
+  const cachedEntry = domainCache.get(effectiveHostname);
+  if (cachedEntry && Date.now() < cachedEntry.expiresAt) {
+    slug = cachedEntry.slug;
+  } else {
+    slug = await lookupDomainSlug(effectiveHostname);
+    const ttl = slug ? 5 * 60 * 1000 : 30 * 1000;
+    domainCache.set(effectiveHostname, { slug, expiresAt: Date.now() + ttl });
+  }
 
   if (slug) {
     // Check if the path already has the /status/{slug} prefix (from RSC navigation)

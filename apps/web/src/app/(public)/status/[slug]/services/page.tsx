@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useDeferredValue } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
+import { useStatusPage } from "../status-page-context";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -121,18 +122,6 @@ interface ServicesResponse {
   };
 }
 
-interface StatusPageResponse {
-  success: boolean;
-  data?: {
-    statusPage: {
-      id: string;
-      name: string;
-      slug: string;
-    };
-  };
-  error?: { code: string; message: string };
-}
-
 type GroupByOption = "group" | "type" | "region" | "status" | "none";
 
 async function fetchServices(
@@ -145,13 +134,6 @@ async function fetchServices(
       credentials: "include",
     }
   );
-  return response.json();
-}
-
-async function fetchStatusPageData(slug: string): Promise<StatusPageResponse> {
-  const response = await fetch(`${getApiUrl()}/public/status-pages/${slug}`, {
-    credentials: "include",
-  });
   return response.json();
 }
 
@@ -207,19 +189,15 @@ export default function PublicServicesPage() {
   const router = useRouter();
   const slug = params.slug;
 
+  // Page name comes from the server-rendered layout via context — no extra API call
+  const { name: statusPageName } = useStatusPage();
+
   const [searchQuery, setSearchQuery] = useState("");
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const [groupBy, setGroupBy] = useState<GroupByOption>(
     (searchParams.get("groupBy") as GroupByOption) || "group"
   );
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
-
-  // Fetch status page data for name
-  const { data: statusPageData } = useQuery({
-    queryKey: ["public-status-page", slug],
-    queryFn: () => fetchStatusPageData(slug),
-    enabled: !!slug,
-    staleTime: 60000,
-  });
 
   // Fetch services data
   const { data: servicesData, isLoading, isError } = useQuery({
@@ -242,14 +220,14 @@ export default function PublicServicesPage() {
     router.push(`/status/${slug}/services?${newParams.toString()}`);
   };
 
-  // Filter services
+  // Filter services (uses deferred search to avoid blocking on every keystroke)
   const filteredServices = useMemo(() => {
     if (!servicesData?.data?.services) return [];
 
     return servicesData.data.services.filter((service) => {
       // Search filter
-      if (searchQuery) {
-        const query = searchQuery.toLowerCase();
+      if (deferredSearchQuery) {
+        const query = deferredSearchQuery.toLowerCase();
         const matchesSearch =
           service.name.toLowerCase().includes(query) ||
           service.description?.toLowerCase().includes(query) ||
@@ -264,7 +242,7 @@ export default function PublicServicesPage() {
 
       return true;
     });
-  }, [servicesData, searchQuery, statusFilter]);
+  }, [servicesData, deferredSearchQuery, statusFilter]);
 
   // Group filtered services
   const groupedServices = useMemo(() => {
@@ -308,7 +286,6 @@ export default function PublicServicesPage() {
     return Array.from(statuses);
   }, [servicesData]);
 
-  const statusPageName = statusPageData?.data?.statusPage?.name || "Status";
 
   if (isError) {
     return (

@@ -7,13 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Security
-- Updated Next.js to >=16.1.5 to address HTTP request deserialization DoS vulnerability
-- Updated Next.js to >=16.1.5 to fix unbounded memory consumption via PPR Resume endpoint
-- Updated Next.js to >=16.1.5 to fix DoS via Image Optimizer remotePatterns configuration
-- Updated esbuild to >=0.25.0 to address development server access vulnerability
-- Updated lodash to >=4.17.23 to resolve prototype pollution vulnerability in _.unset and _.omit
-- Updated @isaacs/brace-expansion to >=5.0.1 to resolve uncontrolled resource consumption vulnerability
+## [0.1.3] - 2026-03-07
+
+### Performance
+- Deduplicate status page API fetch with React `cache()` — eliminates double server-side call per request
+- Add in-memory TTL cache for custom domain slug lookups in middleware (5 min hits, 30s misses)
+- Add shared `layout.tsx` for all `[slug]/*` routes — theme, color mode, and custom CSS applied server-side once; monitors and page name passed via React context, eliminating client-side status page fetches on events and services sub-pages
+- Reduce fetch timeout from 15s to 8s and retries from 3 to 1
+- Add `useDeferredValue` on services page search to keep input responsive under load
+
+### Fixed
+- Services page name always showing "Status" due to incorrect response field path
+
+### Refactored
+- Extract server-side API types, theme utilities, and `getStatusPageData` to `lib/public-status-page-api.ts` as single shared source of truth
 
 ## [0.1.2] - 2026-02-25
 
