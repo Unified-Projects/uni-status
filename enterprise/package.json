@@ -32,16 +32,16 @@
     "test:workers": "vitest run tests/workers/**/*.test.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1000.0",
+    "@aws-sdk/client-s3": "^3.1004.0",
     "@uni-status/database": "workspace:*",
     "@uni-status/licensing": "workspace:*",
     "@uni-status/shared": "workspace:*",
     "@uni-status/ui": "workspace:*",
-    "bullmq": "^5.70.1",
+    "bullmq": "^5.70.4",
     "drizzle-orm": "^0.45.1",
     "ioredis": "^5.10.0",
     "postgres": "^3.4.8",
-    "puppeteer": "^24.37.5"
+    "puppeteer": "^24.38.0"
   },
   "devDependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -49,9 +49,9 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.1",
     "@vitest/coverage-v8": "^4.0.18",
-    "lucide-react": "^0.576.0",
+    "lucide-react": "^0.577.0",
     "nanoid": "^5.0.9",
-    "pg": "^8.19.0",
+    "pg": "^8.20.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-hook-form": "^7.71.2",
