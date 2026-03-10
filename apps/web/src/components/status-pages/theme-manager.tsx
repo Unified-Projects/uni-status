@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Plus, Palette, Pencil, Trash2, Star, ArrowLeft } from "lucide-react";
 import {
   Button,
@@ -268,11 +268,57 @@ function ThemeCard({ theme, onEdit, onDelete }: ThemeCardProps) {
         </div>
 
         {/* Mini Preview */}
-        <div className="mt-3">
-          <ThemePreview colors={theme.colors} mode="light" className="scale-[0.85] origin-top-left" />
-        </div>
+        <ResponsiveThemeCardPreview colors={theme.colors} />
       </CardContent>
     </Card>
+  );
+}
+
+function ResponsiveThemeCardPreview({ colors }: { colors: StatusPageThemeColors }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+  const [scaledHeight, setScaledHeight] = useState<number | null>(null);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    const content = contentRef.current;
+    if (!container || !content) return;
+
+    const updateScale = () => {
+      const containerWidth = container.clientWidth;
+      const contentWidth = content.scrollWidth;
+      const contentHeight = content.scrollHeight;
+      if (!containerWidth || !contentWidth || !contentHeight) return;
+
+      const nextScale = Math.min(1, containerWidth / contentWidth);
+      setScale(nextScale);
+      setScaledHeight(contentHeight * nextScale);
+    };
+
+    updateScale();
+
+    const observer = new ResizeObserver(updateScale);
+    observer.observe(container);
+
+    return () => observer.disconnect();
+  }, [colors]);
+
+  return (
+    <div ref={containerRef} className="mt-3 w-full overflow-hidden rounded-md">
+      <div
+        className="relative w-full"
+        style={{ height: scaledHeight ? `${scaledHeight}px` : "220px" }}
+      >
+        <div
+          ref={contentRef}
+          className="origin-top-left"
+          style={{ transform: `scale(${scale})` }}
+        >
+          <ThemePreview colors={colors} mode="light" className="w-[560px]" />
+        </div>
+      </div>
+    </div>
   );
 }
 

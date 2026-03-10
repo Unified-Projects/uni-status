@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { getStatusPageData, buildThemeStyles } from "@/lib/public-status-page-api";
+import { getStatusPageShellData, buildThemeStyles } from "@/lib/public-status-page-api";
 import { StatusPageProvider } from "./status-page-context";
 
 export default async function StatusPageLayout({
@@ -10,7 +10,7 @@ export default async function StatusPageLayout({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const result = await getStatusPageData(slug);
+  const result = await getStatusPageShellData(slug);
 
   // If data is unavailable (404, auth required, fetch error etc.) render children as-is.
   // The page component handles all error states itself.

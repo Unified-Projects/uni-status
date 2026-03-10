@@ -115,13 +115,22 @@ export function LoadingState({
 
     case "card":
     default:
+      {
+        const cardGridClass =
+          count <= 1
+            ? "grid gap-4 grid-cols-1"
+            : count === 2
+              ? "grid gap-4 md:grid-cols-2"
+              : "grid gap-4 md:grid-cols-2 lg:grid-cols-3";
+
       return (
-        <div className={cn("grid gap-4 md:grid-cols-2 lg:grid-cols-3", className)}>
+        <div className={cn(cardGridClass, className)}>
           {Array.from({ length: count }).map((_, i) => (
             <LoadingCard key={i} />
           ))}
         </div>
       );
+      }
   }
 }
 

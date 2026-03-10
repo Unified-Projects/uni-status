@@ -1,6 +1,7 @@
 import { cache } from "react";
 import type { CSSProperties } from "react";
 import type { TemplateConfig } from "@uni-status/shared";
+import { headers } from "next/headers";
 
 export function getApiUrl(): string {
   const rawUrl = process.env.INTERNAL_API_URL;
@@ -281,16 +282,48 @@ export function buildThemeStyles(theme?: PublicStatusPageData["theme"]): CSSProp
   return styles;
 }
 
-export const getStatusPageData = cache(async (
-  slug: string,
-  cookies?: string
-): Promise<ApiResponse> => {
-  const apiUrl = getApiUrl();
-  const path = baseIncludesApi()
-    ? `/public/status-pages/${slug}`
-    : `/api/public/status-pages/${slug}`;
-  const fullUrl = `${apiUrl}${path}`;
+interface PublicStatusPageLiveResponse {
+  success: boolean;
+  data?: {
+    monitors: Array<{
+      id: string;
+      status: PublicStatusPageData["monitors"][number]["status"];
+      uptimePercentage: number | null;
+      responseTimeMs: number | null;
+      uptimeData: PublicStatusPageData["monitors"][number]["uptimeData"];
+      uptimeGranularity?: "minute" | "hour" | "day";
+      responseTimeData?: Array<{
+        timestamp: string;
+        avg: number | null;
+        min: number | null;
+        max: number | null;
+        p50: number | null;
+        p90: number | null;
+        p99: number | null;
+        status?: "success" | "degraded" | "down" | "incident";
+      }>;
+      certificateInfo?: PublicStatusPageData["monitors"][number]["certificateInfo"];
+      emailAuthInfo?: PublicStatusPageData["monitors"][number]["emailAuthInfo"];
+      heartbeatInfo?: PublicStatusPageData["monitors"][number]["heartbeatInfo"];
+    }>;
+    activeIncidents: PublicStatusPageData["activeIncidents"];
+    recentIncidents: PublicStatusPageData["recentIncidents"];
+    crowdsourced: PublicStatusPageData["crowdsourced"];
+    lastUpdatedAt: string;
+  };
+  error?: {
+    code: string;
+    message: string;
+  };
+  meta?: ApiResponse["meta"];
+}
 
+async function fetchPublicStatusPageEndpoint<TResponse extends { success: boolean; data?: unknown; error?: { code: string; message: string } }>(
+  slug: string,
+  endpointSuffix: "" | "/shell" | "/live",
+  cookies?: string,
+  revalidateSeconds = 15
+): Promise<TResponse> {
   const fetchWithTimeout = async (url: string, options: RequestInit, timeoutMs = 8000): Promise<Response> => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -302,53 +335,158 @@ export const getStatusPageData = cache(async (
     }
   };
 
-  const maxRetries = 1;
-  const retryDelay = 500;
+  const headersList = await headers();
+  const requestHost = headersList.get("x-forwarded-host") || headersList.get("host");
+  const requestProto = headersList.get("x-forwarded-proto");
+  const cookieHeader = cookies ?? headersList.get("cookie") ?? undefined;
+  const hasStatusPageAuthCookie = Boolean(
+    cookieHeader?.includes(`sp_token_${slug}=`) || cookieHeader?.includes(`sp_oauth_${slug}=`)
+  );
 
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+  const apiUrl = getApiUrl();
+  const internalPath = baseIncludesApi()
+    ? `/public/status-pages/${slug}${endpointSuffix}`
+    : `/api/public/status-pages/${slug}${endpointSuffix}`;
+  const internalUrl = `${apiUrl}${internalPath}`;
+
+  const hostWithoutPort = requestHost?.split(":")[0];
+  const protocol = requestProto || (hostWithoutPort === "localhost" || hostWithoutPort === "127.0.0.1" ? "http" : "https");
+  const proxiedUrl = requestHost
+    ? `${protocol}://${requestHost}/api/public/status-pages/${slug}${endpointSuffix}`
+    : null;
+
+  let useProxyFirst = false;
+  if (requestHost) {
     try {
-      const response = await fetchWithTimeout(fullUrl, {
-        headers: cookies ? { Cookie: cookies } : {},
-        cache: "no-store",
-      });
-
-      const contentType = response.headers.get("content-type");
-      if (!contentType?.includes("application/json")) {
-        console.error(
-          `[Status Page] Non-JSON response from API: status=${response.status}, content-type=${contentType}, url=${fullUrl}`
-        );
-        const text = await response.text();
-        console.error(`[Status Page] Response body (first 500 chars): ${text.slice(0, 500)}`);
-        return {
-          success: false,
-          error: { code: "INVALID_RESPONSE", message: "Invalid response from API" },
-        };
-      }
-
-      const data = await response.json();
-      return data;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      const isTimeout = error instanceof Error && error.name === "AbortError";
-
-      console.error(`[Status Page] Fetch attempt ${attempt}/${maxRetries} for ${fullUrl} failed:`, errorMessage);
-
-      if (attempt === maxRetries) {
-        return {
-          success: false,
-          error: {
-            code: isTimeout ? "TIMEOUT" : "FETCH_ERROR",
-            message: `Failed to fetch status page data: ${errorMessage}`,
-          },
-        };
-      }
-
-      await new Promise(resolve => setTimeout(resolve, retryDelay * attempt));
+      useProxyFirst = isCustomDomain(requestHost);
+    } catch {
+      useProxyFirst = false;
     }
+  }
+  const fetchTargets = proxiedUrl
+    ? useProxyFirst
+      ? [proxiedUrl, internalUrl]
+      : [internalUrl, proxiedUrl]
+    : [internalUrl];
+
+  const fetchOptions: RequestInit & { next?: { revalidate: number } } = {
+    headers: cookieHeader ? { Cookie: cookieHeader } : {},
+    cache: hasStatusPageAuthCookie ? "no-store" : "force-cache",
+  };
+
+  if (!hasStatusPageAuthCookie) {
+    fetchOptions.next = { revalidate: revalidateSeconds };
+  }
+
+  const maxAttempts = 2;
+  const retryDelay = 350;
+  const requestTimeoutMs = hasStatusPageAuthCookie ? 15000 : 10000;
+  let lastErrorMessage: string | null = null;
+
+  for (const targetUrl of fetchTargets) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const response = await fetchWithTimeout(targetUrl, fetchOptions, requestTimeoutMs);
+
+        const contentType = response.headers.get("content-type");
+        if (!contentType?.includes("application/json")) {
+          const text = await response.text();
+          lastErrorMessage = `Invalid API response from ${targetUrl}: ${response.status} ${contentType || "unknown"}`;
+          console.error(`[Status Page] ${lastErrorMessage}`);
+          console.error(`[Status Page] Response body (first 500 chars): ${text.slice(0, 500)}`);
+          break;
+        }
+
+        const data = await response.json();
+        return data as TResponse;
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+        lastErrorMessage = errorMessage;
+
+        console.error(
+          `[Status Page] Fetch attempt ${attempt}/${maxAttempts} for ${targetUrl} failed:`,
+          errorMessage
+        );
+
+        if (attempt < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, retryDelay * attempt));
+          continue;
+        }
+      }
+    }
+  }
+
+  if (lastErrorMessage) {
+    const isTimeout = lastErrorMessage.toLowerCase().includes("aborted");
+    return {
+      success: false,
+      error: {
+        code: isTimeout ? "TIMEOUT" : "FETCH_ERROR",
+        message: `Failed to fetch status page data: ${lastErrorMessage}`,
+      },
+    } as TResponse;
   }
 
   return {
     success: false,
     error: { code: "FETCH_ERROR", message: "Failed to fetch status page data after retries" },
+  } as TResponse;
+}
+
+export const getStatusPageShellData = cache(async (
+  slug: string,
+  cookies?: string
+): Promise<ApiResponse> => {
+  return fetchPublicStatusPageEndpoint<ApiResponse>(slug, "/shell", cookies, 300);
+});
+
+const getStatusPageLiveData = cache(async (
+  slug: string,
+  cookies?: string
+): Promise<PublicStatusPageLiveResponse> => {
+  return fetchPublicStatusPageEndpoint<PublicStatusPageLiveResponse>(slug, "/live", cookies, 5);
+});
+
+export const getStatusPageData = cache(async (
+  slug: string,
+  cookies?: string
+): Promise<ApiResponse> => {
+  const shellResult = await getStatusPageShellData(slug, cookies);
+
+  if (!shellResult.success || !shellResult.data) {
+    return shellResult;
+  }
+
+  const liveResult = await getStatusPageLiveData(slug, cookies);
+  if (!liveResult.success || !liveResult.data) {
+    return shellResult;
+  }
+
+  const liveMonitorById = new Map(liveResult.data.monitors.map((m) => [m.id, m]));
+  const mergedData: PublicStatusPageData = {
+    ...shellResult.data,
+    monitors: shellResult.data.monitors.map((monitor) => {
+      const liveMonitor = liveMonitorById.get(monitor.id);
+      if (!liveMonitor) return monitor;
+      return {
+        ...monitor,
+        status: liveMonitor.status,
+        uptimePercentage: liveMonitor.uptimePercentage,
+        responseTimeMs: liveMonitor.responseTimeMs,
+        uptimeData: liveMonitor.uptimeData,
+        certificateInfo: liveMonitor.certificateInfo,
+        emailAuthInfo: liveMonitor.emailAuthInfo,
+        heartbeatInfo: liveMonitor.heartbeatInfo,
+      };
+    }),
+    activeIncidents: liveResult.data.activeIncidents,
+    recentIncidents: liveResult.data.recentIncidents,
+    crowdsourced: liveResult.data.crowdsourced,
+    lastUpdatedAt: liveResult.data.lastUpdatedAt,
+  };
+
+  return {
+    success: true,
+    data: mergedData,
   };
 });

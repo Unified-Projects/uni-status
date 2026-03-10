@@ -23,6 +23,8 @@ interface EmbedPreviewProps {
   apiUrl: string;
 }
 
+const CARD_PREVIEW_MAX_WIDTH = 500;
+
 export function EmbedPreview({
   type,
   slug,
@@ -36,7 +38,7 @@ export function EmbedPreview({
 
   const isMonitorEmbed = !!monitorId;
   // Normalize API URL - remove trailing /api if present to avoid double prefix
-  const normalizedApiUrl = apiUrl.replace(/\/api\/?$/, '');
+  const normalizedApiUrl = apiUrl.replace(/\/api\/?$/, "");
   const baseUrl = isMonitorEmbed
     ? `${normalizedApiUrl}/api/public/embeds/monitors/${monitorId}`
     : `${normalizedApiUrl}/api/public/embeds/status-pages/${slug}`;
@@ -112,6 +114,8 @@ export function EmbedPreview({
         ? "bg-white"
         : "bg-gray-100";
 
+  const cardAspectRatio = isMonitorEmbed ? "5 / 1" : "8 / 5";
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -123,50 +127,101 @@ export function EmbedPreview({
       <CardContent>
         <div
           className={cn(
-            "rounded-lg border p-6 flex items-center justify-center min-h-[100px]",
+            "rounded-lg border p-4 md:p-6",
             previewBgClass
           )}
         >
-          {loading && (
-            <Skeleton className="h-8 w-32" />
-          )}
+          <div className="w-full flex items-center justify-center">
+            {loading && (
+              <>
+                {(type === "badge" || type === "dot") && (
+                  <Skeleton className="h-8 w-40 max-w-full" />
+                )}
 
-          {error && (
-            <p className="text-sm text-destructive">{error}</p>
-          )}
+                {type === "card" && (
+                  <div
+                    className="w-full"
+                    style={{ maxWidth: `${CARD_PREVIEW_MAX_WIDTH}px` }}
+                  >
+                    <div
+                      className="w-full"
+                      style={{ aspectRatio: cardAspectRatio }}
+                    >
+                      <Skeleton className="h-full w-full" />
+                    </div>
+                  </div>
+                )}
 
-          {!loading && !error && content && (
-            <>
-              {(type === "badge" || type === "dot") && (
-                <div dangerouslySetInnerHTML={{ __html: content }} />
-              )}
+                {type === "widget" && (
+                  <div className="w-full text-center space-y-2 py-4">
+                    <Skeleton className="h-5 w-40 mx-auto" />
+                    <Skeleton className="h-4 w-56 max-w-full mx-auto" />
+                  </div>
+                )}
+              </>
+            )}
 
-              {type === "card" && !isMonitorEmbed && (
-                <iframe
-                  src={`/embed/status/${slug}/card?theme=${options.theme || "light"}&showMonitors=${options.showMonitors !== false}&showIncidents=${options.showIncidents !== false}`}
-                  className="border-0 w-full"
-                  style={{ height: "250px", maxWidth: "500px" }}
-                  title="Status Card Preview"
-                />
-              )}
+            {error && (
+              <p className="text-sm text-destructive">{error}</p>
+            )}
 
-              {type === "card" && isMonitorEmbed && (
-                <iframe
-                  src={`/embed/monitors/${monitorId}/card?theme=${options.theme || "light"}`}
-                  className="border-0 w-full"
-                  style={{ height: "100px", maxWidth: "500px" }}
-                  title="Monitor Card Preview"
-                />
-              )}
+            {!loading && !error && content && (
+              <>
+                {type === "badge" && (
+                  <div className="max-w-full overflow-hidden [&_svg]:max-w-full [&_svg]:h-auto">
+                    <div dangerouslySetInnerHTML={{ __html: content }} />
+                  </div>
+                )}
 
-              {type === "widget" && (
-                <div className="text-center text-sm text-muted-foreground">
-                  <p>Widget preview not available</p>
-                  <p className="text-xs mt-1">Copy the code and test on your site</p>
-                </div>
-              )}
-            </>
-          )}
+                {type === "dot" && (
+                  <div dangerouslySetInnerHTML={{ __html: content }} />
+                )}
+
+                {type === "card" && !isMonitorEmbed && (
+                  <div
+                    className="w-full"
+                    style={{ maxWidth: `${CARD_PREVIEW_MAX_WIDTH}px` }}
+                  >
+                    <div
+                      className="w-full overflow-hidden rounded"
+                      style={{ aspectRatio: cardAspectRatio }}
+                    >
+                      <iframe
+                        src={`/embed/status/${slug}/card?theme=${options.theme || "light"}&showMonitors=${options.showMonitors !== false}&showIncidents=${options.showIncidents !== false}`}
+                        className="border-0 h-full w-full"
+                        title="Status Card Preview"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {type === "card" && isMonitorEmbed && (
+                  <div
+                    className="w-full"
+                    style={{ maxWidth: `${CARD_PREVIEW_MAX_WIDTH}px` }}
+                  >
+                    <div
+                      className="w-full overflow-hidden rounded"
+                      style={{ aspectRatio: cardAspectRatio }}
+                    >
+                      <iframe
+                        src={`/embed/monitors/${monitorId}/card?theme=${options.theme || "light"}`}
+                        className="border-0 h-full w-full"
+                        title="Monitor Card Preview"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {type === "widget" && (
+                  <div className="text-center text-sm text-muted-foreground">
+                    <p>Widget preview not available</p>
+                    <p className="text-xs mt-1">Copy the code and test on your site</p>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </CardContent>
     </Card>

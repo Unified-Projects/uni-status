@@ -14,6 +14,7 @@ import {
 import { getDefaultTemplateConfig } from "@uni-status/shared";
 import {
   getStatusPageData,
+  getStatusPageShellData,
   normalizeAssetUrl,
   isCustomDomain,
 } from "@/lib/public-status-page-api";
@@ -24,7 +25,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const result = await getStatusPageData(slug);
+  const result = await getStatusPageShellData(slug);
 
   if (!result.success || !result.data) {
     return { title: "Status Page" };

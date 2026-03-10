@@ -31,7 +31,11 @@ import {
 } from "../lib/email";
 import { publishEvent } from "../lib/redis";
 import { createHash } from "crypto";
-import { buildPublicStatusPagePayload } from "../lib/status-page-data";
+import {
+  buildPublicStatusPagePayload,
+  buildPublicStatusPageShellPayload,
+  extractPublicStatusPageLivePayload,
+} from "../lib/status-page-data";
 import { getEnabledGlobalProviders } from "@uni-status/auth/server";
 import { getJwtSecret } from "@uni-status/shared/config";
 import { createLogger } from "@uni-status/shared";
@@ -39,6 +43,90 @@ import { createLogger } from "@uni-status/shared";
 const log = createLogger({ module: "public-api" });
 // Use function to get JWT secret with fallback for tests
 const getJwtSecretOrFallback = () => getJwtSecret() || "test-secret";
+
+const PUBLIC_STATUS_PAGE_CACHE_TTL_MS = 15_000;
+const publicStatusPagePayloadCache = new Map<string, {
+  data: Awaited<ReturnType<typeof buildPublicStatusPagePayload>>;
+  expiresAt: number;
+}>();
+const PUBLIC_STATUS_PAGE_SHELL_CACHE_TTL_MS = 300_000;
+const publicStatusPageShellCache = new Map<string, {
+  data: Awaited<ReturnType<typeof buildPublicStatusPageShellPayload>>;
+  expiresAt: number;
+}>();
+
+function getCachedPublicStatusPagePayload(
+  key: string
+): Awaited<ReturnType<typeof buildPublicStatusPagePayload>> | null {
+  const entry = publicStatusPagePayloadCache.get(key);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    publicStatusPagePayloadCache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+
+function setCachedPublicStatusPagePayload(
+  key: string,
+  data: Awaited<ReturnType<typeof buildPublicStatusPagePayload>>
+): void {
+  publicStatusPagePayloadCache.set(key, {
+    data,
+    expiresAt: Date.now() + PUBLIC_STATUS_PAGE_CACHE_TTL_MS,
+  });
+
+  // Bound map growth for long-lived workers.
+  if (publicStatusPagePayloadCache.size > 512) {
+    const now = Date.now();
+    for (const [cacheKey, value] of publicStatusPagePayloadCache.entries()) {
+      if (value.expiresAt <= now) {
+        publicStatusPagePayloadCache.delete(cacheKey);
+      }
+    }
+    while (publicStatusPagePayloadCache.size > 512) {
+      const oldestKey = publicStatusPagePayloadCache.keys().next().value as string | undefined;
+      if (!oldestKey) break;
+      publicStatusPagePayloadCache.delete(oldestKey);
+    }
+  }
+}
+
+function getCachedPublicStatusPageShell(
+  key: string
+): Awaited<ReturnType<typeof buildPublicStatusPageShellPayload>> | null {
+  const entry = publicStatusPageShellCache.get(key);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    publicStatusPageShellCache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+
+function setCachedPublicStatusPageShell(
+  key: string,
+  data: Awaited<ReturnType<typeof buildPublicStatusPageShellPayload>>
+): void {
+  publicStatusPageShellCache.set(key, {
+    data,
+    expiresAt: Date.now() + PUBLIC_STATUS_PAGE_SHELL_CACHE_TTL_MS,
+  });
+
+  if (publicStatusPageShellCache.size > 512) {
+    const now = Date.now();
+    for (const [cacheKey, value] of publicStatusPageShellCache.entries()) {
+      if (value.expiresAt <= now) {
+        publicStatusPageShellCache.delete(cacheKey);
+      }
+    }
+    while (publicStatusPageShellCache.size > 512) {
+      const oldestKey = publicStatusPageShellCache.keys().next().value as string | undefined;
+      if (!oldestKey) break;
+      publicStatusPageShellCache.delete(oldestKey);
+    }
+  }
+}
 
 // Helper to check OAuth access for status pages
 async function checkOAuthAccess(
@@ -121,18 +209,18 @@ async function checkOAuthAccess(
   }
 }
 
-export const publicRoutes = new OpenAPIHono();
+async function resolvePublicStatusPageAccess(c: any, slug: string): Promise<{
+  page: typeof statusPages.$inferSelect;
+  organization: typeof organizations.$inferSelect | null;
+  protectionMode: string;
+} | { response: Response }> {
+  const page = await db.query.statusPages.findFirst({
+    where: eq(statusPages.slug, slug),
+  });
 
-publicRoutes.get("/status-pages/:slug", async (c) => {
-  const { slug } = c.req.param();
-
-  try {
-    const page = await db.query.statusPages.findFirst({
-      where: eq(statusPages.slug, slug),
-    });
-
-    if (!page) {
-      return c.json(
+  if (!page) {
+    return {
+      response: c.json(
         {
           success: false,
           error: {
@@ -141,11 +229,13 @@ publicRoutes.get("/status-pages/:slug", async (c) => {
           },
         },
         404
-      );
-    }
+      ),
+    };
+  }
 
-    if (!page.published) {
-      return c.json(
+  if (!page.published) {
+    return {
+      response: c.json(
         {
           success: false,
           error: {
@@ -154,69 +244,65 @@ publicRoutes.get("/status-pages/:slug", async (c) => {
           },
         },
         404
-      );
-    }
+      ),
+    };
+  }
 
-    const org = await db.query.organizations.findFirst({
-      where: eq(organizations.id, page.organizationId),
-    });
+  const organization = await db.query.organizations.findFirst({
+    where: eq(organizations.id, page.organizationId),
+  });
 
-    const authConfig = page.authConfig as {
-      protectionMode: string;
-      oauthMode?: string;
-      allowedEmails?: string[];
-      allowedDomains?: string[];
-      allowedRoles?: string[];
-    } | null;
+  const authConfig = page.authConfig as {
+    protectionMode: string;
+    oauthMode?: string;
+    allowedEmails?: string[];
+    allowedDomains?: string[];
+    allowedRoles?: string[];
+  } | null;
 
-    const protectionMode = authConfig?.protectionMode || "none";
+  const protectionMode = authConfig?.protectionMode || "none";
 
-    // Handle different protection modes
-    if (protectionMode !== "none") {
-      const passwordToken = getCookie(c, `sp_token_${slug}`);
-      const oauthToken = getCookie(c, `sp_oauth_${slug}`);
+  if (protectionMode !== "none") {
+    const passwordToken = getCookie(c, `sp_token_${slug}`);
+    const oauthToken = getCookie(c, `sp_oauth_${slug}`);
 
-      let passwordValid = false;
-      let oauthValid = false;
+    let passwordValid = false;
+    let oauthValid = false;
 
-      // Check password protection
-      if (page.passwordHash && (protectionMode === "password" || protectionMode === "both")) {
-        if (passwordToken) {
-          try {
-            const payload = await verify(passwordToken, getJwtSecretOrFallback(), "HS256");
-            if (payload.slug === slug) {
-              passwordValid = true;
-            }
-          } catch (error) {
-            // Invalid token
+    if (page.passwordHash && (protectionMode === "password" || protectionMode === "both")) {
+      if (passwordToken) {
+        try {
+          const payload = await verify(passwordToken, getJwtSecretOrFallback(), "HS256");
+          if (payload.slug === slug) {
+            passwordValid = true;
           }
+        } catch {
+          // Invalid token
         }
       }
+    }
 
-      // Check OAuth protection
-      if (protectionMode === "oauth" || protectionMode === "both") {
-        const oauthAccess = await checkOAuthAccess(page, oauthToken);
-        oauthValid = oauthAccess.allowed;
-      }
+    if (protectionMode === "oauth" || protectionMode === "both") {
+      const oauthAccess = await checkOAuthAccess(page, oauthToken);
+      oauthValid = oauthAccess.allowed;
+    }
 
-      // Determine if access should be granted
-      let accessGranted = false;
-      if (protectionMode === "password") {
-        accessGranted = passwordValid;
-      } else if (protectionMode === "oauth") {
-        accessGranted = oauthValid;
-      } else if (protectionMode === "both") {
-        // "both" means either password OR oauth is sufficient
-        accessGranted = passwordValid || oauthValid;
-      }
+    let accessGranted = false;
+    if (protectionMode === "password") {
+      accessGranted = passwordValid;
+    } else if (protectionMode === "oauth") {
+      accessGranted = oauthValid;
+    } else if (protectionMode === "both") {
+      accessGranted = passwordValid || oauthValid;
+    }
 
-      if (!accessGranted) {
-        // Get available OAuth providers for the response
-        const providers = protectionMode === "oauth" || protectionMode === "both"
-          ? getEnabledGlobalProviders()
-          : [];
+    if (!accessGranted) {
+      const providers = protectionMode === "oauth" || protectionMode === "both"
+        ? getEnabledGlobalProviders()
+        : [];
 
-        return c.json(
+      return {
+        response: c.json(
           {
             success: false,
             error: {
@@ -230,19 +316,50 @@ publicRoutes.get("/status-pages/:slug", async (c) => {
               oauthMode: authConfig?.oauthMode,
               requiresPassword: protectionMode === "password" || protectionMode === "both",
               requiresOAuth: protectionMode === "oauth" || protectionMode === "both",
-              providers: providers.map(p => ({ id: p.id, name: p.name })),
+              providers: providers.map((p) => ({ id: p.id, name: p.name })),
             },
           },
           401
-        );
+        ),
+      };
+    }
+  }
+
+  return {
+    page,
+    organization: organization ?? null,
+    protectionMode,
+  };
+}
+
+export const publicRoutes = new OpenAPIHono();
+
+publicRoutes.get("/status-pages/:slug", async (c) => {
+  const { slug } = c.req.param();
+
+  try {
+    const access = await resolvePublicStatusPageAccess(c, slug);
+    if ("response" in access) return access.response;
+    const { page, organization, protectionMode } = access;
+
+    const cacheKey = `${page.id}:${page.updatedAt.getTime()}`;
+    if (protectionMode === "none") {
+      const cached = getCachedPublicStatusPagePayload(cacheKey);
+      if (cached) {
+        c.header("Cache-Control", "public, max-age=30, s-maxage=30");
+        return c.json({
+          success: true,
+          data: cached,
+        });
       }
     }
 
-    const data = await buildPublicStatusPagePayload({ page, organization: org });
+    const data = await buildPublicStatusPagePayload({ page, organization });
 
     // Cache only for non-protected pages to reduce load on expensive data building
     // Protected pages need to vary by auth state, so we skip caching for those
     if (protectionMode === "none") {
+      setCachedPublicStatusPagePayload(cacheKey, data);
       c.header("Cache-Control", "public, max-age=30, s-maxage=30");
     }
 
@@ -252,6 +369,95 @@ publicRoutes.get("/status-pages/:slug", async (c) => {
     });
   } catch (error) {
     log.error({ err: error, slug }, "Error fetching status page");
+    return c.json(
+      {
+        success: false,
+        error: {
+          code: "INTERNAL_ERROR",
+          message: error instanceof Error ? error.message : "An unexpected error occurred",
+        },
+      },
+      500
+    );
+  }
+});
+
+publicRoutes.get("/status-pages/:slug/shell", async (c) => {
+  const { slug } = c.req.param();
+
+  try {
+    const access = await resolvePublicStatusPageAccess(c, slug);
+    if ("response" in access) return access.response;
+    const { page, organization, protectionMode } = access;
+
+    const cacheKey = `${page.id}:${page.updatedAt.getTime()}`;
+    if (protectionMode === "none") {
+      const cached = getCachedPublicStatusPageShell(cacheKey);
+      if (cached) {
+        c.header("Cache-Control", "public, max-age=300, s-maxage=300, stale-while-revalidate=30");
+        return c.json({
+          success: true,
+          data: cached,
+        });
+      }
+    }
+
+    const data = await buildPublicStatusPageShellPayload({ page, organization });
+
+    if (protectionMode === "none") {
+      setCachedPublicStatusPageShell(cacheKey, data);
+      c.header("Cache-Control", "public, max-age=300, s-maxage=300, stale-while-revalidate=30");
+    }
+
+    return c.json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    log.error({ err: error, slug }, "Error fetching status page shell");
+    return c.json(
+      {
+        success: false,
+        error: {
+          code: "INTERNAL_ERROR",
+          message: error instanceof Error ? error.message : "An unexpected error occurred",
+        },
+      },
+      500
+    );
+  }
+});
+
+publicRoutes.get("/status-pages/:slug/live", async (c) => {
+  const { slug } = c.req.param();
+
+  try {
+    const access = await resolvePublicStatusPageAccess(c, slug);
+    if ("response" in access) return access.response;
+    const { page, organization, protectionMode } = access;
+
+    const cacheKey = `${page.id}:${page.updatedAt.getTime()}`;
+    let payload = protectionMode === "none" ? getCachedPublicStatusPagePayload(cacheKey) : null;
+
+    if (!payload) {
+      payload = await buildPublicStatusPagePayload({ page, organization });
+      if (protectionMode === "none") {
+        setCachedPublicStatusPagePayload(cacheKey, payload);
+      }
+    }
+
+    const data = extractPublicStatusPageLivePayload(payload);
+
+    if (protectionMode === "none") {
+      c.header("Cache-Control", "public, max-age=5, s-maxage=5");
+    }
+
+    return c.json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    log.error({ err: error, slug }, "Error fetching status page live data");
     return c.json(
       {
         success: false,

@@ -152,6 +152,48 @@ export interface PublicStatusPagePayload {
   lastUpdatedAt: string;
 }
 
+export interface PublicStatusPageLivePayload {
+  monitors: Array<{
+    id: string;
+    status: typeof monitors.$inferSelect.status;
+    uptimePercentage: number | null;
+    responseTimeMs: number | null;
+    uptimeData: PublicStatusPagePayload["monitors"][number]["uptimeData"];
+    uptimeGranularity: PublicStatusPagePayload["monitors"][number]["uptimeGranularity"];
+    responseTimeData?: PublicStatusPagePayload["monitors"][number]["responseTimeData"];
+    certificateInfo?: PublicStatusPagePayload["monitors"][number]["certificateInfo"];
+    emailAuthInfo?: PublicStatusPagePayload["monitors"][number]["emailAuthInfo"];
+    heartbeatInfo?: PublicStatusPagePayload["monitors"][number]["heartbeatInfo"];
+  }>;
+  activeIncidents: PublicStatusPagePayload["activeIncidents"];
+  recentIncidents: PublicStatusPagePayload["recentIncidents"];
+  crowdsourced: PublicStatusPagePayload["crowdsourced"];
+  lastUpdatedAt: string;
+}
+
+export function extractPublicStatusPageLivePayload(
+  payload: PublicStatusPagePayload
+): PublicStatusPageLivePayload {
+  return {
+    monitors: payload.monitors.map((m) => ({
+      id: m.id,
+      status: m.status,
+      uptimePercentage: m.uptimePercentage,
+      responseTimeMs: m.responseTimeMs,
+      uptimeData: m.uptimeData,
+      uptimeGranularity: m.uptimeGranularity,
+      responseTimeData: m.responseTimeData,
+      certificateInfo: m.certificateInfo,
+      emailAuthInfo: m.emailAuthInfo,
+      heartbeatInfo: m.heartbeatInfo,
+    })),
+    activeIncidents: payload.activeIncidents,
+    recentIncidents: payload.recentIncidents,
+    crowdsourced: payload.crowdsourced,
+    lastUpdatedAt: payload.lastUpdatedAt,
+  };
+}
+
 export async function findStatusPageBySlug(slug: string): Promise<{
   page: StatusPage;
   organization: Organization | null;
@@ -167,6 +209,115 @@ export async function findStatusPageBySlug(slug: string): Promise<{
   });
 
   return { page, organization: organization ?? null };
+}
+
+export async function buildPublicStatusPageShellPayload(params: {
+  page: StatusPage;
+  organization?: Organization | null;
+}): Promise<PublicStatusPagePayload> {
+  const { page } = params;
+  const organization =
+    params.organization ??
+    (await db.query.organizations.findFirst({
+      where: eq(organizations.id, page.organizationId),
+    })) ??
+    null;
+
+  const linkedMonitors = await db.query.statusPageMonitors.findMany({
+    where: eq(statusPageMonitors.statusPageId, page.id),
+    orderBy: [statusPageMonitors.order],
+    with: {
+      monitor: true,
+    },
+  });
+
+  const crowdsourcedSettingsData = await db.query.crowdsourcedSettings.findFirst({
+    where: eq(crowdsourcedSettings.statusPageId, page.id),
+  });
+
+  const localization = page.settings?.localization || {
+    defaultLocale: "en",
+    supportedLocales: ["en", "es", "fr", "ar"],
+    rtlLocales: ["ar"],
+    translations: {},
+  };
+
+  return {
+    id: page.id,
+    name: page.name,
+    slug: page.slug,
+    logo: page.logo,
+    favicon: page.favicon,
+    orgLogo: organization?.logo ?? null,
+    theme: page.theme ?? { name: "default" },
+    settings: {
+      showUptimePercentage: page.settings?.showUptimePercentage ?? true,
+      showResponseTime: page.settings?.showResponseTime ?? true,
+      showIncidentHistory: page.settings?.showIncidentHistory ?? true,
+      showServicesPage: page.settings?.showServicesPage ?? false,
+      showGeoMap: page.settings?.showGeoMap ?? true,
+      uptimeDays: page.settings?.uptimeDays ?? 45,
+      headerText: page.settings?.headerText,
+      footerText: page.settings?.footerText,
+      supportUrl: page.settings?.supportUrl,
+      hideBranding: page.settings?.hideBranding ?? false,
+      defaultTimezone: page.settings?.defaultTimezone ?? "local",
+      localization,
+      displayMode: page.settings?.displayMode ?? "bars",
+      graphTooltipMetrics: page.settings?.graphTooltipMetrics ?? {
+        avg: true,
+        min: false,
+        max: false,
+        p50: false,
+        p90: false,
+        p99: false,
+      },
+    },
+    template: page.template ?? null,
+    seo: {
+      title: page.seo?.title,
+      description: page.seo?.description,
+      ogImage: page.seo?.ogImage,
+    },
+    monitors: linkedMonitors.map((lm) => ({
+      id: lm.monitorId,
+      name: lm.displayName || lm.monitor.name,
+      description: lm.description ?? lm.monitor.description ?? undefined,
+      type: lm.monitor.type,
+      group: lm.group,
+      order: lm.order,
+      status: lm.monitor.status,
+      regions: lm.monitor.regions || [],
+      uptimePercentage: null,
+      responseTimeMs: null,
+      uptimeData: [],
+      uptimeGranularity: "day",
+      responseTimeData: undefined,
+      certificateInfo: undefined,
+      emailAuthInfo: undefined,
+      heartbeatInfo:
+        lm.monitor.type === "heartbeat"
+          ? {
+              lastPingAt: null,
+              expectedIntervalSeconds:
+                ((lm.monitor.config as { heartbeat?: { expectedIntervalSeconds?: number } } | null)
+                  ?.heartbeat
+                  ?.expectedIntervalSeconds) ?? 60,
+              missedBeats: 0,
+            }
+          : undefined,
+    })),
+    activeIncidents: [],
+    recentIncidents: [],
+    crowdsourced: crowdsourcedSettingsData?.enabled
+      ? {
+          enabled: true,
+          threshold: crowdsourcedSettingsData.reportThreshold,
+          reportCounts: {},
+        }
+      : { enabled: false },
+    lastUpdatedAt: page.updatedAt.toISOString(),
+  };
 }
 
 export async function buildPublicStatusPagePayload(params: {
@@ -194,6 +345,22 @@ export async function buildPublicStatusPagePayload(params: {
   startDate.setDate(startDate.getDate() - uptimeDays);
 
   const monitorIds = linkedMonitors.map((lm) => lm.monitorId);
+  const monitorIdSet = new Set(monitorIds);
+  const monitorById = new Map(linkedMonitors.map((lm) => [lm.monitorId, lm.monitor]));
+
+  async function mapInBatches<T, R>(
+    items: T[],
+    mapper: (item: T) => Promise<R>,
+    batchSize = 8
+  ): Promise<R[]> {
+    const results: R[] = [];
+    for (let i = 0; i < items.length; i += batchSize) {
+      const batch = items.slice(i, i + batchSize);
+      const batchResults = await Promise.all(batch.map(mapper));
+      results.push(...batchResults);
+    }
+    return results;
+  }
 
   // Adaptive granularity uptime data fetching
   // Try daily -> hourly -> minute until we have enough intervals to fill the requested segments
@@ -456,7 +623,7 @@ export async function buildPublicStatusPagePayload(params: {
   for (const incident of allIncidents) {
     const affectedMonitors = incident.affectedMonitors || [];
     for (const monitorId of affectedMonitors) {
-      if (monitorIds.includes(monitorId as string)) {
+      if (monitorIdSet.has(monitorId as string)) {
         const list = incidentsByMonitor.get(monitorId as string) || [];
         list.push({
           id: incident.id,
@@ -619,7 +786,7 @@ export async function buildPublicStatusPagePayload(params: {
   >();
 
   if (sslMonitorIds.length > 0) {
-    for (const monitorId of sslMonitorIds) {
+    const certResults = await mapInBatches(sslMonitorIds, async (monitorId) => {
       const latestResult = await db.query.checkResults.findFirst({
         where: and(
           eq(checkResults.monitorId, monitorId),
@@ -627,8 +794,12 @@ export async function buildPublicStatusPagePayload(params: {
         ),
         orderBy: [desc(checkResults.createdAt)],
       });
-      if (latestResult?.certificateInfo) {
-        certificateInfoByMonitor.set(monitorId, latestResult.certificateInfo);
+      return { monitorId, certificateInfo: latestResult?.certificateInfo };
+    });
+
+    for (const row of certResults) {
+      if (row.certificateInfo) {
+        certificateInfoByMonitor.set(row.monitorId, row.certificateInfo);
       }
     }
   }
@@ -648,7 +819,7 @@ export async function buildPublicStatusPagePayload(params: {
   >();
 
   if (emailAuthMonitorIds.length > 0) {
-    for (const monitorId of emailAuthMonitorIds) {
+    const emailAuthResults = await mapInBatches(emailAuthMonitorIds, async (monitorId) => {
       const latestResult = await db.query.checkResults.findFirst({
         where: and(
           eq(checkResults.monitorId, monitorId),
@@ -656,20 +827,23 @@ export async function buildPublicStatusPagePayload(params: {
         ),
         orderBy: [desc(checkResults.createdAt)],
       });
-      if (latestResult?.emailAuthDetails) {
-        const details = latestResult.emailAuthDetails as {
-          overallScore?: number;
-          spf?: { status?: string };
-          dkim?: { status?: string };
-          dmarc?: { status?: string };
-        };
-        emailAuthInfoByMonitor.set(monitorId, {
-          overallScore: details.overallScore ?? 0,
-          spfStatus: (details.spf?.status || "none") as "pass" | "fail" | "none" | "error",
-          dkimStatus: (details.dkim?.status || "none") as "pass" | "partial" | "fail" | "none" | "error",
-          dmarcStatus: (details.dmarc?.status || "none") as "pass" | "fail" | "none" | "error",
-        });
-      }
+      return { monitorId, details: latestResult?.emailAuthDetails };
+    });
+
+    for (const row of emailAuthResults) {
+      if (!row.details) continue;
+      const details = row.details as {
+        overallScore?: number;
+        spf?: { status?: string };
+        dkim?: { status?: string };
+        dmarc?: { status?: string };
+      };
+      emailAuthInfoByMonitor.set(row.monitorId, {
+        overallScore: details.overallScore ?? 0,
+        spfStatus: (details.spf?.status || "none") as "pass" | "fail" | "none" | "error",
+        dkimStatus: (details.dkim?.status || "none") as "pass" | "partial" | "fail" | "none" | "error",
+        dmarcStatus: (details.dmarc?.status || "none") as "pass" | "fail" | "none" | "error",
+      });
     }
   }
 
@@ -687,31 +861,32 @@ export async function buildPublicStatusPagePayload(params: {
   >();
 
   if (heartbeatMonitorIds.length > 0) {
-    for (const monitorId of heartbeatMonitorIds) {
+    const latestPings = await mapInBatches(heartbeatMonitorIds, async (monitorId) => {
       const latestPing = await db.query.heartbeatPings.findFirst({
         where: eq(heartbeatPings.monitorId, monitorId),
         orderBy: [desc(heartbeatPings.createdAt)],
       });
+      return { monitorId, latestPing };
+    });
 
-      const monitorData = linkedMonitors.find((lm) => lm.monitorId === monitorId)?.monitor;
+    const nowMs = Date.now();
+    for (const row of latestPings) {
+      const monitorData = monitorById.get(row.monitorId);
       const heartbeatConfig = monitorData?.config as
         | { heartbeat?: { expectedIntervalSeconds?: number } }
         | null;
       const expectedInterval = heartbeatConfig?.heartbeat?.expectedIntervalSeconds ?? 60;
 
       const missedBeats =
-        latestPing && monitorData?.lastCheckedAt
+        row.latestPing && monitorData?.lastCheckedAt
           ? Math.max(
               0,
-              Math.floor(
-                (Date.now() - new Date(latestPing.createdAt).getTime()) /
-                  (expectedInterval * 1000)
-              ) - 1
+              Math.floor((nowMs - new Date(row.latestPing.createdAt).getTime()) / (expectedInterval * 1000)) - 1
             )
           : 0;
 
-      heartbeatInfoByMonitor.set(monitorId, {
-        lastPingAt: latestPing?.createdAt.toISOString() || null,
+      heartbeatInfoByMonitor.set(row.monitorId, {
+        lastPingAt: row.latestPing?.createdAt.toISOString() || null,
         expectedIntervalSeconds: expectedInterval,
         missedBeats,
       });
@@ -765,7 +940,7 @@ export async function buildPublicStatusPagePayload(params: {
       hoursToFetch <= 168 ? 60 :
       240;
 
-    for (const monitorId of monitorIds) {
+    const chartResults = await mapInBatches(monitorIds, async (monitorId) => {
       const rawResults = await db.query.checkResults.findMany({
         where: and(
           eq(checkResults.monitorId, monitorId),
@@ -774,17 +949,20 @@ export async function buildPublicStatusPagePayload(params: {
         orderBy: [checkResults.createdAt],
       });
 
-      if (rawResults.length === 0) continue;
+      if (rawResults.length === 0) {
+        return null;
+      }
 
       // If we have fewer data points than typical bucket count, use raw data
       const expectedBuckets = (hoursToFetch * 60) / bucketMinutes;
       if (rawResults.length <= expectedBuckets * 0.8) {
         // Use raw data points for sparse data
-        responseTimeChartDataByMonitor.set(
-          monitorId,
-          rawResults
-            .filter((r) => r.responseTimeMs != null)
-            .map((r) => ({
+        const chartData = rawResults
+          .filter((r) => r.responseTimeMs != null)
+          .map((r) => {
+            const status: "success" | "degraded" | "down" =
+              r.status === "success" ? "success" : r.status === "degraded" ? "degraded" : "down";
+            return {
               timestamp: r.createdAt.toISOString(),
               avg: r.responseTimeMs!,
               min: r.responseTimeMs!,
@@ -792,64 +970,71 @@ export async function buildPublicStatusPagePayload(params: {
               p50: r.responseTimeMs!,
               p90: r.responseTimeMs!,
               p99: r.responseTimeMs!,
-              status: r.status === "success" ? "success" : r.status === "degraded" ? "degraded" : "down",
-            }))
-        );
-      } else {
-        // Aggregate into time buckets based on calculated bucket size
-        const bucketMap = new Map<string, { responseTimes: number[]; status: string }>();
+              status,
+            };
+          });
 
-        for (const result of rawResults) {
-          const resultDate = new Date(result.createdAt);
+        return { monitorId, chartData };
+      }
 
-          // Calculate bucket boundary
-          let bucketDate: Date;
-          if (bucketMinutes < 60) {
-            // Sub-hour buckets - round to nearest bucket within the hour
-            const minutes = resultDate.getUTCMinutes();
-            const bucketMinute = Math.floor(minutes / bucketMinutes) * bucketMinutes;
-            bucketDate = new Date(resultDate);
-            bucketDate.setUTCMinutes(bucketMinute, 0, 0);
-          } else {
-            // Hour or multi-hour buckets
-            const bucketHours = bucketMinutes / 60;
-            const bucketHour = Math.floor(resultDate.getUTCHours() / bucketHours) * bucketHours;
-            bucketDate = new Date(resultDate);
-            bucketDate.setUTCHours(bucketHour, 0, 0, 0);
-          }
+      // Aggregate into time buckets based on calculated bucket size
+      const bucketMap = new Map<string, { responseTimes: number[]; status: "success" | "degraded" | "down" }>();
 
-          const bucketKey = bucketDate.toISOString();
+      for (const result of rawResults) {
+        const resultDate = new Date(result.createdAt);
 
-          const existing = bucketMap.get(bucketKey) || { responseTimes: [], status: "success" };
-
-          if (result.responseTimeMs != null) {
-            existing.responseTimes.push(result.responseTimeMs);
-          }
-          // Track worst status in bucket
-          if (result.status === "failure" || result.status === "timeout" || result.status === "error") {
-            existing.status = "down";
-          } else if (result.status === "degraded" && existing.status !== "down") {
-            existing.status = "degraded";
-          }
-
-          bucketMap.set(bucketKey, existing);
+        // Calculate bucket boundary
+        let bucketDate: Date;
+        if (bucketMinutes < 60) {
+          // Sub-hour buckets - round to nearest bucket within the hour
+          const minutes = resultDate.getUTCMinutes();
+          const bucketMinute = Math.floor(minutes / bucketMinutes) * bucketMinutes;
+          bucketDate = new Date(resultDate);
+          bucketDate.setUTCMinutes(bucketMinute, 0, 0);
+        } else {
+          // Hour or multi-hour buckets
+          const bucketHours = bucketMinutes / 60;
+          const bucketHour = Math.floor(resultDate.getUTCHours() / bucketHours) * bucketHours;
+          bucketDate = new Date(resultDate);
+          bucketDate.setUTCHours(bucketHour, 0, 0, 0);
         }
 
-        const chartData = Array.from(bucketMap.entries())
-          .filter(([, data]) => data.responseTimes.length > 0)
-          .map(([bucketKey, data]) => ({
-            timestamp: bucketKey,
-            avg: average(data.responseTimes),
-            min: Math.min(...data.responseTimes),
-            max: Math.max(...data.responseTimes),
-            p50: percentile(data.responseTimes, 50),
-            p90: percentile(data.responseTimes, 90),
-            p99: percentile(data.responseTimes, 99),
-            status: data.status as "success" | "degraded" | "down",
-          }))
-          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        const bucketKey = bucketDate.toISOString();
+        const existing = bucketMap.get(bucketKey) || { responseTimes: [], status: "success" };
 
-        responseTimeChartDataByMonitor.set(monitorId, chartData);
+        if (result.responseTimeMs != null) {
+          existing.responseTimes.push(result.responseTimeMs);
+        }
+        // Track worst status in bucket
+        if (result.status === "failure" || result.status === "timeout" || result.status === "error") {
+          existing.status = "down";
+        } else if (result.status === "degraded" && existing.status !== "down") {
+          existing.status = "degraded";
+        }
+
+        bucketMap.set(bucketKey, existing);
+      }
+
+      const chartData = Array.from(bucketMap.entries())
+        .filter(([, data]) => data.responseTimes.length > 0)
+        .map(([bucketKey, data]) => ({
+          timestamp: bucketKey,
+          avg: average(data.responseTimes),
+          min: Math.min(...data.responseTimes),
+          max: Math.max(...data.responseTimes),
+          p50: percentile(data.responseTimes, 50),
+          p90: percentile(data.responseTimes, 90),
+          p99: percentile(data.responseTimes, 99),
+          status: data.status as "success" | "degraded" | "down",
+        }))
+        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+      return { monitorId, chartData };
+    }, 4);
+
+    for (const result of chartResults) {
+      if (result) {
+        responseTimeChartDataByMonitor.set(result.monitorId, result.chartData);
       }
     }
   }
@@ -887,7 +1072,7 @@ export async function buildPublicStatusPagePayload(params: {
   const filteredActiveIncidents = activeIncidents
     .filter((incident) => {
       const affectedMonitors = incident.affectedMonitors || [];
-      return affectedMonitors.some((mid: string) => monitorIds.includes(mid));
+      return affectedMonitors.some((mid: string) => monitorIdSet.has(mid));
     })
     .map((incident) => ({
       id: incident.id,
@@ -896,7 +1081,7 @@ export async function buildPublicStatusPagePayload(params: {
       severity: incident.severity,
       message: incident.message ?? undefined,
       affectedMonitors: (incident.affectedMonitors || []).filter((mid: string) =>
-        monitorIds.includes(mid)
+        monitorIdSet.has(mid)
       ),
       startedAt: incident.startedAt.toISOString(),
       updates: incident.updates.map((u) => ({
@@ -931,7 +1116,7 @@ export async function buildPublicStatusPagePayload(params: {
   const filteredRecentIncidents = recentIncidents
     .filter((incident) => {
       const affectedMonitors = incident.affectedMonitors || [];
-      return affectedMonitors.some((mid: string) => monitorIds.includes(mid));
+      return affectedMonitors.some((mid: string) => monitorIdSet.has(mid));
     })
     .map((incident) => ({
       id: incident.id,
@@ -940,7 +1125,7 @@ export async function buildPublicStatusPagePayload(params: {
       severity: incident.severity,
       message: incident.message ?? undefined,
       affectedMonitors: (incident.affectedMonitors || []).filter((mid: string) =>
-        monitorIds.includes(mid)
+        monitorIdSet.has(mid)
       ),
       startedAt: incident.startedAt.toISOString(),
       resolvedAt: incident.resolvedAt?.toISOString(),

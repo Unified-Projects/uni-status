@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-03-10
+
+### Performance
+- Split public status page API into static `shell` and dynamic `live` endpoints
+- Added cached shell delivery (`/public/status-pages/:slug/shell`) and short-TTL live payload caching (`/public/status-pages/:slug/live`)
+- Updated web status-page loader to merge shell + live data and avoid rebuilding full payload for metadata/layout requests
+- Switched public status layout and metadata generation to shell-only fetches to remove duplicate heavy data builds per request
+- Batched monitor-level status payload lookups and replaced repeated array scans with set lookups to reduce backend latency on larger pages
+
+### Added
+- New public endpoints: `GET /public/status-pages/:slug/shell` and `GET /public/status-pages/:slug/live`
+
 ## [0.1.3] - 2026-03-07
 
 ### Performance
