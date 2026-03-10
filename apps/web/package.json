@@ -45,7 +45,7 @@
         "@types/react": "^19.2.14",
         "@types/react-dom": "^19.2.1",
         "autoprefixer": "^10.4.27",
-        "eslint": "^9.39.2",
+        "eslint": "^10.0.3",
         "postcss": "^8.5.8",
         "tailwindcss": "^4.2.1",
         "tailwindcss-animate": "^1.0.7",
