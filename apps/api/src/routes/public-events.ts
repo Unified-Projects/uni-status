@@ -603,6 +603,15 @@ publicEventsRoutes.get("/status-pages/:slug/events", async (c) => {
     (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
   );
 
+  const activeStatuses = new Set([
+    "investigating",
+    "identified",
+    "monitoring",
+    "scheduled",
+    "active",
+  ]);
+  const resolvedStatuses = new Set(["resolved", "completed"]);
+
   // Fetch impact scope data if requested
   if (includeImpact && allEvents.length > 0) {
     // Process events in batches to avoid too many parallel queries
@@ -652,6 +661,13 @@ publicEventsRoutes.get("/status-pages/:slug/events", async (c) => {
       events: paginatedEvents,
       total,
       hasMore: offset + limit < total,
+      counts: {
+        all: total,
+        active: allEvents.filter((event) => activeStatuses.has(event.status)).length,
+        resolved: allEvents.filter((event) => resolvedStatuses.has(event.status)).length,
+        incidents: allEvents.filter((event) => event.type === "incident").length,
+        maintenance: allEvents.filter((event) => event.type === "maintenance").length,
+      },
     },
   });
 });

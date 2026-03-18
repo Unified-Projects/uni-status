@@ -5,6 +5,9 @@ import { bootstrapTestContext, type TestContext } from "../helpers/context";
 import {
   createMonitor,
   createStatusPage,
+  insertActiveProbe,
+  insertIncident,
+  insertMaintenanceWindow,
   linkMonitorToStatusPage,
   insertCheckResults,
   setMonitorStatus,
@@ -1403,6 +1406,151 @@ describe("Public API Comprehensive Tests", () => {
       const usEastRegion = json.data.regions.find((r: { id: string }) => r.id === "us-east");
       expect(usEastRegion).toBeDefined();
       expect(usEastRegion.monitorCount).toBe(1);
+    });
+
+    it("returns status page metadata and synthesized public probes for monitored regions", async () => {
+      const slug = `geo-public-probes-${validSlugId()}`;
+      const pageId = await createStatusPage(ctx, { slug, published: true, name: "Geo Public" });
+      const monitorId = await createMonitor(ctx, {
+        type: "http",
+        regions: ["uk", "us-east"],
+      });
+      await linkMonitorToStatusPage(ctx, pageId, monitorId);
+      await insertCheckResults(ctx, monitorId, [
+        { region: "uk", status: "success" },
+        { region: "us-east", status: "success" },
+      ]);
+
+      const response = await fetch(`${apiUrl}/public/status-pages/${slug}/geo`);
+      expect(response.status).toBe(200);
+
+      const json = await response.json();
+      expect(json.data.statusPage).toMatchObject({
+        name: "Geo Public",
+        slug,
+      });
+      expect(json.data.probes.public).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: "public-uk", region: "uk", isPrivate: false }),
+          expect.objectContaining({
+            id: "public-us-east",
+            region: "us-east",
+            isPrivate: false,
+          }),
+        ])
+      );
+
+      const ukRegion = json.data.regions.find((r: { id: string }) => r.id === "uk");
+      expect(ukRegion.probeCount).toBeGreaterThan(0);
+    });
+
+    it("includes only private probes assigned to linked monitors", async () => {
+      const slug = `geo-private-probes-${validSlugId()}`;
+      const pageId = await createStatusPage(ctx, { slug, published: true });
+      const monitorId = await createMonitor(ctx, {
+        type: "http",
+        regions: ["uk"],
+      });
+      await linkMonitorToStatusPage(ctx, pageId, monitorId);
+
+      const assignedProbe = await insertActiveProbe(ctx.organizationId, "uk");
+      await insertActiveProbe(ctx.organizationId, "eu-west");
+
+      await ctx.dbClient`
+        INSERT INTO probe_assignments (id, monitor_id, probe_id, priority, exclusive, created_at)
+        VALUES (${nanoid()}, ${monitorId}, ${assignedProbe.id}, 1, false, NOW())
+      `;
+
+      const response = await fetch(`${apiUrl}/public/status-pages/${slug}/geo`);
+      expect(response.status).toBe(200);
+
+      const json = await response.json();
+      expect(json.data.probes.private).toHaveLength(1);
+      expect(json.data.probes.private[0]).toMatchObject({
+        id: assignedProbe.id,
+        region: "uk",
+        isPrivate: true,
+      });
+    });
+  });
+
+  describe("GET /public/status-pages/:slug/events", () => {
+    it("returns tab counts for public events", async () => {
+      const slug = `events-counts-${validSlugId()}`;
+      const pageId = await createStatusPage(ctx, { slug, published: true });
+      const monitorId = await createMonitor(ctx, { type: "http", regions: ["uk"] });
+      await linkMonitorToStatusPage(ctx, pageId, monitorId);
+
+      await insertIncident(ctx.organizationId, {
+        userId: ctx.userId,
+        title: "Investigating outage",
+        severity: "major",
+        status: "investigating",
+        affectedMonitorIds: [monitorId],
+      });
+
+      await insertIncident(ctx.organizationId, {
+        userId: ctx.userId,
+        title: "Resolved outage",
+        severity: "minor",
+        status: "resolved",
+        affectedMonitorIds: [monitorId],
+        resolvedAt: new Date(),
+      });
+
+      const now = new Date();
+      await insertMaintenanceWindow(ctx.organizationId, ctx.userId, {
+        name: "Database patch",
+        startsAt: new Date(now.getTime() + 60 * 60 * 1000),
+        endsAt: new Date(now.getTime() + 2 * 60 * 60 * 1000),
+        affectedMonitors: [monitorId],
+      });
+
+      const response = await fetch(`${apiUrl}/public/status-pages/${slug}/events?limit=1`);
+      expect(response.status).toBe(200);
+
+      const json = await response.json();
+      expect(json.success).toBe(true);
+      expect(json.data.total).toBe(3);
+      expect(json.data.counts).toMatchObject({
+        all: 3,
+        active: 2,
+        resolved: 1,
+        incidents: 2,
+        maintenance: 1,
+      });
+    });
+
+    it("supports paginated public event history", async () => {
+      const slug = `events-pagination-${validSlugId()}`;
+      const pageId = await createStatusPage(ctx, { slug, published: true });
+      const monitorId = await createMonitor(ctx, { type: "http", regions: ["uk"] });
+      await linkMonitorToStatusPage(ctx, pageId, monitorId);
+
+      for (let i = 0; i < 3; i++) {
+        await insertIncident(ctx.organizationId, {
+          userId: ctx.userId,
+          title: `History event ${i}`,
+          severity: "minor",
+          status: "investigating",
+          affectedMonitorIds: [monitorId],
+          createdAt: new Date(Date.now() - i * 60_000),
+        });
+      }
+
+      const firstPage = await fetch(`${apiUrl}/public/status-pages/${slug}/events?limit=2&offset=0`);
+      const secondPage = await fetch(`${apiUrl}/public/status-pages/${slug}/events?limit=2&offset=2`);
+
+      expect(firstPage.status).toBe(200);
+      expect(secondPage.status).toBe(200);
+
+      const firstJson = await firstPage.json();
+      const secondJson = await secondPage.json();
+
+      expect(firstJson.data.events).toHaveLength(2);
+      expect(firstJson.data.hasMore).toBe(true);
+      expect(secondJson.data.events.length).toBeGreaterThanOrEqual(1);
+      expect(secondJson.data.total).toBe(3);
     });
   });
 

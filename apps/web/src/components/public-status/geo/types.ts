@@ -67,6 +67,11 @@ export interface GeoSettings {
 }
 
 export interface GeoData {
+  statusPage: {
+    id: string;
+    name: string;
+    slug: string;
+  };
   regions: GeoRegion[];
   monitors: GeoMonitor[];
   probes: {

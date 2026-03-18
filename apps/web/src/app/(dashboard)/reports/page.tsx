@@ -111,7 +111,7 @@ export default function ReportsPage() {
     enabled: !!currentOrganizationId,
     // Auto-refresh while any report is generating/pending
     refetchInterval: (query) =>
-      query.state.data?.data?.some((r) => r.status !== "completed") ? 3000 : false,
+      query.state.data?.data?.some((r) => r.status === "pending" || r.status === "generating") ? 3000 : false,
   });
 
   const reports = reportsResponse?.data;

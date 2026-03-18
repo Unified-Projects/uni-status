@@ -20,6 +20,7 @@ import {
   monitorDependencies,
   checkResultsDaily,
   probes,
+  probeAssignments,
 } from "@uni-status/database/schema";
 import { eq, and, desc, gte, lte, sql, ne, inArray, ilike, or, lt } from "drizzle-orm";
 import type { UnifiedEvent, EventType } from "@uni-status/shared";
@@ -248,10 +249,6 @@ async function resolvePublicStatusPageAccess(c: any, slug: string): Promise<{
     };
   }
 
-  const organization = await db.query.organizations.findFirst({
-    where: eq(organizations.id, page.organizationId),
-  });
-
   const authConfig = page.authConfig as {
     protectionMode: string;
     oauthMode?: string;
@@ -324,6 +321,10 @@ async function resolvePublicStatusPageAccess(c: any, slug: string): Promise<{
       };
     }
   }
+
+  const organization = await db.query.organizations.findFirst({
+    where: eq(organizations.id, page.organizationId),
+  });
 
   return {
     page,
@@ -2041,6 +2042,7 @@ publicRoutes.get("/status-pages/:slug/geo", async (c) => {
   // Get daily aggregate data for last 7 days (for P50/P95/P99 per region)
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const recentRegionCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   const dailyAggregates = await db
     .select({
@@ -2076,6 +2078,20 @@ publicRoutes.get("/status-pages/:slug/geo", async (c) => {
       p99: Math.round(Number(agg.p99ResponseTimeMs) || 0),
     });
   }
+
+  const recentRegionActivity = await db
+    .select({
+      region: checkResults.region,
+      lastCheckAt: sql<string>`MAX(${checkResults.createdAt})`.as("last_check_at"),
+    })
+    .from(checkResults)
+    .where(
+      and(
+        inArray(checkResults.monitorId, monitorIds),
+        gte(checkResults.createdAt, recentRegionCutoff)
+      )
+    )
+    .groupBy(checkResults.region);
 
   // Get active incidents
   const activeIncidents = await db.query.incidents.findMany({
@@ -2187,11 +2203,110 @@ publicRoutes.get("/status-pages/:slug/geo", async (c) => {
     }
   }
 
-  // Build regions array
+  const recentRegionMap = new Map(
+    recentRegionActivity
+      .filter((entry): entry is typeof entry & { region: keyof typeof REGION_COORDINATES } =>
+        isKnownRegion(entry.region)
+      )
+      .map((entry) => [entry.region, entry.lastCheckAt])
+  );
+
+  const publicProbeRegions = new Set<keyof typeof REGION_COORDINATES>();
+  for (const monitor of geoMonitors) {
+    for (const region of monitor.regions as string[]) {
+      if (isKnownRegion(region)) {
+        publicProbeRegions.add(region);
+      }
+    }
+  }
+  for (const region of recentRegionMap.keys()) {
+    publicProbeRegions.add(region);
+  }
+
+  const assignedProbeRows = await db.query.probeAssignments.findMany({
+    where: inArray(probeAssignments.monitorId, monitorIds),
+    with: {
+      probe: true,
+    },
+  });
+
+  const privateProbeMap = new Map<
+    string,
+    typeof assignedProbeRows[number]["probe"]
+  >();
+  for (const assignment of assignedProbeRows) {
+    const probe = assignment.probe;
+    if (
+      probe.organizationId !== page.organizationId ||
+      (probe.status !== "active" && probe.status !== "offline" && probe.status !== "pending")
+    ) {
+      continue;
+    }
+    privateProbeMap.set(probe.id, probe);
+  }
+
+  const geoProbes = {
+    public: Array.from(publicProbeRegions).map((region) => {
+      const regionData = REGION_COORDINATES[region]!;
+
+      return {
+        id: `public-${region}`,
+        name: `${regionData.city} Edge`,
+        region,
+        coordinates: regionData.coordinates as [number, number],
+        status: recentRegionMap.has(region) ? "active" : "pending",
+        lastHeartbeatAt: recentRegionMap.get(region) ?? null,
+        isPrivate: false,
+      };
+    }) as Array<{
+      id: string;
+      name: string;
+      region: string;
+      coordinates: [number, number];
+      status: "pending" | "active" | "offline" | "disabled";
+      lastHeartbeatAt: string | null;
+      isPrivate: boolean;
+      version?: string;
+    }>,
+    private: Array.from(privateProbeMap.values())
+      .filter(
+        (
+          probe
+        ): probe is typeof assignedProbeRows[number]["probe"] & {
+          region: keyof typeof REGION_COORDINATES;
+        } =>
+          isKnownRegion(probe.region)
+      )
+      .map((probe) => ({
+        id: probe.id,
+        name: probe.name,
+        region: probe.region,
+        coordinates: REGION_COORDINATES[probe.region]!.coordinates as [number, number],
+        status: probe.status,
+        lastHeartbeatAt: probe.lastHeartbeatAt?.toISOString() || null,
+        isPrivate: true,
+        version: probe.version || undefined,
+      })),
+  };
+
+  for (const publicProbe of geoProbes.public) {
+    const stats = regionStats.get(publicProbe.region);
+    if (stats) {
+      stats.probeCount++;
+    }
+  }
+
+  for (const privateProbe of geoProbes.private) {
+    const stats = regionStats.get(privateProbe.region);
+    if (stats) {
+      stats.probeCount++;
+    }
+  }
+
+  // Build regions array after probe counts have been aggregated.
   const geoRegions = Array.from(regionStats.entries()).map(([regionId, stats]) => {
     const regionCoords = REGION_COORDINATES[regionId];
 
-    // Calculate average latency for region
     let latency: { p50: number; p95: number; p99: number } | null = null;
     if (stats.latencies.length > 0) {
       const sumP50 = stats.latencies.reduce((sum, l) => sum + l.p50, 0);
@@ -2216,41 +2331,6 @@ publicRoutes.get("/status-pages/:slug/geo", async (c) => {
       latency,
     };
   });
-
-  const orgProbes = await db.query.probes.findMany({
-    where: and(
-      eq(probes.organizationId, page.organizationId),
-      or(eq(probes.status, "active"), eq(probes.status, "offline"))
-    ),
-  });
-
-  const geoProbes = {
-    public: [] as Array<{
-      id: string;
-      name: string;
-      region: string;
-      coordinates: [number, number];
-      status: "pending" | "active" | "offline" | "disabled";
-      lastHeartbeatAt: string | null;
-      isPrivate: boolean;
-      version?: string;
-    }>,
-    private: orgProbes
-      .filter(
-        (probe): probe is typeof orgProbes[number] & { region: keyof typeof REGION_COORDINATES } =>
-          isKnownRegion(probe.region)
-      )
-      .map((probe) => ({
-        id: probe.id,
-        name: probe.name,
-        region: probe.region,
-        coordinates: REGION_COORDINATES[probe.region]!.coordinates as [number, number],
-        status: probe.status,
-        lastHeartbeatAt: probe.lastHeartbeatAt?.toISOString() || null,
-        isPrivate: true,
-        version: probe.version || undefined,
-      })),
-  };
 
   // Build quorum connections (connections between regions for multi-region monitors)
   const quorumConnections: Array<{
@@ -2311,6 +2391,11 @@ publicRoutes.get("/status-pages/:slug/geo", async (c) => {
   return c.json({
     success: true,
     data: {
+      statusPage: {
+        id: page.id,
+        name: page.name,
+        slug: page.slug,
+      },
       regions: geoRegions,
       monitors: geoMonitors,
       probes: geoProbes,

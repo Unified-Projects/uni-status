@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-03-18
+
+### Added
+- Added event tab count aggregates (`all`, `active`, `resolved`, `incidents`, `maintenance`) to `GET /public/status-pages/:slug/events`
+- Added paginated public event history support (`limit`/`offset`) with new API coverage tests
+- Added status page metadata to public geo response payloads
+- Added synthesized public edge probe markers for monitored/recently active regions
+
+### Changed
+- Refactored public events page to URL-driven state for tabs, filters, search, and view mode
+- Switched public events UI to infinite pagination with live count refresh and clearer filter reset behavior
+- Updated geo UI controls to explicit Edge/Origin mode and improved regional filtering behavior
+- Improved geo map viewport handling to auto-fit visible regions, probes, and incidents
+- Expanded dashboard analytics payload with monitor issue cards and active incident counts from analytics API
+- Updated reports list auto-refresh logic to poll only while reports are `pending` or `generating`
+- Prioritized internal status page API calls before proxy fallback for more reliable service-to-service fetches
+
+### Fixed
+- Added stale report recovery to avoid reports remaining indefinitely in `pending`/`generating`
+- Added inline report generation fallback when queue submission fails to prevent stuck report states
+- Added timeout signal to custom-domain slug lookup middleware requests
+
+### Performance
+- Reduced public status payload query overhead by selecting only needed monitor columns
+- Replaced per-monitor latest-result lookups with grouped SQL queries for SSL, email auth, and heartbeat data
+- Optimized response-time chart generation by fetching and grouping monitor check results in bulk
+- Parallelized shell and live public status page fetches
+
+### Tests
+- Added comprehensive API tests for public geo probe synthesis/private probe assignment filtering
+- Added comprehensive API tests for public events counts and pagination behavior
+
 ## [0.1.4] - 2026-03-10
 
 ### Performance

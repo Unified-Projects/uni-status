@@ -1,21 +1,32 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
-import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
 import {
-  ArrowLeft,
-  Calendar,
+  startTransition,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import Link from "next/link";
+import {
+  useParams,
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import {
   AlertTriangle,
-  Search,
-  Clock,
-  CheckCircle,
-  Filter,
-  X,
+  ArrowLeft,
   Bell,
+  Calendar,
+  CheckCircle,
+  Clock,
+  Filter,
+  Search,
+  X,
 } from "lucide-react";
-import { cn, Button, Input, Badge } from "@uni-status/ui";
+import { Badge, Button, Input, cn } from "@uni-status/ui";
 import type { UnifiedEvent } from "@uni-status/shared";
 import { PublicEventCard } from "@/components/public-status/events/public-event-card";
 import { PublicEventTimeline } from "@/components/public-status/events/public-event-timeline";
@@ -25,8 +36,8 @@ import {
 } from "@/components/public-status/events/public-event-filters";
 import { useStatusPage } from "../status-page-context";
 
-// Default API URL - will be overridden to relative URL on custom domains
 const DEFAULT_API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
+const PAGE_SIZE = 20;
 
 function getApiUrl(): string {
   if (typeof window === "undefined") return DEFAULT_API_URL;
@@ -39,9 +50,17 @@ function getApiUrl(): string {
       return "/api";
     }
   } catch {
-    // If URL parsing fails, use default
+    // Fall back to configured API URL when URL parsing fails.
   }
   return DEFAULT_API_URL;
+}
+
+interface EventCounts {
+  all: number;
+  active: number;
+  resolved: number;
+  incidents: number;
+  maintenance: number;
 }
 
 interface EventsResponse {
@@ -50,6 +69,7 @@ interface EventsResponse {
     events: UnifiedEvent[];
     total: number;
     hasMore: boolean;
+    counts: EventCounts;
   };
   error?: {
     code: string;
@@ -64,6 +84,35 @@ interface FetchEventsParams {
   severity?: string[];
   monitors?: string[];
   regions?: string[];
+  limit?: number;
+  offset?: number;
+}
+
+type TabFilter = "all" | "active" | "resolved" | "incidents" | "maintenance";
+type ViewMode = "timeline" | "list";
+
+function parseCsvParam(value: string | null): string[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function parseTabFilter(value: string | null): TabFilter {
+  switch (value) {
+    case "active":
+    case "resolved":
+    case "incidents":
+    case "maintenance":
+      return value;
+    default:
+      return "all";
+  }
+}
+
+function parseViewMode(value: string | null): ViewMode {
+  return value === "list" ? "list" : "timeline";
 }
 
 async function fetchPublicEvents(
@@ -78,6 +127,8 @@ async function fetchPublicEvents(
   if (params.severity?.length) searchParams.set("severity", params.severity.join(","));
   if (params.monitors?.length) searchParams.set("monitors", params.monitors.join(","));
   if (params.regions?.length) searchParams.set("regions", params.regions.join(","));
+  if (typeof params.limit === "number") searchParams.set("limit", String(params.limit));
+  if (typeof params.offset === "number") searchParams.set("offset", String(params.offset));
 
   const response = await fetch(
     `${getApiUrl()}/public/status-pages/${slug}/events?${searchParams.toString()}`,
@@ -87,120 +138,180 @@ async function fetchPublicEvents(
   return response.json();
 }
 
-type TabFilter = "all" | "active" | "resolved" | "incidents" | "maintenance";
-
 export default function PublicEventsPage() {
   const params = useParams<{ slug: string }>();
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const slug = params.slug;
-
-  // Monitor/region data and page name come from the server-rendered layout via context.
-  // Theme CSS variables are also applied server-side by layout.tsx — no client fetch needed.
   const { monitors: contextMonitors } = useStatusPage();
 
-  const [tabFilter, setTabFilter] = useState<TabFilter>("all");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [viewMode, setViewMode] = useState<"timeline" | "list">("timeline");
-  const [advancedFilters, setAdvancedFilters] = useState<PublicEventFiltersState>({
-    severity: [],
-    monitors: [],
-    regions: [],
-  });
+  const urlTabFilter = parseTabFilter(searchParams.get("tab"));
+  const urlViewMode = parseViewMode(searchParams.get("view"));
+  const urlSearch = searchParams.get("q") ?? "";
+  const advancedFilters = useMemo<PublicEventFiltersState>(
+    () => ({
+      severity: parseCsvParam(searchParams.get("severity")),
+      monitors: parseCsvParam(searchParams.get("monitors")),
+      regions: parseCsvParam(searchParams.get("regions")),
+    }),
+    [searchParams]
+  );
 
-  // Detect if we're on a custom domain (client-side)
-  const [basePath, setBasePath] = useState(`/status/${slug}`);
+  const [searchInput, setSearchInput] = useState(urlSearch);
+  const deferredSearchQuery = useDeferredValue(searchInput.trim());
+
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-      const appHostname = new URL(appUrl).hostname;
-      const currentHostname = window.location.hostname;
-      if (currentHostname !== appHostname && currentHostname !== "localhost") {
-        setBasePath("");
-      }
-    }
-  }, []);
+    setSearchInput(urlSearch);
+  }, [urlSearch]);
 
-  // Derive monitor/region filter options from context (server-fetched, zero extra API call)
+  const basePath = pathname.endsWith("/events")
+    ? pathname.slice(0, -"/events".length)
+    : `/status/${slug}`;
+
   const availableMonitors = useMemo(
-    () => contextMonitors.map((m) => ({ id: m.id, name: m.name })),
+    () => contextMonitors.map((monitor) => ({ id: monitor.id, name: monitor.name })),
     [contextMonitors]
   );
 
   const availableRegions = useMemo(() => {
     const regionSet = new Set<string>();
-    contextMonitors.forEach((m) => m.regions.forEach((r) => regionSet.add(r)));
+    contextMonitors.forEach((monitor) =>
+      monitor.regions.forEach((region) => regionSet.add(region))
+    );
     return Array.from(regionSet).sort();
   }, [contextMonitors]);
 
-  const queryParams = useMemo(() => {
-    const p: FetchEventsParams = {};
+  const updateUrlState = (
+    updates: Record<string, string | string[] | null>,
+    options?: { replace?: boolean }
+  ) => {
+    const nextParams = new URLSearchParams(searchParams.toString());
 
-    switch (tabFilter) {
+    for (const [key, value] of Object.entries(updates)) {
+      if (value === null || value === "" || (Array.isArray(value) && value.length === 0)) {
+        nextParams.delete(key);
+        continue;
+      }
+
+      nextParams.set(key, Array.isArray(value) ? value.join(",") : value);
+    }
+
+    const nextQuery = nextParams.toString();
+    const nextUrl = nextQuery ? `${pathname}?${nextQuery}` : pathname;
+
+    startTransition(() => {
+      if (options?.replace ?? true) {
+        router.replace(nextUrl, { scroll: false });
+      } else {
+        router.push(nextUrl, { scroll: false });
+      }
+    });
+  };
+
+  useEffect(() => {
+    if (deferredSearchQuery === urlSearch) {
+      return;
+    }
+
+    updateUrlState({ q: deferredSearchQuery || null }, { replace: true });
+  }, [deferredSearchQuery, urlSearch]);
+
+  const queryParams = useMemo<FetchEventsParams>(() => {
+    const nextParams: FetchEventsParams = {};
+
+    switch (urlTabFilter) {
       case "active":
-        p.status = ["investigating", "identified", "monitoring", "scheduled", "active"];
+        nextParams.status = ["investigating", "identified", "monitoring", "scheduled", "active"];
         break;
       case "resolved":
-        p.status = ["resolved", "completed"];
+        nextParams.status = ["resolved", "completed"];
         break;
       case "incidents":
-        p.types = ["incident"];
+        nextParams.types = ["incident"];
         break;
       case "maintenance":
-        p.types = ["maintenance"];
+        nextParams.types = ["maintenance"];
         break;
     }
 
-    if (searchQuery.trim()) p.search = searchQuery.trim();
-    if (advancedFilters.severity.length > 0) p.severity = advancedFilters.severity;
-    if (advancedFilters.monitors.length > 0) p.monitors = advancedFilters.monitors;
-    if (advancedFilters.regions.length > 0) p.regions = advancedFilters.regions;
+    if (deferredSearchQuery) nextParams.search = deferredSearchQuery;
+    if (advancedFilters.severity.length > 0) nextParams.severity = advancedFilters.severity;
+    if (advancedFilters.monitors.length > 0) nextParams.monitors = advancedFilters.monitors;
+    if (advancedFilters.regions.length > 0) nextParams.regions = advancedFilters.regions;
 
-    return p;
-  }, [tabFilter, searchQuery, advancedFilters]);
+    return nextParams;
+  }, [advancedFilters, deferredSearchQuery, urlTabFilter]);
 
-  const { data, isLoading, error, refetch } = useQuery({
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ["public-events", slug, queryParams],
-    queryFn: () => fetchPublicEvents(slug, queryParams),
+    queryFn: ({ pageParam = 0 }) =>
+      fetchPublicEvents(slug, {
+        ...queryParams,
+        limit: PAGE_SIZE,
+        offset: pageParam,
+      }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, pages) => {
+      if (!lastPage.data?.hasMore) {
+        return undefined;
+      }
+
+      return pages.reduce(
+        (sum, page) => sum + (page.data?.events.length ?? 0),
+        0
+      );
+    },
     enabled: !!slug,
-    refetchInterval: 30000,
+    refetchInterval: 30_000,
   });
 
-  // Fetch all events unfiltered for accurate tab counts
-  const { data: allData } = useQuery({
-    queryKey: ["public-events", slug, {}],
-    queryFn: () => fetchPublicEvents(slug, {}),
+  const { data: countsData } = useQuery({
+    queryKey: ["public-events-counts", slug],
+    queryFn: () => fetchPublicEvents(slug, { limit: 1, offset: 0 }),
     enabled: !!slug,
-    staleTime: 30000,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
   });
 
-  const events = data?.data?.events || [];
+  const events = useMemo(
+    () => data?.pages.flatMap((page) => page.data?.events ?? []) ?? [],
+    [data]
+  );
 
-  const counts = useMemo(() => {
-    if (!allData?.data?.events) {
-      return { all: 0, active: 0, resolved: 0, incidents: 0, maintenance: 0 };
-    }
+  const filteredTotal = data?.pages[0]?.data?.total ?? 0;
+  const counts = countsData?.data?.counts ?? {
+    all: 0,
+    active: 0,
+    resolved: 0,
+    incidents: 0,
+    maintenance: 0,
+  };
 
-    const allEvents = allData.data.events;
-    const activeStatuses = ["investigating", "identified", "monitoring", "scheduled", "active"];
-    const resolvedStatuses = ["resolved", "completed"];
+  const hasAdvancedFilters =
+    advancedFilters.severity.length > 0 ||
+    advancedFilters.monitors.length > 0 ||
+    advancedFilters.regions.length > 0;
+  const hasAnyFilters = searchInput.trim() || urlTabFilter !== "all" || hasAdvancedFilters;
 
-    return {
-      all: allEvents.length,
-      active: allEvents.filter((e) => activeStatuses.includes(e.status)).length,
-      resolved: allEvents.filter((e) => resolvedStatuses.includes(e.status)).length,
-      incidents: allEvents.filter((e) => e.type === "incident").length,
-      maintenance: allEvents.filter((e) => e.type === "maintenance").length,
-    };
-  }, [allData]);
-
-  if (error) {
+  if (isError) {
     return (
       <div className="min-h-screen bg-background">
         <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
-          <div className="text-center py-12">
+          <div className="py-12 text-center">
             <AlertTriangle className="mx-auto h-12 w-12 text-destructive" />
             <h2 className="mt-4 text-lg font-semibold">Failed to load events</h2>
             <p className="mt-2 text-muted-foreground">
-              {data?.error?.message || "An error occurred while loading events."}
+              {(error as Error)?.message || "An error occurred while loading events."}
             </p>
             <Button onClick={() => refetch()} className="mt-4">
               Try Again
@@ -214,11 +325,10 @@ export default function PublicEventsPage() {
   return (
     <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
-        {/* Header */}
         <div className="mb-8">
           <Link
-            href={`${basePath}/` || "/"}
-            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4"
+            href={basePath || "/"}
+            className="mb-4 inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
           >
             <ArrowLeft className="h-4 w-4" />
             Back to Status Page
@@ -229,164 +339,198 @@ export default function PublicEventsPage() {
           </p>
         </div>
 
-        {/* Tabs */}
-        <div className="flex flex-wrap gap-2 mb-6">
+        <div className="mb-6 flex flex-wrap gap-2">
           <TabButton
-            active={tabFilter === "all"}
-            onClick={() => setTabFilter("all")}
+            active={urlTabFilter === "all"}
+            onClick={() => updateUrlState({ tab: null }, { replace: false })}
             count={counts.all}
           >
             All
           </TabButton>
           <TabButton
-            active={tabFilter === "active"}
-            onClick={() => setTabFilter("active")}
+            active={urlTabFilter === "active"}
+            onClick={() => updateUrlState({ tab: "active" }, { replace: false })}
             count={counts.active}
             highlight={counts.active > 0}
           >
             Active
           </TabButton>
           <TabButton
-            active={tabFilter === "resolved"}
-            onClick={() => setTabFilter("resolved")}
+            active={urlTabFilter === "resolved"}
+            onClick={() => updateUrlState({ tab: "resolved" }, { replace: false })}
             count={counts.resolved}
           >
             Resolved
           </TabButton>
           <TabButton
-            active={tabFilter === "incidents"}
-            onClick={() => setTabFilter("incidents")}
+            active={urlTabFilter === "incidents"}
+            onClick={() => updateUrlState({ tab: "incidents" }, { replace: false })}
+            count={counts.incidents}
             icon={<AlertTriangle className="h-3.5 w-3.5" />}
           >
             Incidents
           </TabButton>
           <TabButton
-            active={tabFilter === "maintenance"}
-            onClick={() => setTabFilter("maintenance")}
+            active={urlTabFilter === "maintenance"}
+            onClick={() => updateUrlState({ tab: "maintenance" }, { replace: false })}
+            count={counts.maintenance}
             icon={<Calendar className="h-3.5 w-3.5" />}
           >
             Maintenance
           </TabButton>
         </div>
 
-        {/* Search, Filters, and View Toggle */}
-        <div className="flex flex-col gap-4 mb-6">
-          <div className="flex flex-col sm:flex-row gap-4">
+        <div className="mb-6 flex flex-col gap-4">
+          <div className="flex flex-col gap-4 sm:flex-row">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search events..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
                 className="pl-9"
               />
-              {searchQuery && (
+              {searchInput && (
                 <button
-                  onClick={() => setSearchQuery("")}
+                  onClick={() => setSearchInput("")}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 >
                   <X className="h-4 w-4" />
                 </button>
               )}
             </div>
+
             <div className="flex items-center gap-2">
               <PublicEventFilters
                 filters={advancedFilters}
-                onFiltersChange={setAdvancedFilters}
+                onFiltersChange={(nextFilters) =>
+                  updateUrlState(
+                    {
+                      severity: nextFilters.severity,
+                      monitors: nextFilters.monitors,
+                      regions: nextFilters.regions,
+                    },
+                    { replace: false }
+                  )
+                }
                 availableMonitors={availableMonitors}
                 availableRegions={availableRegions}
               />
+
               <div className="flex items-center rounded-md border">
                 <Button
-                  variant={viewMode === "timeline" ? "secondary" : "ghost"}
+                  variant={urlViewMode === "timeline" ? "secondary" : "ghost"}
                   size="sm"
                   className="rounded-r-none"
-                  onClick={() => setViewMode("timeline")}
+                  onClick={() => updateUrlState({ view: null }, { replace: false })}
                 >
-                  <Clock className="h-4 w-4 mr-2" />
+                  <Clock className="mr-2 h-4 w-4" />
                   Timeline
                 </Button>
                 <Button
-                  variant={viewMode === "list" ? "secondary" : "ghost"}
+                  variant={urlViewMode === "list" ? "secondary" : "ghost"}
                   size="sm"
                   className="rounded-l-none"
-                  onClick={() => setViewMode("list")}
+                  onClick={() => updateUrlState({ view: "list" }, { replace: false })}
                 >
-                  <Filter className="h-4 w-4 mr-2" />
+                  <Filter className="mr-2 h-4 w-4" />
                   List
                 </Button>
               </div>
             </div>
           </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-sm text-muted-foreground">
+              {isLoading
+                ? "Loading events..."
+                : `${filteredTotal} event${filteredTotal !== 1 ? "s" : ""} found`}
+            </div>
+
+            {hasAnyFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSearchInput("");
+                  updateUrlState(
+                    {
+                      tab: null,
+                      view: null,
+                      q: null,
+                      severity: null,
+                      monitors: null,
+                      regions: null,
+                    },
+                    { replace: false }
+                  );
+                }}
+              >
+                Clear filters
+              </Button>
+            )}
+          </div>
         </div>
 
-        {/* Events Content */}
         {isLoading ? (
           <div className="space-y-4">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-32 animate-pulse rounded-lg bg-muted" />
+            {[1, 2, 3].map((index) => (
+              <div key={index} className="h-32 animate-pulse rounded-lg bg-muted" />
             ))}
           </div>
         ) : events.length === 0 ? (
-          (() => {
-            const hasAdvancedFilters =
-              advancedFilters.severity.length > 0 ||
-              advancedFilters.monitors.length > 0 ||
-              advancedFilters.regions.length > 0;
-            const hasAnyFilters = searchQuery || tabFilter !== "all" || hasAdvancedFilters;
-
-            return (
-              <div className="text-center py-12 border rounded-lg bg-muted/30">
-                <CheckCircle className="mx-auto h-12 w-12 text-status-success-solid" />
-                <h2 className="mt-4 text-lg font-semibold">
-                  {hasAnyFilters ? "No events match your filters" : "All systems operational"}
-                </h2>
-                <p className="mt-2 text-muted-foreground">
-                  {hasAnyFilters
-                    ? "Try adjusting your search or filter criteria."
-                    : "There are no incidents or scheduled maintenance at this time."}
-                </p>
-                {hasAnyFilters && (
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setSearchQuery("");
-                      setTabFilter("all");
-                      setAdvancedFilters({ severity: [], monitors: [], regions: [] });
-                    }}
-                    className="mt-4"
-                  >
-                    Clear filters
-                  </Button>
-                )}
-              </div>
-            );
-          })()
-        ) : viewMode === "timeline" ? (
-          <PublicEventTimeline events={events} slug={slug} basePath={basePath} />
-        ) : (
-          <div className="space-y-4">
-            {events.map((event) => (
-              <PublicEventCard
-                key={`${event.type}-${event.id}`}
-                event={event}
-                slug={slug}
-                basePath={basePath}
-              />
-            ))}
+          <div className="rounded-lg border bg-muted/30 py-12 text-center">
+            <CheckCircle className="mx-auto h-12 w-12 text-status-success-solid" />
+            <h2 className="mt-4 text-lg font-semibold">
+              {hasAnyFilters ? "No events match your filters" : "All systems operational"}
+            </h2>
+            <p className="mt-2 text-muted-foreground">
+              {hasAnyFilters
+                ? "Try adjusting your search or filter criteria."
+                : "There are no incidents or scheduled maintenance at this time."}
+            </p>
           </div>
+        ) : (
+          <>
+            {urlViewMode === "timeline" ? (
+              <PublicEventTimeline events={events} slug={slug} basePath={basePath} />
+            ) : (
+              <div className="space-y-4">
+                {events.map((event) => (
+                  <PublicEventCard
+                    key={`${event.type}-${event.id}`}
+                    event={event}
+                    slug={slug}
+                    basePath={basePath}
+                  />
+                ))}
+              </div>
+            )}
+
+            {hasNextPage && (
+              <div className="mt-6 flex justify-center">
+                <Button
+                  variant="outline"
+                  onClick={() => fetchNextPage()}
+                  disabled={isFetchingNextPage}
+                >
+                  {isFetchingNextPage ? "Loading more..." : "Load more events"}
+                </Button>
+              </div>
+            )}
+          </>
         )}
 
-        {/* Subscribe prompt */}
         {events.length > 0 && (
           <div className="mt-12 border-t pt-8">
             <div className="text-center">
               <Bell className="mx-auto h-8 w-8 text-muted-foreground" />
               <h3 className="mt-3 font-semibold">Stay updated</h3>
-              <p className="mt-1 text-sm text-muted-foreground max-w-md mx-auto">
-                Subscribe to individual events to receive notifications about status changes and updates.
+              <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+                Subscribe to individual events to receive notifications about status changes and
+                updates.
               </p>
-              <Link href={`${basePath}/` || "/"}>
+              <Link href={basePath || "/"}>
                 <Button variant="outline" className="mt-4">
                   Go to Status Page
                 </Button>
@@ -413,10 +557,10 @@ function TabButton({ active, onClick, children, count, highlight, icon }: TabBut
     <button
       onClick={onClick}
       className={cn(
-        "inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors",
+        "inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors",
         active
           ? "bg-primary text-primary-foreground"
-          : "bg-muted hover:bg-muted/80 text-muted-foreground"
+          : "bg-muted text-muted-foreground hover:bg-muted/80"
       )}
     >
       {icon}
@@ -426,7 +570,7 @@ function TabButton({ active, onClick, children, count, highlight, icon }: TabBut
           variant={active ? "secondary" : "outline"}
           className={cn(
             "h-5 px-1.5 text-xs",
-            highlight && !active && "bg-status-warning-solid text-white border-status-warning-solid"
+            highlight && !active && "border-status-warning-solid bg-status-warning-solid text-white"
           )}
         >
           {count}

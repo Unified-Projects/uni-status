@@ -38,6 +38,7 @@ async function lookupDomainSlug(domain: string): Promise<string | null> {
     const response = await fetch(`${apiUrl}/api/public/internal/domain-lookup?domain=${encodeURIComponent(domain)}`, {
       method: "GET",
       headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(1500),
     });
 
     if (!response.ok) {

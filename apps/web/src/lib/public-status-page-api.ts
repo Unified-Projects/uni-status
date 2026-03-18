@@ -355,18 +355,10 @@ async function fetchPublicStatusPageEndpoint<TResponse extends { success: boolea
     ? `${protocol}://${requestHost}/api/public/status-pages/${slug}${endpointSuffix}`
     : null;
 
-  let useProxyFirst = false;
-  if (requestHost) {
-    try {
-      useProxyFirst = isCustomDomain(requestHost);
-    } catch {
-      useProxyFirst = false;
-    }
-  }
+  // Prefer internal service-to-service calls first; proxy URL remains as fallback.
+  // This avoids slow DNS/external routing failures inside container networks.
   const fetchTargets = proxiedUrl
-    ? useProxyFirst
-      ? [proxiedUrl, internalUrl]
-      : [internalUrl, proxiedUrl]
+    ? [internalUrl, proxiedUrl]
     : [internalUrl];
 
   const fetchOptions: RequestInit & { next?: { revalidate: number } } = {
@@ -451,13 +443,15 @@ export const getStatusPageData = cache(async (
   slug: string,
   cookies?: string
 ): Promise<ApiResponse> => {
-  const shellResult = await getStatusPageShellData(slug, cookies);
+  const [shellResult, liveResult] = await Promise.all([
+    getStatusPageShellData(slug, cookies),
+    getStatusPageLiveData(slug, cookies),
+  ]);
 
   if (!shellResult.success || !shellResult.data) {
     return shellResult;
   }
 
-  const liveResult = await getStatusPageLiveData(slug, cookies);
   if (!liveResult.success || !liveResult.data) {
     return shellResult;
   }

@@ -162,6 +162,51 @@ function ThemeAwareTileLayer() {
   return null;
 }
 
+interface MapViewportControllerProps {
+  regions: GeoRegion[];
+  probes: GeoProbe[];
+  incidents: GeoIncident[];
+}
+
+function MapViewportController({
+  regions,
+  probes,
+  incidents,
+}: MapViewportControllerProps) {
+  const map = useMap();
+
+  useEffect(() => {
+    const points: [number, number][] = [
+      ...regions.map((region) => region.coordinates),
+      ...probes.map((probe) => REGION_COORDINATES[probe.region]?.coordinates).filter(
+        (coords): coords is [number, number] => !!coords
+      ),
+      ...incidents
+        .map((incident) => incident.affectedRegions[0])
+        .map((regionId) => (regionId ? REGION_COORDINATES[regionId]?.coordinates : null))
+        .filter((coords): coords is [number, number] => !!coords),
+    ];
+
+    if (points.length === 0) {
+      map.setView(DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM, { animate: false });
+      return;
+    }
+
+    if (points.length === 1) {
+      map.setView(points[0], 4, { animate: true });
+      return;
+    }
+
+    map.fitBounds(points, {
+      padding: [36, 36],
+      maxZoom: 4,
+      animate: true,
+    });
+  }, [incidents, map, probes, regions]);
+
+  return null;
+}
+
 // Quorum connection lines
 interface QuorumConnectionsProps {
   connections: GeoQuorumConnection[];
@@ -230,6 +275,49 @@ export function GeoMap({
 }: GeoMapProps) {
   const mapRef = useRef<LeafletMap | null>(null);
   const statusColors = useStatusColors();
+  const visibleRegionIds = useMemo(() => new Set(regions.map((region) => region.id)), [regions]);
+
+  const visibleProbes = useMemo(() => {
+    const selectedRegion = controls.selectedRegion;
+    const probesForMode =
+      controls.showEdgeOrigin
+        ? probes.public
+        : probes.private;
+
+    if (!selectedRegion) {
+      return probesForMode;
+    }
+
+    return probesForMode.filter((probe) => probe.region === selectedRegion);
+  }, [controls.selectedRegion, controls.showEdgeOrigin, probes.private, probes.public]);
+
+  const visibleIncidents = useMemo(() => {
+    if (!controls.selectedRegion) {
+      return incidents;
+    }
+
+    return incidents.filter((incident) =>
+      incident.affectedRegions.includes(controls.selectedRegion as string)
+    );
+  }, [controls.selectedRegion, incidents]);
+
+  const visibleQuorumConnections = useMemo(() => {
+    const selectedRegion = controls.selectedRegion;
+
+    return quorumConnections.filter((connection) => {
+      if (!visibleRegionIds.has(connection.fromRegion) || !visibleRegionIds.has(connection.toRegion)) {
+        return false;
+      }
+
+      if (!selectedRegion) {
+        return true;
+      }
+
+      return (
+        connection.fromRegion === selectedRegion || connection.toRegion === selectedRegion
+      );
+    });
+  }, [controls.selectedRegion, quorumConnections, visibleRegionIds]);
 
   // Leaflet leaves a stamp on the container, so ensure we clear it when React remounts
   // (React 18+ StrictMode or fast refresh can otherwise trigger "already initialized").
@@ -249,21 +337,6 @@ export function GeoMap({
     };
   }, []);
 
-  // Filter probes based on controls
-  // If showEdgeOrigin is defined, use edge/origin mode:
-  // - true = Edge (public probes only)
-  // - false = Origin (private probes only)
-  // Otherwise, use the individual public/private toggles
-  const visibleProbes =
-    controls.showEdgeOrigin !== undefined
-      ? controls.showEdgeOrigin
-        ? probes.public  // Edge mode: show public probes (edge locations)
-        : probes.private // Origin mode: show private probes (origin/backend)
-      : [
-          ...(controls.showPublicProbes ? probes.public : []),
-          ...(controls.showPrivateProbes ? probes.private : []),
-        ];
-
   return (
     <div className="relative w-full h-full min-h-[400px] rounded-lg overflow-hidden border bg-[var(--status-card)]">
       <MapContainer
@@ -281,10 +354,15 @@ export function GeoMap({
         zoomControl={true}
       >
         <ThemeAwareTileLayer />
+        <MapViewportController
+          regions={regions}
+          probes={visibleProbes}
+          incidents={visibleIncidents}
+        />
 
         {/* Quorum connection lines */}
         <QuorumConnections
-          connections={quorumConnections}
+          connections={visibleQuorumConnections}
           visible={controls.showQuorumConnections}
           colors={{
             active: statusColors.active,
@@ -368,7 +446,7 @@ export function GeoMap({
         })}
 
         {/* Incident markers */}
-        {incidents.map((incident) => {
+        {visibleIncidents.map((incident) => {
           // Place incident marker at first affected region
           const regionId = incident.affectedRegions[0];
           if (!regionId) return null;

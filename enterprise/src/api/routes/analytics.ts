@@ -297,7 +297,7 @@ analyticsRoutes.get("/uptime", async (c) => {
       : null;
 
   // Fetch incidents for the monitor if monitorId is specified
-  let incidentsByTimestamp = new Map<string, Array<{
+  const incidentsByTimestamp = new Map<string, Array<{
     id: string;
     title: string;
     severity: "minor" | "major" | "critical";
@@ -908,10 +908,13 @@ analyticsRoutes.get("/web-vitals", async (c) => {
 analyticsRoutes.get("/dashboard", async (c) => {
   const organizationId = await requireOrganization(c);
 
-  // Get monitor counts by status
-  const allMonitors = await db.query.monitors.findMany({
-    where: eq(monitors.organizationId, organizationId),
-  });
+  const allMonitors = await db
+    .select({
+      id: monitors.id,
+      status: monitors.status,
+    })
+    .from(monitors)
+    .where(eq(monitors.organizationId, organizationId));
 
   const monitorsByStatus = allMonitors.reduce(
     (acc, monitor) => {
@@ -921,16 +924,32 @@ analyticsRoutes.get("/dashboard", async (c) => {
     {} as Record<string, number>
   );
 
-  // Get active incidents
-  const activeIncidents = await db.query.incidents.findMany({
+  const monitorsWithIssues = await db.query.monitors.findMany({
     where: and(
-      eq(incidents.organizationId, organizationId),
-      sql`${incidents.status} != 'resolved'`
+      eq(monitors.organizationId, organizationId),
+      inArray(monitors.status, ["degraded", "down"])
     ),
-    orderBy: [desc(incidents.startedAt)],
+    columns: {
+      id: true,
+      name: true,
+      url: true,
+      status: true,
+    },
+    orderBy: [desc(monitors.updatedAt)],
+    limit: 5,
   });
 
-  // Get recent resolved incidents (last 7 days)
+  const activeIncidentCount = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(incidents)
+    .where(
+      and(
+        eq(incidents.organizationId, organizationId),
+        sql`${incidents.status} != 'resolved'`
+      )
+    );
+
+  // Get recent incidents (last 7 days)
   const weekAgo = new Date();
   weekAgo.setDate(weekAgo.getDate() - 7);
 
@@ -1010,9 +1029,10 @@ analyticsRoutes.get("/dashboard", async (c) => {
       monitors: {
         total: allMonitors.length,
         byStatus: monitorsByStatus,
+        issues: monitorsWithIssues,
       },
       incidents: {
-        active: activeIncidents.length,
+        active: Number(activeIncidentCount[0]?.count ?? 0),
         recent: recentIncidents,
       },
       uptime: {

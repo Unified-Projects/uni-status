@@ -10,8 +10,6 @@ import {
   CardTitle,
   Button,
 } from "@uni-status/ui";
-import { useMonitors } from "@/hooks/use-monitors";
-import { useIncidents } from "@/hooks/use-incidents";
 import { useDashboardAnalytics } from "@/hooks/use-analytics";
 import { useSSE } from "@/hooks/use-sse";
 import { StatusIndicator, type MonitorStatus } from "@/components/monitors";
@@ -22,43 +20,26 @@ export default function DashboardPage() {
   // Real-time connection for live updates
   useSSE({ enabled: true });
 
-  // Data fetching
-  const { data: monitorsResponse, isLoading: monitorsLoading, error: monitorsError } = useMonitors();
-  const { data: incidentsResponse, isLoading: incidentsLoading } = useIncidents();
-  const { data: analytics, isLoading: analyticsLoading } = useDashboardAnalytics();
+  const { data: analytics, isLoading: analyticsLoading, error: analyticsError } = useDashboardAnalytics();
 
-  const monitors = monitorsResponse?.data;
-  const incidents = incidentsResponse?.data;
-
-  const isLoading = monitorsLoading || incidentsLoading || analyticsLoading;
-
-  if (monitorsError) {
+  if (analyticsError) {
     return (
       <div className="space-y-6">
         <DashboardHeader />
-        <ErrorState error={monitorsError} />
+        <ErrorState error={analyticsError} />
       </div>
     );
   }
 
-  // Calculate stats
-  const totalMonitors = monitors?.length || 0;
-  const operationalCount = monitors?.filter((m) => m.status === "active").length || 0;
-  const degradedCount = monitors?.filter((m) => m.status === "degraded").length || 0;
-  const downCount = monitors?.filter((m) => m.status === "down").length || 0;
-  const activeIncidents = incidents?.filter(
-    (i) => i.status !== "resolved"
-  ).length || 0;
+  const totalMonitors = analytics?.monitors.total || 0;
+  const operationalCount = analytics?.monitors.byStatus.active || 0;
+  const degradedCount = analytics?.monitors.byStatus.degraded || 0;
+  const downCount = analytics?.monitors.byStatus.down || 0;
+  const activeIncidents = analytics?.incidents.active || 0;
+  const recentIncidents = analytics?.incidents.recent.slice(0, 5) || [];
+  const monitorsWithIssues = analytics?.monitors.issues || [];
 
-  // Get recent incidents (last 5)
-  const recentIncidents = incidents?.slice(0, 5) || [];
-
-  // Get monitors with issues (degraded or down)
-  const monitorsWithIssues = monitors
-    ?.filter((m) => m.status === "degraded" || m.status === "down")
-    .slice(0, 5) || [];
-
-  if (isLoading) {
+  if (analyticsLoading) {
     return (
       <div className="space-y-6">
         <DashboardHeader />

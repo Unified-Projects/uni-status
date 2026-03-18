@@ -227,7 +227,17 @@ export async function buildPublicStatusPageShellPayload(params: {
     where: eq(statusPageMonitors.statusPageId, page.id),
     orderBy: [statusPageMonitors.order],
     with: {
-      monitor: true,
+      monitor: {
+        columns: {
+          name: true,
+          description: true,
+          type: true,
+          status: true,
+          regions: true,
+          config: true,
+          lastCheckedAt: true,
+        },
+      },
     },
   });
 
@@ -336,7 +346,17 @@ export async function buildPublicStatusPagePayload(params: {
     where: eq(statusPageMonitors.statusPageId, page.id),
     orderBy: [statusPageMonitors.order],
     with: {
-      monitor: true,
+      monitor: {
+        columns: {
+          name: true,
+          description: true,
+          type: true,
+          status: true,
+          regions: true,
+          config: true,
+          lastCheckedAt: true,
+        },
+      },
     },
   });
 
@@ -786,16 +806,34 @@ export async function buildPublicStatusPagePayload(params: {
   >();
 
   if (sslMonitorIds.length > 0) {
-    const certResults = await mapInBatches(sslMonitorIds, async (monitorId) => {
-      const latestResult = await db.query.checkResults.findFirst({
-        where: and(
-          eq(checkResults.monitorId, monitorId),
+    const latestCertificateTimestamps = db
+      .select({
+        monitorId: checkResults.monitorId,
+        latestCreatedAt: sql<Date>`MAX(${checkResults.createdAt})`.as("latest_created_at"),
+      })
+      .from(checkResults)
+      .where(
+        and(
+          inArray(checkResults.monitorId, sslMonitorIds),
           sql`${checkResults.certificateInfo} IS NOT NULL`
-        ),
-        orderBy: [desc(checkResults.createdAt)],
-      });
-      return { monitorId, certificateInfo: latestResult?.certificateInfo };
-    });
+        )
+      )
+      .groupBy(checkResults.monitorId)
+      .as("latest_certificate_timestamps");
+
+    const certResults = await db
+      .select({
+        monitorId: checkResults.monitorId,
+        certificateInfo: checkResults.certificateInfo,
+      })
+      .from(checkResults)
+      .innerJoin(
+        latestCertificateTimestamps,
+        and(
+          eq(checkResults.monitorId, latestCertificateTimestamps.monitorId),
+          eq(checkResults.createdAt, latestCertificateTimestamps.latestCreatedAt)
+        )
+      );
 
     for (const row of certResults) {
       if (row.certificateInfo) {
@@ -819,16 +857,34 @@ export async function buildPublicStatusPagePayload(params: {
   >();
 
   if (emailAuthMonitorIds.length > 0) {
-    const emailAuthResults = await mapInBatches(emailAuthMonitorIds, async (monitorId) => {
-      const latestResult = await db.query.checkResults.findFirst({
-        where: and(
-          eq(checkResults.monitorId, monitorId),
+    const latestEmailAuthTimestamps = db
+      .select({
+        monitorId: checkResults.monitorId,
+        latestCreatedAt: sql<Date>`MAX(${checkResults.createdAt})`.as("latest_created_at"),
+      })
+      .from(checkResults)
+      .where(
+        and(
+          inArray(checkResults.monitorId, emailAuthMonitorIds),
           sql`${checkResults.emailAuthDetails} IS NOT NULL`
-        ),
-        orderBy: [desc(checkResults.createdAt)],
-      });
-      return { monitorId, details: latestResult?.emailAuthDetails };
-    });
+        )
+      )
+      .groupBy(checkResults.monitorId)
+      .as("latest_email_auth_timestamps");
+
+    const emailAuthResults = await db
+      .select({
+        monitorId: checkResults.monitorId,
+        details: checkResults.emailAuthDetails,
+      })
+      .from(checkResults)
+      .innerJoin(
+        latestEmailAuthTimestamps,
+        and(
+          eq(checkResults.monitorId, latestEmailAuthTimestamps.monitorId),
+          eq(checkResults.createdAt, latestEmailAuthTimestamps.latestCreatedAt)
+        )
+      );
 
     for (const row of emailAuthResults) {
       if (!row.details) continue;
@@ -861,13 +917,31 @@ export async function buildPublicStatusPagePayload(params: {
   >();
 
   if (heartbeatMonitorIds.length > 0) {
-    const latestPings = await mapInBatches(heartbeatMonitorIds, async (monitorId) => {
-      const latestPing = await db.query.heartbeatPings.findFirst({
-        where: eq(heartbeatPings.monitorId, monitorId),
-        orderBy: [desc(heartbeatPings.createdAt)],
-      });
-      return { monitorId, latestPing };
-    });
+    const latestHeartbeatTimestamps = db
+      .select({
+        monitorId: heartbeatPings.monitorId,
+        latestCreatedAt: sql<Date>`MAX(${heartbeatPings.createdAt})`.as("latest_created_at"),
+      })
+      .from(heartbeatPings)
+      .where(inArray(heartbeatPings.monitorId, heartbeatMonitorIds))
+      .groupBy(heartbeatPings.monitorId)
+      .as("latest_heartbeat_timestamps");
+
+    const latestPings = await db
+      .select({
+        monitorId: heartbeatPings.monitorId,
+        latestPing: {
+          createdAt: heartbeatPings.createdAt,
+        },
+      })
+      .from(heartbeatPings)
+      .innerJoin(
+        latestHeartbeatTimestamps,
+        and(
+          eq(heartbeatPings.monitorId, latestHeartbeatTimestamps.monitorId),
+          eq(heartbeatPings.createdAt, latestHeartbeatTimestamps.latestCreatedAt)
+        )
+      );
 
     const nowMs = Date.now();
     for (const row of latestPings) {
@@ -940,17 +1014,40 @@ export async function buildPublicStatusPagePayload(params: {
       hoursToFetch <= 168 ? 60 :
       240;
 
-    const chartResults = await mapInBatches(monitorIds, async (monitorId) => {
-      const rawResults = await db.query.checkResults.findMany({
-        where: and(
-          eq(checkResults.monitorId, monitorId),
-          gte(checkResults.createdAt, chartStartDate)
-        ),
-        orderBy: [checkResults.createdAt],
-      });
+    const allChartResults = await db.query.checkResults.findMany({
+      where: and(
+        inArray(checkResults.monitorId, monitorIds),
+        gte(checkResults.createdAt, chartStartDate)
+      ),
+      columns: {
+        monitorId: true,
+        createdAt: true,
+        responseTimeMs: true,
+        status: true,
+      },
+      orderBy: [checkResults.createdAt],
+    });
 
+    const rawResultsByMonitor = new Map<
+      string,
+      Array<{
+        monitorId: string;
+        createdAt: Date;
+        responseTimeMs: number | null;
+        status: typeof checkResults.$inferSelect.status;
+      }>
+    >();
+
+    for (const result of allChartResults) {
+      const monitorResults = rawResultsByMonitor.get(result.monitorId) || [];
+      monitorResults.push(result);
+      rawResultsByMonitor.set(result.monitorId, monitorResults);
+    }
+
+    for (const monitorId of monitorIds) {
+      const rawResults = rawResultsByMonitor.get(monitorId) || [];
       if (rawResults.length === 0) {
-        return null;
+        continue;
       }
 
       // If we have fewer data points than typical bucket count, use raw data
@@ -974,7 +1071,8 @@ export async function buildPublicStatusPagePayload(params: {
             };
           });
 
-        return { monitorId, chartData };
+        responseTimeChartDataByMonitor.set(monitorId, chartData);
+        continue;
       }
 
       // Aggregate into time buckets based on calculated bucket size
@@ -1029,13 +1127,7 @@ export async function buildPublicStatusPagePayload(params: {
         }))
         .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
-      return { monitorId, chartData };
-    }, 4);
-
-    for (const result of chartResults) {
-      if (result) {
-        responseTimeChartDataByMonitor.set(result.monitorId, result.chartData);
-      }
+      responseTimeChartDataByMonitor.set(monitorId, chartData);
     }
   }
 
@@ -1141,7 +1233,7 @@ export async function buildPublicStatusPagePayload(params: {
     where: eq(crowdsourcedSettings.statusPageId, page.id),
   });
 
-  let reportCounts: Record<string, number> = {};
+  const reportCounts: Record<string, number> = {};
   if (crowdsourcedSettingsData?.enabled && monitorIds.length > 0) {
     const now = new Date();
     const counts = await db

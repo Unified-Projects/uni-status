@@ -42,6 +42,92 @@ function isInlineReportMode() {
   );
 }
 
+const STALE_REPORT_TIMEOUT_MINUTES = (() => {
+  const raw = Number.parseInt(process.env.REPORT_STALE_TIMEOUT_MINUTES || "30", 10);
+  if (!Number.isFinite(raw) || raw < 1) return 30;
+  return Math.min(raw, 24 * 60);
+})();
+
+function isReportStale(createdAt: Date): boolean {
+  const ageMs = Date.now() - createdAt.getTime();
+  return ageMs >= STALE_REPORT_TIMEOUT_MINUTES * 60 * 1000;
+}
+
+function getStaleReportErrorMessage() {
+  return `Report generation timed out and stale state was repaired automatically after ${STALE_REPORT_TIMEOUT_MINUTES} minutes.`;
+}
+
+async function repairStaleReportsForOrganization(organizationId: string): Promise<number> {
+  const cutoff = new Date(Date.now() - STALE_REPORT_TIMEOUT_MINUTES * 60 * 1000);
+
+  const staleReports = await db.query.slaReports.findMany({
+    where: and(
+      eq(slaReports.organizationId, organizationId),
+      inArray(slaReports.status, ["pending", "generating"] as ("pending" | "generating")[]),
+      lte(slaReports.createdAt, cutoff)
+    ),
+    columns: { id: true },
+  });
+
+  if (staleReports.length === 0) {
+    return 0;
+  }
+
+  const staleIds = staleReports.map((report) => report.id);
+  const repaired = await db
+    .update(slaReports)
+    .set({
+      status: "failed",
+      errorMessage: getStaleReportErrorMessage(),
+    })
+    .where(
+      and(
+        eq(slaReports.organizationId, organizationId),
+        inArray(slaReports.id, staleIds),
+        inArray(slaReports.status, ["pending", "generating"] as ("pending" | "generating")[])
+      )
+    )
+    .returning({ id: slaReports.id });
+
+  if (repaired.length > 0) {
+    log.warn({ organizationId, repairedCount: repaired.length }, "[reports] Repaired stale report states");
+  }
+
+  return repaired.length;
+}
+
+async function repairStaleReportIfNeeded(reportId: string, organizationId?: string): Promise<void> {
+  const whereClause = organizationId
+    ? and(eq(slaReports.id, reportId), eq(slaReports.organizationId, organizationId))
+    : eq(slaReports.id, reportId);
+
+  const report = await db.query.slaReports.findFirst({
+    where: whereClause,
+    columns: {
+      id: true,
+      status: true,
+      createdAt: true,
+    },
+  });
+
+  if (!report) return;
+  if (!(report.status === "pending" || report.status === "generating")) return;
+  if (!isReportStale(report.createdAt)) return;
+
+  const repaired = await db
+    .update(slaReports)
+    .set({
+      status: "failed",
+      errorMessage: getStaleReportErrorMessage(),
+    })
+    .where(and(whereClause, inArray(slaReports.status, ["pending", "generating"] as ("pending" | "generating")[])))
+    .returning({ id: slaReports.id });
+
+  if (repaired.length > 0) {
+    log.warn({ reportId }, "[reports] Repaired stale report state");
+  }
+}
+
 
 // ==========================================
 // Report Settings (Automated Reports)
@@ -561,6 +647,7 @@ reportsRoutes.post("/generate", async (c) => {
   };
 
   // Queue report generation job
+  let queueAccepted = false;
   try {
     const queue = getQueue(QUEUE_NAMES.REPORT_GENERATE);
     await queue.add(
@@ -574,13 +661,14 @@ reportsRoutes.post("/generate", async (c) => {
         },
       }
     );
+    queueAccepted = true;
   } catch (error) {
     log.warn("[reports] Queueing report generation failed, continuing inline:", error);
   }
 
-  // In test/CI environments we still kick off inline processing,
-  // but do it in the background so the immediate response remains pending.
-  const shouldProcessInline = isInlineReportMode();
+  // In test/CI environments we always process inline.
+  // In production, if queueing fails we process inline as a fallback to avoid stale pending reports.
+  const shouldProcessInline = isInlineReportMode() || !queueAccepted;
   if (shouldProcessInline) {
     setTimeout(() => {
       (async () => {
@@ -640,6 +728,7 @@ reportsRoutes.post("/generate", async (c) => {
 // List generated reports
 reportsRoutes.get("/", async (c) => {
   const organizationId = await requireOrganization(c);
+  await repairStaleReportsForOrganization(organizationId);
 
   const limit = Math.min(Math.max(parseInt(c.req.query("limit") || "20"), 1), 100);
   const offset = Math.max(parseInt(c.req.query("offset") || "0"), 0);
@@ -967,6 +1056,7 @@ reportsRoutes.get("/:id", async (c) => {
   try {
     const organizationId = await requireOrganization(c);
     const { id } = c.req.param();
+    await repairStaleReportIfNeeded(id, organizationId);
 
     // Query report without relations first to avoid potential relation resolution issues
     const report = await db.query.slaReports.findFirst({
@@ -1008,6 +1098,7 @@ reportsRoutes.get("/:id", async (c) => {
 reportsRoutes.get("/:id/download", async (c) => {
   const auth = requireAuth(c);
   const { id } = c.req.param();
+  await repairStaleReportIfNeeded(id, auth.organizationId || undefined);
 
   const report = await db.query.slaReports.findFirst({
     where: eq(slaReports.id, id),

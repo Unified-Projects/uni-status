@@ -576,6 +576,7 @@ export interface DashboardAnalytics {
   monitors: {
     total: number;
     byStatus: Record<string, number>;
+    issues: Array<Pick<Monitor, "id" | "name" | "url" | "status">>;
   };
   incidents: {
     active: number;

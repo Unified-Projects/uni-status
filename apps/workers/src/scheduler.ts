@@ -17,6 +17,8 @@ const REPORT_SCHEDULE_INTERVAL = 60000; // 1 minute for scheduled report checks
 const AGGREGATION_POLL_INTERVAL = 300000; // 5 minutes for response time aggregation
 const DAILY_AGGREGATION_POLL_INTERVAL = 3600000; // 1 hour for daily aggregation (catches up on missing days)
 const CERT_CHECK_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours for certificate checks on HTTPS monitors
+const STALE_REPORT_INTERVAL = 120000; // 2 minutes for stale report recovery
+const STALE_REPORT_THRESHOLD = 600000; // 10 minutes before a report is considered stuck
 
 let monitorIntervalId: ReturnType<typeof setInterval> | null = null;
 let maintenanceIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -26,6 +28,7 @@ let reportScheduleIntervalId: ReturnType<typeof setInterval> | null = null;
 let aggregationIntervalId: ReturnType<typeof setInterval> | null = null;
 let dailyAggregationIntervalId: ReturnType<typeof setInterval> | null = null;
 let certCheckIntervalId: ReturnType<typeof setInterval> | null = null;
+let staleReportIntervalId: ReturnType<typeof setInterval> | null = null;
 
 const queueOpts = { connection, prefix: queuePrefix };
 
@@ -833,6 +836,59 @@ async function pollCertificateChecks() {
 }
 
 
+// Poll for stuck reports and mark them as failed
+async function pollStaleReports() {
+  const now = new Date();
+  const staleThreshold = new Date(now.getTime() - STALE_REPORT_THRESHOLD);
+
+  try {
+    // Enterprise feature - check if slaReports schema is available
+    type EnterpriseSchema = typeof import("@uni-status/enterprise/database/schema");
+    let slaReports: EnterpriseSchema["slaReports"];
+    try {
+      const enterpriseSchema = await import("@uni-status/enterprise/database/schema");
+      slaReports = enterpriseSchema.slaReports;
+    } catch {
+      // Enterprise package not available, skip stale report recovery
+      return;
+    }
+
+    // Find reports stuck in "generating" or "pending" that were created more than 10 minutes ago
+    const stuckReports = await db
+      .select()
+      .from(slaReports)
+      .where(
+        and(
+          or(
+            eq(slaReports.status, "generating"),
+            eq(slaReports.status, "pending")
+          ),
+          lt(slaReports.createdAt, staleThreshold)
+        )
+      );
+
+    if (stuckReports.length === 0) {
+      return;
+    }
+
+    log.info({ reportCount: stuckReports.length }, 'Found stuck reports, recovering');
+
+    for (const report of stuckReports) {
+      await db
+        .update(slaReports)
+        .set({
+          status: "failed",
+          errorMessage: "Report generation timed out - automatically recovered",
+        })
+        .where(eq(slaReports.id, report.id));
+
+      log.info({ reportId: report.id, previousStatus: report.status, organizationId: report.organizationId }, 'Stuck report marked as failed');
+    }
+  } catch (error) {
+    log.error({ err: error }, 'Error polling stale reports');
+  }
+}
+
 export const scheduler = {
   start: () => {
     log.info('Starting schedulers');
@@ -873,6 +929,11 @@ export const scheduler = {
     // Run initial certificate check immediately
     pollCertificateChecks();
 
+    // Stale report recovery polling
+    staleReportIntervalId = setInterval(pollStaleReports, STALE_REPORT_INTERVAL);
+    // Delay initial check to avoid startup burst
+    setTimeout(pollStaleReports, 30000);
+
     log.info('Monitor scheduler started (10s interval)');
     log.info('Maintenance notification scheduler started (30s interval)');
     log.info('SLO calculation scheduler started (5m interval)');
@@ -881,6 +942,7 @@ export const scheduler = {
     log.info('Aggregation scheduler started (5m interval)');
     log.info('Daily aggregation scheduler started (1h interval)');
     log.info('Certificate check scheduler started (24h interval)');
+    log.info('Stale report recovery scheduler started (2m interval)');
   },
 
   stop: () => {
@@ -915,6 +977,10 @@ export const scheduler = {
     if (certCheckIntervalId) {
       clearInterval(certCheckIntervalId);
       certCheckIntervalId = null;
+    }
+    if (staleReportIntervalId) {
+      clearInterval(staleReportIntervalId);
+      staleReportIntervalId = null;
     }
     log.info('All schedulers stopped');
   },

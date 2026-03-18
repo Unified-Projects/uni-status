@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { getStatusPageShellData, buildThemeStyles } from "@/lib/public-status-page-api";
 import { StatusPageProvider } from "./status-page-context";
+import { StatusPageThemeProvider } from "./status-page-theme-provider";
 
 export default async function StatusPageLayout({
   children,
@@ -36,16 +37,18 @@ export default async function StatusPageLayout({
   }));
 
   return (
-    <StatusPageProvider value={{ name: data.name, slug, monitors }}>
-      {colorModeScript && (
-        <script dangerouslySetInnerHTML={{ __html: colorModeScript }} />
-      )}
-      <div style={themeStyles}>
-        {data.theme.customCss && (
-          <style dangerouslySetInnerHTML={{ __html: data.theme.customCss }} />
+    <StatusPageThemeProvider colorMode={data.theme.colorMode}>
+      <StatusPageProvider value={{ name: data.name, slug, monitors }}>
+        {colorModeScript && (
+          <script dangerouslySetInnerHTML={{ __html: colorModeScript }} />
         )}
-        {children}
-      </div>
-    </StatusPageProvider>
+        <div style={themeStyles}>
+          {data.theme.customCss && (
+            <style dangerouslySetInnerHTML={{ __html: data.theme.customCss }} />
+          )}
+          {children}
+        </div>
+      </StatusPageProvider>
+    </StatusPageThemeProvider>
   );
 }
