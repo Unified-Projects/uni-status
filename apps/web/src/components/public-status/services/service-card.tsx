@@ -410,7 +410,7 @@ export function ServiceCard({ service, statusPageSlug, basePath, settings }: Ser
             <div>
               <div className="flex items-center justify-between mb-2">
                 <div className="text-xs font-medium text-[var(--status-muted-text)]">
-                  {getPrimaryMetricLabel(service.type)} Times (30 days)
+                  {getPrimaryMetricLabel(service.type)} Times (45 days)
                 </div>
                 <div className="flex gap-1">
                   {(["p50", "p95", "p99"] as const).map((p) => (

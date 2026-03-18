@@ -1695,9 +1695,9 @@ publicRoutes.get("/status-pages/:slug/services", async (c) => {
     });
   }
 
-  // Get daily aggregate data for last 30 days (for P50/P95/P99)
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  // Get daily aggregate data for last 45 days (for P50/P95/P99)
+  const fortyFiveDaysAgo = new Date();
+  fortyFiveDaysAgo.setDate(fortyFiveDaysAgo.getDate() - 45);
 
   const dailyAggregates = await db
     .select({
@@ -1715,7 +1715,7 @@ publicRoutes.get("/status-pages/:slug/services", async (c) => {
     .where(
       and(
         inArray(checkResultsDaily.monitorId, monitorIds),
-        gte(checkResultsDaily.date, thirtyDaysAgo)
+        gte(checkResultsDaily.date, fortyFiveDaysAgo)
       )
     )
     .groupBy(checkResultsDaily.monitorId);

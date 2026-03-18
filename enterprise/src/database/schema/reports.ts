@@ -115,13 +115,27 @@ export const slaReports = pgTable(
     errorMessage: text("error_message"),
     // Report content summary (for quick display without downloading)
     summary: jsonb("summary").$type<{
+      reportId?: string;
+      reportType?: string;
+      periodStart?: string;
+      periodEnd?: string;
+      generatedAt?: string;
       monitorCount?: number;
       incidentCount?: number;
+      criticalIncidents?: number;
+      majorIncidents?: number;
+      minorIncidents?: number;
       uptimePercentage?: number;
       avgResponseTime?: number;
       slosMet?: number;
       slosBreached?: number;
       maintenanceWindows?: number;
+      totalDowntimeMinutes?: number;
+      includeCharts?: boolean;
+      includeIncidents?: boolean;
+      includeMaintenanceWindows?: boolean;
+      includeResponseTimes?: boolean;
+      includeSloStatus?: boolean;
     }>().default({}),
     // Which monitors/pages were included
     includedMonitors: jsonb("included_monitors").$type<string[]>().default([]),

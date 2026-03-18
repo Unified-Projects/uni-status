@@ -88,8 +88,8 @@ interface DashboardState {
   setUptimeDays: (days: number) => void;
   uptimeGranularity: "minute" | "hour" | "day" | "auto";
   setUptimeGranularity: (granularity: "minute" | "hour" | "day" | "auto") => void;
-  responseTimeHours: 1 | 6 | 24 | 168 | 720; // 1h, 6h, 24h, 7d, 30d
-  setResponseTimeHours: (hours: 1 | 6 | 24 | 168 | 720) => void;
+  responseTimeHours: 1 | 6 | 24 | 168 | 1080; // 1h, 6h, 24h, 7d, 45d
+  setResponseTimeHours: (hours: 1 | 6 | 24 | 168 | 1080) => void;
 }
 
 const defaultMonitorFilters: MonitorFilters = {

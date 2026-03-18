@@ -457,8 +457,8 @@ analyticsRoutes.get("/response-times", async (c) => {
   // 12-24 hours: 5-minute buckets (~288 points)
   // 24-72 hours: 10-minute buckets (~432 points)
   // 72-168 hours (7d): 15-minute buckets (~672 points)
-  // 168-720 hours (30d): hourly buckets (~720 points)
-  // > 720 hours: 2-hour buckets
+  // 168-1080 hours (45d): hourly buckets (~1080 points)
+  // > 1080 hours: 2-hour buckets
   type Granularity = "raw" | "2min" | "5min" | "10min" | "15min" | "hourly" | "2hour";
   const granularity: Granularity =
     hours <= 3 ? "raw" :
@@ -466,7 +466,7 @@ analyticsRoutes.get("/response-times", async (c) => {
     hours <= 24 ? "5min" :
     hours <= 72 ? "10min" :
     hours <= 168 ? "15min" :
-    hours <= 720 ? "hourly" :
+    hours <= 1080 ? "hourly" :
     "2hour";
 
   // Always fetch raw check results first
@@ -962,9 +962,9 @@ analyticsRoutes.get("/dashboard", async (c) => {
     limit: 10,
   });
 
-  // Calculate overall uptime from last 30 days
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  // Calculate overall uptime from last 45 days
+  const fortyFiveDaysAgo = new Date();
+  fortyFiveDaysAgo.setDate(fortyFiveDaysAgo.getDate() - 45);
 
   let overallUptime: number | null = null;
   let uptimeTrend: Array<{ date: string; uptime: number }> = [];
@@ -983,7 +983,7 @@ analyticsRoutes.get("/dashboard", async (c) => {
       .where(
         and(
           inArray(checkResults.monitorId, monitorIds),
-          gte(checkResults.createdAt, thirtyDaysAgo)
+          gte(checkResults.createdAt, fortyFiveDaysAgo)
         )
       );
 
@@ -1006,7 +1006,7 @@ analyticsRoutes.get("/dashboard", async (c) => {
       .where(
         and(
           inArray(checkResults.monitorId, monitorIds),
-          gte(checkResults.createdAt, thirtyDaysAgo)
+          gte(checkResults.createdAt, fortyFiveDaysAgo)
         )
       )
       .groupBy(sql`DATE(${checkResults.createdAt})`)

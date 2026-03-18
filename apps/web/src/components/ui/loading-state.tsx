@@ -4,17 +4,32 @@ import { Skeleton, Card, CardContent, CardHeader } from "@uni-status/ui";
 import { cn } from "@uni-status/ui";
 
 export interface LoadingStateProps {
-  variant?: "card" | "table" | "list" | "stats" | "page" | "template";
+  variant?: "card" | "table" | "list" | "stats" | "page" | "template" | "inline";
   count?: number;
+  title?: string;
+  message?: string;
   className?: string;
 }
 
 export function LoadingState({
   variant = "card",
   count = 3,
+  title,
+  message,
   className,
 }: LoadingStateProps) {
   switch (variant) {
+    case "inline":
+      return (
+        <div className={cn("flex items-start gap-3 rounded-md border bg-muted/30 p-3", className)}>
+          <div className="mt-0.5 h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <div className="space-y-0.5">
+            <p className="text-sm font-medium">{title || "Loading..."}</p>
+            {message && <p className="text-xs text-muted-foreground">{message}</p>}
+          </div>
+        </div>
+      );
+
     case "stats":
       return (
         <div className={cn("grid gap-4 md:grid-cols-2 lg:grid-cols-4", className)}>

@@ -80,13 +80,13 @@ export default function DashboardPage() {
           iconColor={activeIncidents > 0 ? "text-yellow-500" : "text-muted-foreground"}
         />
         <StatCard
-          title="Uptime (30d)"
+          title="Uptime (45d)"
           value={
             analytics?.uptime?.average != null
               ? `${analytics.uptime.average.toFixed(2)}%`
               : "--%"
           }
-          description="Average uptime"
+          description="Average uptime (last 45 days)"
           icon={Clock}
           iconColor="text-muted-foreground"
         />

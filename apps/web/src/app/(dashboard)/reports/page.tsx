@@ -77,7 +77,7 @@ export default function ReportsPage() {
   // Form state for creating scheduled reports
   const [scheduleForm, setScheduleForm] = useState({
     name: "",
-    reportType: "sla" as "sla" | "uptime" | "incident" | "executive",
+    reportType: "sla" as "sla" | "uptime" | "incident" | "performance" | "executive",
     frequency: "monthly" as "weekly" | "monthly" | "quarterly" | "annually",
     includeAllMonitors: true,
     monitorIds: [] as string[],
@@ -257,6 +257,8 @@ export default function ReportsPage() {
         return "Uptime Report";
       case "incident":
         return "Incident Report";
+      case "performance":
+        return "Performance Report";
       case "executive":
         return "Executive Summary";
       default:
@@ -442,6 +444,7 @@ export default function ReportsPage() {
                   <SelectItem value="sla">SLA Report</SelectItem>
                   <SelectItem value="uptime">Uptime Report</SelectItem>
                   <SelectItem value="incident">Incident Report</SelectItem>
+                  <SelectItem value="performance">Performance Report</SelectItem>
                   <SelectItem value="executive">Executive Summary</SelectItem>
                 </SelectContent>
               </Select>
@@ -558,7 +561,7 @@ export default function ReportsPage() {
               <Label htmlFor="scheduleReportType">Report Type</Label>
               <Select
                 value={scheduleForm.reportType}
-                onValueChange={(value: "sla" | "uptime" | "incident" | "executive") =>
+                onValueChange={(value: "sla" | "uptime" | "incident" | "performance" | "executive") =>
                   setScheduleForm({ ...scheduleForm, reportType: value })
                 }
               >
@@ -569,6 +572,7 @@ export default function ReportsPage() {
                   <SelectItem value="sla">SLA Report</SelectItem>
                   <SelectItem value="uptime">Uptime Report</SelectItem>
                   <SelectItem value="incident">Incident Report</SelectItem>
+                  <SelectItem value="performance">Performance Report</SelectItem>
                   <SelectItem value="executive">Executive Summary</SelectItem>
                 </SelectContent>
               </Select>

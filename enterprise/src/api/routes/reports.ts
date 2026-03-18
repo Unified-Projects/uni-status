@@ -654,6 +654,7 @@ reportsRoutes.post("/generate", async (c) => {
       "generate",
       jobData,
       {
+        jobId: `report-generate-${id}`,
         attempts: 3,
         backoff: {
           type: "exponential",
@@ -688,6 +689,36 @@ reportsRoutes.post("/generate", async (c) => {
         }
       })().catch((err) => log.error("[reports] Inline processing error:", err));
     }, 100);
+  } else {
+    // Self-heal queue handoff issues: if no worker has claimed the report after a short delay,
+    // process it inline to avoid leaving reports indefinitely pending.
+    setTimeout(() => {
+      (async () => {
+        try {
+          const current = await db.query.slaReports.findFirst({
+            where: eq(slaReports.id, id),
+            columns: { status: true },
+          });
+
+          if (!current || current.status !== "pending") {
+            return;
+          }
+
+          log.warn({ reportId: id }, "[reports] Report still pending after queue handoff delay, running inline fallback");
+          const { processReportGeneration } = await import("../../workers/processors/report-generator");
+          await processReportGeneration({ data: jobData } as any);
+        } catch (error) {
+          log.error("[reports] Delayed inline fallback failed:", error);
+          await db
+            .update(slaReports)
+            .set({
+              status: "failed",
+              errorMessage: error instanceof Error ? error.message : "Unknown error during report generation",
+            })
+            .where(and(eq(slaReports.id, id), eq(slaReports.status, "pending")));
+        }
+      })().catch((err) => log.error("[reports] Delayed inline fallback processing error:", err));
+    }, 15000);
   }
 
   // Publish event

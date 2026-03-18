@@ -39,6 +39,7 @@ interface ReportGenerateJobData {
 }
 
 interface ReportData {
+  reportId: string;
   reportType: string;
   periodStart: Date;
   periodEnd: Date;
@@ -49,6 +50,7 @@ interface ReportData {
   slos: SloReportData[];
   summary: ReportSummary;
   branding: BrandingData;
+  settings: ReportGenerateJobData["settings"];
 }
 
 interface MonitorReportData {
@@ -255,15 +257,17 @@ async function gatherReportData(
   );
 
   // Get incidents
-  const incidentsList = await db.query.incidents.findMany({
-    where: and(
-      eq(incidents.organizationId, jobData.organizationId),
-      gte(incidents.startedAt, periodStart),
-      lte(incidents.startedAt, periodEnd)
-    ),
-    orderBy: [desc(incidents.startedAt)],
-    with: {},
-  });
+  const incidentsList = jobData.settings.includeIncidents
+    ? await db.query.incidents.findMany({
+        where: and(
+          eq(incidents.organizationId, jobData.organizationId),
+          gte(incidents.startedAt, periodStart),
+          lte(incidents.startedAt, periodEnd)
+        ),
+        orderBy: [desc(incidents.startedAt)],
+        with: {},
+      })
+    : [];
 
   const incidentData: IncidentReportData[] = incidentsList.map((incident) => {
     const resolvedAt = incident.resolvedAt;
@@ -386,6 +390,7 @@ async function gatherReportData(
   };
 
   return {
+    reportId: jobData.reportId,
     reportType: jobData.reportType,
     periodStart,
     periodEnd,
@@ -396,6 +401,7 @@ async function gatherReportData(
     slos: sloData,
     summary,
     branding,
+    settings: jobData.settings,
   };
 }
 
@@ -651,6 +657,42 @@ function formatDateTime(date: Date): string {
   });
 }
 
+function renderUptimeCell(uptimePercentage: number, primaryColor: string, includeCharts: boolean): string {
+  if (!includeCharts) {
+    return `${uptimePercentage.toFixed(2)}%`;
+  }
+
+  return `
+    <div class="uptime-bar"><div class="uptime-fill" style="width: ${uptimePercentage}%; background: ${primaryColor};"></div></div>
+    ${uptimePercentage.toFixed(2)}%
+  `;
+}
+
+function renderAuditMetadata(data: ReportData): string {
+  return `
+    <div class="section">
+      <div class="section-title">Audit Metadata</div>
+      <table>
+        <tbody>
+          <tr><th>Report ID</th><td>${data.reportId}</td></tr>
+          <tr><th>Report Type</th><td>${data.reportType.toUpperCase()}</td></tr>
+          <tr><th>Period Start</th><td>${formatDateTime(data.periodStart)}</td></tr>
+          <tr><th>Period End</th><td>${formatDateTime(data.periodEnd)}</td></tr>
+          <tr><th>Generated At</th><td>${formatDateTime(data.generatedAt)}</td></tr>
+          <tr><th>Included Monitors</th><td>${data.monitors.length}</td></tr>
+          <tr><th>Included Incidents</th><td>${data.incidents.length}</td></tr>
+          <tr><th>Included Maintenance Windows</th><td>${data.maintenanceWindows.length}</td></tr>
+          <tr><th>Included SLOs</th><td>${data.slos.length}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function formatResponseTime(valueMs: number, includeResponseTimes: boolean): string {
+  return includeResponseTimes ? `${Math.round(valueMs)}ms` : "N/A";
+}
+
 // Generate SLA Report HTML
 function generateSlaReportHtml(data: ReportData): string {
   return `
@@ -814,6 +856,8 @@ function generateSlaReportHtml(data: ReportData): string {
       ${data.branding.logoUrl ? `<img src="${data.branding.logoUrl}" class="logo" alt="Logo">` : ""}
     </div>
 
+    ${renderAuditMetadata(data)}
+
     <div class="section">
       <div class="section-title">Executive Summary</div>
       <div class="summary-grid">
@@ -822,7 +866,7 @@ function generateSlaReportHtml(data: ReportData): string {
           <div class="summary-label">Overall Uptime</div>
         </div>
         <div class="summary-card">
-          <div class="summary-value">${Math.round(data.summary.avgResponseTime)}ms</div>
+          <div class="summary-value">${formatResponseTime(data.summary.avgResponseTime, data.settings.includeResponseTimes)}</div>
           <div class="summary-label">Avg Response Time</div>
         </div>
         <div class="summary-card">
@@ -865,10 +909,9 @@ function generateSlaReportHtml(data: ReportData): string {
             <td><strong>${m.name}</strong></td>
             <td>${m.type.toUpperCase()}</td>
             <td>
-              <div class="uptime-bar"><div class="uptime-fill" style="width: ${m.uptimePercentage}%"></div></div>
-              ${m.uptimePercentage.toFixed(2)}%
+              ${renderUptimeCell(m.uptimePercentage, data.branding.primaryColor, data.settings.includeCharts)}
             </td>
-            <td>${Math.round(m.avgResponseTime)}ms</td>
+            <td>${formatResponseTime(m.avgResponseTime, data.settings.includeResponseTimes)}</td>
             <td>${m.totalChecks.toLocaleString()}</td>
             <td>
               <span class="status-badge ${m.uptimePercentage >= 99.9 ? "status-healthy" : m.uptimePercentage >= 99 ? "status-warning" : "status-danger"}">
@@ -909,7 +952,11 @@ function generateSlaReportHtml(data: ReportData): string {
             <td>${s.targetPercentage.toFixed(2)}%</td>
             <td>${s.actualPercentage.toFixed(2)}%</td>
             <td>
-              <div class="uptime-bar"><div class="uptime-fill" style="width: ${Math.min(100, (s.consumedMinutes / s.budgetMinutes) * 100)}%; background: ${s.breached ? "#ef4444" : data.branding.primaryColor}"></div></div>
+              ${
+                data.settings.includeCharts
+                  ? `<div class="uptime-bar"><div class="uptime-fill" style="width: ${Math.min(100, (s.consumedMinutes / s.budgetMinutes) * 100)}%; background: ${s.breached ? "#ef4444" : data.branding.primaryColor}"></div></div>`
+                  : ""
+              }
               ${((s.consumedMinutes / s.budgetMinutes) * 100).toFixed(1)}%
             </td>
             <td>
@@ -1000,6 +1047,8 @@ function generateUptimeReportHtml(data: ReportData): string {
       ${data.branding.logoUrl ? `<img src="${data.branding.logoUrl}" class="logo" alt="Logo">` : ""}
     </div>
 
+    ${renderAuditMetadata(data)}
+
     <div class="section">
       <div class="section-title">Availability Overview</div>
       <div class="summary-grid">
@@ -1046,8 +1095,7 @@ function generateUptimeReportHtml(data: ReportData): string {
             <td><strong>${m.name}</strong></td>
             <td>${m.type.toUpperCase()}</td>
             <td>
-              <div class="uptime-bar"><div class="uptime-fill" style="width: ${m.uptimePercentage}%"></div></div>
-              ${m.uptimePercentage.toFixed(3)}%
+              ${renderUptimeCell(m.uptimePercentage, data.branding.primaryColor, data.settings.includeCharts)}
             </td>
             <td>${formatDuration(m.downtimeMinutes)}</td>
             <td>${m.totalChecks.toLocaleString()}</td>
@@ -1118,6 +1166,8 @@ function generateIncidentReportHtml(data: ReportData): string {
       </div>
       ${data.branding.logoUrl ? `<img src="${data.branding.logoUrl}" class="logo" alt="Logo">` : ""}
     </div>
+
+    ${renderAuditMetadata(data)}
 
     <div class="section">
       <div class="section-title">Incident Summary</div>
@@ -1259,19 +1309,21 @@ function generatePerformanceReportHtml(data: ReportData): string {
       ${data.branding.logoUrl ? `<img src="${data.branding.logoUrl}" class="logo" alt="Logo">` : ""}
     </div>
 
+    ${renderAuditMetadata(data)}
+
     <div class="section">
       <div class="section-title">Performance Overview</div>
       <div class="summary-grid">
         <div class="summary-card">
-          <div class="summary-value${avgResponseTime > 1000 ? " warning" : ""}${avgResponseTime > 3000 ? " danger" : ""}">${Math.round(avgResponseTime)}ms</div>
+          <div class="summary-value${avgResponseTime > 1000 ? " warning" : ""}${avgResponseTime > 3000 ? " danger" : ""}">${formatResponseTime(avgResponseTime, data.settings.includeResponseTimes)}</div>
           <div class="summary-label">Avg Response Time</div>
         </div>
         <div class="summary-card">
-          <div class="summary-value">${fastestMonitor ? Math.round(fastestMonitor.avgResponseTime) : 0}ms</div>
+          <div class="summary-value">${fastestMonitor ? formatResponseTime(fastestMonitor.avgResponseTime, data.settings.includeResponseTimes) : "N/A"}</div>
           <div class="summary-label">Fastest Response</div>
         </div>
         <div class="summary-card">
-          <div class="summary-value${slowestMonitor && slowestMonitor.avgResponseTime > 2000 ? " warning" : ""}">${slowestMonitor ? Math.round(slowestMonitor.avgResponseTime) : 0}ms</div>
+          <div class="summary-value${slowestMonitor && slowestMonitor.avgResponseTime > 2000 ? " warning" : ""}">${slowestMonitor ? formatResponseTime(slowestMonitor.avgResponseTime, data.settings.includeResponseTimes) : "N/A"}</div>
           <div class="summary-label">Slowest Response</div>
         </div>
         <div class="summary-card">
@@ -1291,8 +1343,8 @@ function generatePerformanceReportHtml(data: ReportData): string {
       ${fastestMonitor && slowestMonitor ? `
       <div class="highlight-box">
         <strong>Performance Highlights:</strong><br>
-        Fastest: <strong>${fastestMonitor.name}</strong> (${Math.round(fastestMonitor.avgResponseTime)}ms avg)<br>
-        Slowest: <strong>${slowestMonitor.name}</strong> (${Math.round(slowestMonitor.avgResponseTime)}ms avg)
+        Fastest: <strong>${fastestMonitor.name}</strong> (${formatResponseTime(fastestMonitor.avgResponseTime, data.settings.includeResponseTimes)} avg)<br>
+        Slowest: <strong>${slowestMonitor.name}</strong> (${formatResponseTime(slowestMonitor.avgResponseTime, data.settings.includeResponseTimes)} avg)
       </div>
       ` : ""}
     </div>
@@ -1325,7 +1377,7 @@ function generatePerformanceReportHtml(data: ReportData): string {
           <tr>
             <td><strong>${m.name}</strong></td>
             <td>${m.type.toUpperCase()}</td>
-            <td>${Math.round(m.avgResponseTime)}ms</td>
+            <td>${formatResponseTime(m.avgResponseTime, data.settings.includeResponseTimes)}</td>
             <td>${m.totalChecks.toLocaleString()}</td>
             <td>${m.uptimePercentage.toFixed(2)}%</td>
             <td>
@@ -1378,6 +1430,8 @@ function generateExecutiveReportHtml(data: ReportData): string {
       ${data.branding.logoUrl ? `<img src="${data.branding.logoUrl}" class="logo" alt="Logo">` : ""}
     </div>
 
+    ${renderAuditMetadata(data)}
+
     <div class="section">
       <div class="section-title">Service Health at a Glance</div>
       <div class="highlight-box" style="text-align: center; padding: 32px;">
@@ -1399,7 +1453,7 @@ function generateExecutiveReportHtml(data: ReportData): string {
           <div class="summary-label">Services Monitored</div>
         </div>
         <div class="summary-card">
-          <div class="summary-value">${Math.round(data.summary.avgResponseTime)}ms</div>
+          <div class="summary-value">${formatResponseTime(data.summary.avgResponseTime, data.settings.includeResponseTimes)}</div>
           <div class="summary-label">Avg Response Time</div>
         </div>
         <div class="summary-card">
@@ -1462,10 +1516,9 @@ function generateExecutiveReportHtml(data: ReportData): string {
           <tr>
             <td><strong>${m.name}</strong></td>
             <td>
-              <div class="uptime-bar"><div class="uptime-fill" style="width: ${m.uptimePercentage}%"></div></div>
-              ${m.uptimePercentage.toFixed(2)}%
+              ${renderUptimeCell(m.uptimePercentage, data.branding.primaryColor, data.settings.includeCharts)}
             </td>
-            <td>${Math.round(m.avgResponseTime)}ms</td>
+            <td>${formatResponseTime(m.avgResponseTime, data.settings.includeResponseTimes)}</td>
             <td>
               <span class="status-badge ${m.uptimePercentage >= 99.9 ? "status-healthy" : m.uptimePercentage >= 99 ? "status-warning" : "status-danger"}">
                 ${m.uptimePercentage >= 99.9 ? "Healthy" : m.uptimePercentage >= 99 ? "Degraded" : "Issues"}
@@ -1605,11 +1658,25 @@ export async function processReportGeneration(
   const startTime = Date.now();
 
   try {
-    // Update status to generating
-    await db
+    // Atomically claim pending reports to avoid duplicate processing.
+    const claim = await db
       .update(slaReports)
       .set({ status: "generating" })
-      .where(eq(slaReports.id, reportId));
+      .where(and(eq(slaReports.id, reportId), eq(slaReports.status, "pending")))
+      .returning({ id: slaReports.id });
+
+    if (claim.length === 0) {
+      const existing = await db.query.slaReports.findFirst({
+        where: eq(slaReports.id, reportId),
+        columns: { status: true },
+      });
+
+      log.info(
+        { reportId, status: existing?.status ?? "unknown" },
+        "Skipping report generation: report is not claimable from pending state"
+      );
+      return;
+    }
 
     // Step 1: Gather report data
     log.info({ reportId }, 'Step 1: Gathering data');
@@ -1714,13 +1781,27 @@ export async function processReportGeneration(
         generatedAt: new Date(),
         generationDurationMs: generationDuration,
         summary: {
+          reportId,
+          reportType: job.data.reportType,
+          periodStart: job.data.periodStart,
+          periodEnd: job.data.periodEnd,
+          generatedAt: new Date().toISOString(),
           monitorCount: reportData.summary.totalMonitors,
           incidentCount: reportData.summary.totalIncidents,
+          criticalIncidents: reportData.summary.criticalIncidents,
+          majorIncidents: reportData.summary.majorIncidents,
+          minorIncidents: reportData.summary.minorIncidents,
           uptimePercentage: reportData.summary.overallUptime,
           avgResponseTime: reportData.summary.avgResponseTime,
           slosMet: reportData.summary.slosMet,
           slosBreached: reportData.summary.slosBreached,
           maintenanceWindows: reportData.summary.maintenanceWindowCount,
+          totalDowntimeMinutes: reportData.summary.totalDowntimeMinutes,
+          includeCharts: job.data.settings.includeCharts,
+          includeIncidents: job.data.settings.includeIncidents,
+          includeMaintenanceWindows: job.data.settings.includeMaintenanceWindows,
+          includeResponseTimes: job.data.settings.includeResponseTimes,
+          includeSloStatus: job.data.settings.includeSloStatus,
         },
       })
       .where(eq(slaReports.id, reportId));

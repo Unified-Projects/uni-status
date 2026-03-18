@@ -107,7 +107,7 @@ export default function DeploymentsPage() {
     isLoading: statsLoading,
   } = useQuery({
     queryKey: ["deployments", "stats", currentOrganizationId],
-    queryFn: () => apiClient.deployments.stats(30, currentOrganizationId || undefined),
+    queryFn: () => apiClient.deployments.stats(45, currentOrganizationId || undefined),
     enabled: !!currentOrganizationId,
   });
 
@@ -204,7 +204,7 @@ export default function DeploymentsPage() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardHeader className="pb-2">
-              <CardDescription>Total Deployments (30d)</CardDescription>
+              <CardDescription>Total Deployments (45d)</CardDescription>
               <CardTitle className="text-3xl">
                 {Object.values(stats.byStatus).reduce((a, b) => a + b, 0)}
               </CardTitle>

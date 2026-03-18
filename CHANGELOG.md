@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-03-18
+
+### Added
+- Added `performance` as a supported report type across reports UI, API types, and generation tests
+- Added monitor-level alert policy visibility on the dashboard monitor detail page, including policy scope, status, channels, and cooldown metadata
+- Added inline loading-state variant for contextual in-panel loading feedback
+- Added richer SLA report metadata and summary payload fields (report identity, incident severity counts, downtime, and included settings)
+
+### Changed
+- Expanded default analytics/reporting windows from 30 days to 45 days across dashboard uptime, response-time history, deployments stats, monitor uptime stats, public service metrics, and status feeds
+- Updated monitor response-time range selection and dashboard labels to reflect 45-day coverage
+- Updated status-page footer locale selector behavior to display only when non-English translations are actually configured
+
+### Fixed
+- Added atomic report claim logic to prevent duplicate generation attempts when reports are no longer pending
+- Added delayed self-healing inline fallback when queued reports remain unclaimed, reducing risk of stuck pending reports
+- Added stable report generation queue `jobId` assignment to improve queue handoff reliability and deduplication behavior
+
 ## [0.1.5] - 2026-03-18
 
 ### Added

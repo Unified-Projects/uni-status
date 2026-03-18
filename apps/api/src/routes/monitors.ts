@@ -136,9 +136,9 @@ monitorsRoutes.get("/", async (c) => {
 
   const monitorIds = result.map((m) => m.id);
 
-  // Get uptime stats for last 30 days
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  // Get uptime stats for last 45 days
+  const fortyFiveDaysAgo = new Date();
+  fortyFiveDaysAgo.setDate(fortyFiveDaysAgo.getDate() - 45);
 
   const uptimeStats = await db
     .select({
@@ -151,7 +151,7 @@ monitorsRoutes.get("/", async (c) => {
     .where(
       and(
         inArray(checkResults.monitorId, monitorIds),
-        gte(checkResults.createdAt, thirtyDaysAgo),
+        gte(checkResults.createdAt, fortyFiveDaysAgo),
         sql`COALESCE(${checkResults.metadata} ->> 'checkType', '') <> 'certificate_transparency'`
       )
     )

@@ -997,7 +997,7 @@ export async function buildPublicStatusPagePayload(params: {
       arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
 
     // Fetch response time data for charts (last uptimeDays in hours)
-    const hoursToFetch = Math.min(uptimeDays * 24, 720); // Max 30 days of data
+    const hoursToFetch = Math.min(uptimeDays * 24, 1080); // Max 45 days of data
     const chartStartDate = new Date();
     chartStartDate.setHours(chartStartDate.getHours() - hoursToFetch);
 

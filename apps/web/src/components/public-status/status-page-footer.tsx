@@ -29,6 +29,7 @@ interface StatusPageFooterProps {
   localization?: {
     defaultLocale?: string;
     supportedLocales?: string[];
+    translations?: Record<string, Record<string, string>>;
   };
 }
 
@@ -82,12 +83,17 @@ export function StatusPageFooter({
   );
 
   const availableLocales = (localization?.supportedLocales || supportedLocales).filter(Boolean);
-  // Only English translations exist currently - add more labels when translations are implemented
+  const translationLocales = Object.keys(localization?.translations || {}).filter((code) => code !== "en");
+  const hasNonEnglishTranslations = translationLocales.length > 0;
+  // Only English labels currently - extend when adding full locale support
   const localeLabels: Record<string, string> = {
     en: "English",
   };
-  // Only show language selector if multiple languages are available
-  const showLanguageSelector = availableLocales.length > 1 && availableLocales.some(code => code !== "en");
+  // Only show language selector when there are actual non-English translations configured.
+  const showLanguageSelector =
+    hasNonEnglishTranslations &&
+    availableLocales.length > 1 &&
+    availableLocales.some((code) => code !== "en");
 
   return (
     <footer

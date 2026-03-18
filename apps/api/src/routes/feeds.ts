@@ -128,14 +128,14 @@ feedsRoutes.get("/status-pages/:slug/rss", async (c) => {
     return c.text("Status page not found", 404);
   }
 
-  // Get recent incidents (last 30 days)
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  // Get recent incidents (last 45 days)
+  const fortyFiveDaysAgo = new Date();
+  fortyFiveDaysAgo.setDate(fortyFiveDaysAgo.getDate() - 45);
 
   const allIncidents: IncidentWithUpdates[] = await db.query.incidents.findMany({
     where: and(
       eq(incidents.organizationId, page.organizationId),
-      gte(incidents.createdAt, thirtyDaysAgo)
+      gte(incidents.createdAt, fortyFiveDaysAgo)
     ),
     orderBy: [desc(incidents.createdAt)],
     limit: 50,
@@ -150,7 +150,7 @@ feedsRoutes.get("/status-pages/:slug/rss", async (c) => {
   // Filter incidents by status page monitors
   const recentIncidents = await filterIncidentsByStatusPage(allIncidents, page.id);
 
-  // Get maintenance windows (last 30 days + upcoming 90 days)
+  // Get maintenance windows (last 45 days + upcoming 90 days)
   const ninetyDaysAhead = new Date();
   ninetyDaysAhead.setDate(ninetyDaysAhead.getDate() + 90);
 
@@ -158,7 +158,7 @@ feedsRoutes.get("/status-pages/:slug/rss", async (c) => {
     where: and(
       eq(maintenanceWindows.organizationId, page.organizationId),
       or(
-        gte(maintenanceWindows.startsAt, thirtyDaysAgo),
+        gte(maintenanceWindows.startsAt, fortyFiveDaysAgo),
         lte(maintenanceWindows.endsAt, ninetyDaysAhead)
       )
     ),
@@ -260,14 +260,14 @@ feedsRoutes.get("/status-pages/:slug/atom", async (c) => {
     return c.text("Status page not found", 404);
   }
 
-  // Get recent incidents (last 30 days)
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  // Get recent incidents (last 45 days)
+  const fortyFiveDaysAgo = new Date();
+  fortyFiveDaysAgo.setDate(fortyFiveDaysAgo.getDate() - 45);
 
   const allIncidents: IncidentWithUpdates[] = await db.query.incidents.findMany({
     where: and(
       eq(incidents.organizationId, page.organizationId),
-      gte(incidents.createdAt, thirtyDaysAgo)
+      gte(incidents.createdAt, fortyFiveDaysAgo)
     ),
     orderBy: [desc(incidents.createdAt)],
     limit: 50,
@@ -282,7 +282,7 @@ feedsRoutes.get("/status-pages/:slug/atom", async (c) => {
   // Filter incidents by status page monitors
   const recentIncidents = await filterIncidentsByStatusPage(allIncidents, page.id);
 
-  // Get maintenance windows (last 30 days + upcoming 90 days)
+  // Get maintenance windows (last 45 days + upcoming 90 days)
   const ninetyDaysAhead = new Date();
   ninetyDaysAhead.setDate(ninetyDaysAhead.getDate() + 90);
 
@@ -290,7 +290,7 @@ feedsRoutes.get("/status-pages/:slug/atom", async (c) => {
     where: and(
       eq(maintenanceWindows.organizationId, page.organizationId),
       or(
-        gte(maintenanceWindows.startsAt, thirtyDaysAgo),
+        gte(maintenanceWindows.startsAt, fortyFiveDaysAgo),
         lte(maintenanceWindows.endsAt, ninetyDaysAhead)
       )
     ),
@@ -392,14 +392,14 @@ feedsRoutes.get("/status-pages/:slug/json", async (c) => {
     return c.json({ error: "Status page not found" }, 404);
   }
 
-  // Get recent incidents (last 30 days)
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  // Get recent incidents (last 45 days)
+  const fortyFiveDaysAgo = new Date();
+  fortyFiveDaysAgo.setDate(fortyFiveDaysAgo.getDate() - 45);
 
   const allIncidents: IncidentWithUpdates[] = await db.query.incidents.findMany({
     where: and(
       eq(incidents.organizationId, page.organizationId),
-      gte(incidents.createdAt, thirtyDaysAgo)
+      gte(incidents.createdAt, fortyFiveDaysAgo)
     ),
     orderBy: [desc(incidents.createdAt)],
     limit: 50,
@@ -414,7 +414,7 @@ feedsRoutes.get("/status-pages/:slug/json", async (c) => {
   // Filter incidents by status page monitors
   const recentIncidents = await filterIncidentsByStatusPage(allIncidents, page.id);
 
-  // Get maintenance windows (last 30 days + upcoming 90 days)
+  // Get maintenance windows (last 45 days + upcoming 90 days)
   const ninetyDaysAhead = new Date();
   ninetyDaysAhead.setDate(ninetyDaysAhead.getDate() + 90);
 
@@ -422,7 +422,7 @@ feedsRoutes.get("/status-pages/:slug/json", async (c) => {
     where: and(
       eq(maintenanceWindows.organizationId, page.organizationId),
       or(
-        gte(maintenanceWindows.startsAt, thirtyDaysAgo),
+        gte(maintenanceWindows.startsAt, fortyFiveDaysAgo),
         lte(maintenanceWindows.endsAt, ninetyDaysAhead)
       )
     ),
@@ -528,8 +528,8 @@ feedsRoutes.get("/status-pages/:slug/calendar.ics", async (c) => {
   }
 
   // Get maintenance windows (upcoming and recent past)
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const fortyFiveDaysAgo = new Date();
+  fortyFiveDaysAgo.setDate(fortyFiveDaysAgo.getDate() - 45);
 
   const ninetyDaysAhead = new Date();
   ninetyDaysAhead.setDate(ninetyDaysAhead.getDate() + 90);
@@ -542,7 +542,7 @@ feedsRoutes.get("/status-pages/:slug/calendar.ics", async (c) => {
         gte(maintenanceWindows.startsAt, new Date()),
         // Recently ended
         and(
-          gte(maintenanceWindows.endsAt, thirtyDaysAgo),
+          gte(maintenanceWindows.endsAt, fortyFiveDaysAgo),
           lte(maintenanceWindows.startsAt, new Date())
         )
       )

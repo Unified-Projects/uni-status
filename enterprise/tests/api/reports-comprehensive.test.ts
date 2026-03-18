@@ -312,6 +312,31 @@ describe("Reports API - Comprehensive", () => {
   // ==========================================
 
   describe("Report Generation", () => {
+    it("accepts generation for all report types", async () => {
+      const periodStart = new Date();
+      periodStart.setMonth(periodStart.getMonth() - 1);
+      const periodEnd = new Date();
+      const reportTypes = ["sla", "uptime", "incident", "performance", "executive"] as const;
+
+      for (const reportType of reportTypes) {
+        const response = await fetch(`${apiUrl}/reports/generate`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            reportType,
+            periodStart: periodStart.toISOString(),
+            periodEnd: periodEnd.toISOString(),
+            monitorIds: [monitorId],
+          }),
+        });
+
+        expect(response.status).toBe(202);
+        const body = await response.json();
+        expect(body.success).toBe(true);
+        expect(body.data.reportType).toBe(reportType);
+      }
+    });
+
     it("generates an on-demand report", async () => {
       const periodStart = new Date();
       periodStart.setMonth(periodStart.getMonth() - 1);

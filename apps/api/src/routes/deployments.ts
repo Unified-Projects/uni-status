@@ -1015,7 +1015,7 @@ deploymentsRoutes.get("/incident/:incidentId", async (c) => {
 
 deploymentsRoutes.get("/stats", async (c) => {
   const organizationId = await requireOrganization(c);
-  const days = parseInt(c.req.query("days") || "30");
+  const days = parseInt(c.req.query("days") || "45");
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
   // Count deployments by status

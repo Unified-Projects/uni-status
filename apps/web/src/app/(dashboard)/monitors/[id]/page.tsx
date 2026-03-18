@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -46,6 +46,7 @@ import {
   useResumeMonitor,
   useCheckMonitorNow,
 } from "@/hooks/use-monitors";
+import { useAlertPolicies } from "@/hooks/use-alerts";
 import { useUptimeAnalytics, useResponseTimeAnalytics } from "@/hooks/use-analytics";
 import { useDashboardStore } from "@/stores/dashboard-store";
 import {
@@ -60,6 +61,7 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { LoadingState, LoadingSpinner } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import type { CheckResult } from "@/lib/api-client";
+import type { AlertPolicy } from "@/lib/api-client";
 import { CertificateDetailsCard } from "@/components/certificates/certificate-details-card";
 import { PageSpeedScoreCard, WebVitalsCard } from "@/components/pagespeed";
 import { SecurityHeadersCard } from "@/components/security/security-headers-card";
@@ -104,6 +106,7 @@ export default function MonitorDetailPage() {
     monitorId,
     days: uptimeDays,
   });
+  const { data: alertPoliciesResponse, isLoading: alertPoliciesLoading } = useAlertPolicies();
   const { data: responseTimeData } = useResponseTimeAnalytics(
     monitorId,
     responseTimeHours
@@ -259,6 +262,15 @@ export default function MonitorDetailPage() {
     : fallbackResponseTimeData.data;
 
   const responseSummary = responseTimeData?.summary ?? fallbackResponseTimeData.summary;
+  const applicableAlertPolicies = useMemo(() => {
+    const policies = alertPoliciesResponse?.data ?? [];
+    return policies.filter((policy: AlertPolicy) => {
+      if (!policy.monitorIds || policy.monitorIds.length === 0) {
+        return true;
+      }
+      return policy.monitorIds.includes(monitorId);
+    });
+  }, [alertPoliciesResponse?.data, monitorId]);
 
   // If we have summary data but no chart points, create points from summary for display
   if (responseSeries.length === 0 && responseSummary && responseSummary.avg !== null) {
@@ -894,11 +906,11 @@ export default function MonitorDetailPage() {
                       7d
                     </Button>
                     <Button
-                      variant={responseTimeHours === 720 ? "secondary" : "outline"}
+                      variant={responseTimeHours === 1080 ? "secondary" : "outline"}
                       size="sm"
-                      onClick={() => setResponseTimeHours(720)}
+                      onClick={() => setResponseTimeHours(1080)}
                     >
-                      30d
+                      45d
                     </Button>
                   </div>
                 </div>
@@ -1159,19 +1171,67 @@ export default function MonitorDetailPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="py-8 text-center">
-                <Activity className="mx-auto h-12 w-12 text-muted-foreground" />
-                <h3 className="mt-4 font-medium">No alert policies configured</h3>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Create an alert policy to get notified when this monitor goes down.
-                </p>
-                <Link href="/alerts" className="mt-4 inline-block">
-                  <Button>
-                    <Activity className="mr-2 h-4 w-4" />
-                    Configure Alerts
-                  </Button>
-                </Link>
-              </div>
+              {alertPoliciesLoading ? (
+                <LoadingState
+                  title="Loading alert policies..."
+                  message="Fetching policies for this monitor."
+                  variant="inline"
+                />
+              ) : applicableAlertPolicies.length > 0 ? (
+                <div className="space-y-3">
+                  {applicableAlertPolicies.map((policy) => {
+                    const isGlobalPolicy = !policy.monitorIds || policy.monitorIds.length === 0;
+                    return (
+                      <div
+                        key={policy.id}
+                        className="rounded-lg border p-4 transition-colors hover:bg-muted/40"
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-medium">{policy.name}</h3>
+                              <Badge variant={policy.enabled ? "default" : "secondary"}>
+                                {policy.enabled ? "Enabled" : "Disabled"}
+                              </Badge>
+                              <Badge variant="outline">
+                                {isGlobalPolicy ? "All monitors" : "Directly assigned"}
+                              </Badge>
+                            </div>
+                            {policy.description && (
+                              <p className="text-sm text-muted-foreground">{policy.description}</p>
+                            )}
+                          </div>
+                          <div className="text-right text-sm text-muted-foreground">
+                            <p>{policy.channels.length} channel{policy.channels.length === 1 ? "" : "s"}</p>
+                            <p>Cooldown: {policy.cooldownMinutes}m</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div className="pt-2">
+                    <Link href="/alerts">
+                      <Button variant="outline">
+                        Manage Policies
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+              ) : (
+                <div className="py-8 text-center">
+                  <Activity className="mx-auto h-12 w-12 text-muted-foreground" />
+                  <h3 className="mt-4 font-medium">No alert policies configured</h3>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Create an alert policy to get notified when this monitor goes down.
+                  </p>
+                  <Link href="/alerts" className="mt-4 inline-block">
+                    <Button>
+                      <Activity className="mr-2 h-4 w-4" />
+                      Configure Alerts
+                    </Button>
+                  </Link>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

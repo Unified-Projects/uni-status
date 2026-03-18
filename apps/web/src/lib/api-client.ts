@@ -2272,7 +2272,7 @@ export interface ReportSettings {
   id: string;
   organizationId: string;
   name: string;
-  reportType: "sla" | "uptime" | "incident" | "executive";
+  reportType: "sla" | "uptime" | "incident" | "performance" | "executive";
   frequency: "weekly" | "monthly" | "quarterly" | "annually" | "on_demand";
   monitorIds: string[];
   statusPageIds: string[];
