@@ -19,11 +19,11 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@react-email/components": "^1.0.8",
+    "@react-email/components": "^1.0.10",
     "@uni-status/shared": "workspace:*",
-    "nodemailer": "^8.0.1",
-    "react-email": "^5.2.9",
-    "resend": "^6.9.3"
+    "nodemailer": "^8.0.2",
+    "react-email": "^5.2.10",
+    "resend": "^6.9.4"
   },
   "devDependencies": {
     "@react-email/preview-server": "^5.2.9",
