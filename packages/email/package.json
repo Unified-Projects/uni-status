@@ -26,7 +26,7 @@
     "resend": "^6.9.3"
   },
   "devDependencies": {
-    "@react-email/preview-server": "^5.2.9",
+    "@react-email/preview-server": "^5.2.10",
     "@types/nodemailer": "^7.0.11",
     "@types/react": "^19.2.14",
     "react": "^19.2.4",
