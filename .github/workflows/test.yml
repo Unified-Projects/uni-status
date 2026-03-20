@@ -131,12 +131,13 @@ jobs:
                   clean: true
 
             - name: Generate test SSL certificates
-              working-directory: tests/fixtures/nginx/certs
+              working-directory: tests/fixtures/nginx
               run: |
+                  mkdir -p certs
                   openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-                    -keyout server.key -out server.crt \
+                    -keyout certs/server.key -out certs/server.crt \
                     -subj "/CN=localhost/O=Test/C=US" \
-                    -addext "subjectAltName=DNS:localhost,DNS=nginx-ssl,IP:127.0.0.1" 2>/dev/null || true
+                    -addext "subjectAltName=DNS:localhost,DNS:nginx-ssl,IP:127.0.0.1" 2>/dev/null || true
 
             - name: Build and run test suite
               id: tests
