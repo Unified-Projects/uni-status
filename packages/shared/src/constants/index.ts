@@ -204,7 +204,7 @@ export const STATUS_COLORS = {
 
 // API Rate Limits
 export const RATE_LIMITS = {
-  default: { window: 60, max: 100 },
+  default: { window: 60, max: 120 },
   auth: { window: 60, max: 10 },
   api_key: { window: 60, max: 1000 },
 } as const;

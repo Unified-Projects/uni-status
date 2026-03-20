@@ -9,6 +9,7 @@ import {
   ExternalLink,
   Pause,
   Play,
+  Copy,
   RefreshCw,
   Pencil,
   Trash2,
@@ -45,6 +46,7 @@ import {
   usePauseMonitor,
   useResumeMonitor,
   useCheckMonitorNow,
+  useDuplicateMonitor,
 } from "@/hooks/use-monitors";
 import { useAlertPolicies } from "@/hooks/use-alerts";
 import { useUptimeAnalytics, useResponseTimeAnalytics } from "@/hooks/use-analytics";
@@ -292,6 +294,7 @@ export default function MonitorDetailPage() {
   const pauseMonitor = usePauseMonitor();
   const resumeMonitor = useResumeMonitor();
   const checkNow = useCheckMonitorNow();
+  const duplicateMonitor = useDuplicateMonitor();
 
   const handleDelete = async () => {
     await deleteMonitor.mutateAsync(monitorId);
@@ -308,6 +311,10 @@ export default function MonitorDetailPage() {
 
   const handleCheckNow = async () => {
     await checkNow.mutateAsync(monitorId);
+  };
+
+  const handleDuplicate = async () => {
+    await duplicateMonitor.mutateAsync({ id: monitorId });
   };
 
   if (isLoading) {
@@ -595,6 +602,15 @@ export default function MonitorDetailPage() {
               Edit
             </Button>
           </Link>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleDuplicate}
+            disabled={duplicateMonitor.isPending}
+          >
+            <Copy className="mr-2 h-4 w-4" />
+            {duplicateMonitor.isPending ? "Duplicating..." : "Duplicate"}
+          </Button>
           <Button
             variant="destructive"
             size="sm"

@@ -22,6 +22,24 @@ interface UseSSEOptions {
   onEvent?: (event: SSEEvent) => void;
 }
 
+const INVALIDATION_DEBOUNCE_MS = 250;
+const pendingInvalidations = new Map<string, ReturnType<typeof setTimeout>>();
+
+function scheduleInvalidate(
+  queryClient: ReturnType<typeof useQueryClient>,
+  queryKey: readonly unknown[]
+) {
+  const key = JSON.stringify(queryKey);
+  if (pendingInvalidations.has(key)) return;
+
+  const timeoutId = setTimeout(() => {
+    pendingInvalidations.delete(key);
+    queryClient.invalidateQueries({ queryKey });
+  }, INVALIDATION_DEBOUNCE_MS);
+
+  pendingInvalidations.set(key, timeoutId);
+}
+
 export function useSSE(options: UseSSEOptions = {}) {
   const { enabled = true, onEvent } = options;
   const queryClient = useQueryClient();
@@ -119,48 +137,81 @@ function handleEvent(event: SSEEvent, queryClient: ReturnType<typeof useQueryCli
     case "monitor:created":
     case "monitor:updated":
     case "monitor:deleted":
-    case "monitor:status_changed":
-      queryClient.invalidateQueries({ queryKey: queryKeys.monitors.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.analytics.dashboard() });
+      scheduleInvalidate(queryClient, queryKeys.monitors.all);
+      scheduleInvalidate(queryClient, queryKeys.analytics.dashboard());
       break;
 
+    case "monitor:status_changed":
+      {
+        const data = event.data as { id?: string; monitorId?: string; status?: string; paused?: boolean };
+        const monitorId = data?.id || data?.monitorId;
+        if (monitorId && data.status) {
+          queryClient.setQueryData(
+            queryKeys.monitors.detail(monitorId),
+            (old: Record<string, unknown> | undefined) =>
+              old ? { ...old, status: data.status, paused: data.paused ?? old.paused } : old
+          );
+          queryClient.setQueriesData(
+            { queryKey: queryKeys.monitors.lists() },
+            (old: unknown) => {
+              if (!old || typeof old !== "object") return old;
+              const cast = old as { data?: Array<{ id: string; status?: string; paused?: boolean }> };
+              if (!cast.data) return old;
+              return {
+                ...cast,
+                data: cast.data.map((monitor) =>
+                  monitor.id === monitorId
+                    ? { ...monitor, status: data.status, paused: data.paused ?? monitor.paused }
+                    : monitor
+                ),
+              };
+            }
+          );
+        }
+      }
+      scheduleInvalidate(queryClient, queryKeys.monitors.all);
+      break;
+
+    case "monitor:check":
     case "monitor:check_completed":
       const checkData = event.data as { monitorId: string };
-      queryClient.invalidateQueries({ queryKey: queryKeys.monitors.detail(checkData.monitorId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.monitors.results(checkData.monitorId) });
+      if (checkData?.monitorId) {
+        scheduleInvalidate(queryClient, queryKeys.monitors.detail(checkData.monitorId));
+        scheduleInvalidate(queryClient, queryKeys.monitors.results(checkData.monitorId));
+      }
       break;
 
     // Incident events
     case "incident:created":
     case "incident:updated":
     case "incident:resolved":
-      queryClient.invalidateQueries({ queryKey: queryKeys.incidents.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.analytics.dashboard() });
+      scheduleInvalidate(queryClient, queryKeys.incidents.all);
+      scheduleInvalidate(queryClient, queryKeys.analytics.dashboard());
       break;
 
     // Alert events
     case "alert:triggered":
     case "alert:acknowledged":
     case "alert:resolved":
-      queryClient.invalidateQueries({ queryKey: queryKeys.alerts.history.all });
+      scheduleInvalidate(queryClient, queryKeys.alerts.history.all);
       break;
 
     // Alert config events
     case "config:channel_created":
     case "config:channel_updated":
     case "config:channel_deleted":
-      queryClient.invalidateQueries({ queryKey: queryKeys.alerts.channels.all });
+      scheduleInvalidate(queryClient, queryKeys.alerts.channels.all);
       break;
 
     case "config:policy_created":
     case "config:policy_updated":
     case "config:policy_deleted":
-      queryClient.invalidateQueries({ queryKey: queryKeys.alerts.policies.all });
+      scheduleInvalidate(queryClient, queryKeys.alerts.policies.all);
       break;
 
     // Status page events
     case "status_page:updated":
-      queryClient.invalidateQueries({ queryKey: queryKeys.statusPages.all });
+      scheduleInvalidate(queryClient, queryKeys.statusPages.all);
       break;
 
     default:

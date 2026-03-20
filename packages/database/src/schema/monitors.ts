@@ -415,6 +415,11 @@ export const monitors = pgTable(
     orgIdIdx: index("monitors_org_id_idx").on(table.organizationId),
     statusIdx: index("monitors_status_idx").on(table.status),
     nextCheckIdx: index("monitors_next_check_idx").on(table.nextCheckAt),
+    pollingIdx: index("monitors_polling_idx").on(
+      table.paused,
+      table.nextCheckAt,
+      table.type
+    ),
   })
 );
 

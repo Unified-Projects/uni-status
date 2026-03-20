@@ -13,6 +13,30 @@ analyticsRoutes.get("/uptime", async (c) => {
   const days = parseInt(c.req.query("days") || "30");
   const requestedGranularity = c.req.query("granularity") as "minute" | "hour" | "day" | "auto" | undefined;
 
+  // Aggregates do not store organizationId, so scope by organization monitor ids.
+  let scopedMonitorIds: string[] | null = null;
+  if (!monitorId) {
+    const orgMonitors = await db
+      .select({ id: monitors.id })
+      .from(monitors)
+      .where(eq(monitors.organizationId, organizationId));
+    scopedMonitorIds = orgMonitors.map((m) => m.id);
+
+    if (scopedMonitorIds.length === 0) {
+      return c.json({
+        success: true,
+        data: {
+          uptimePercentage: null,
+          days,
+          granularity: "day",
+          totals: { success: 0, degraded: 0, failure: 0, total: 0 },
+          intervals: [],
+          daily: [],
+        },
+      });
+    }
+  }
+
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - days);
 
@@ -39,7 +63,10 @@ analyticsRoutes.get("/uptime", async (c) => {
           eq(checkResultsDaily.monitorId, monitorId),
           gte(checkResultsDaily.date, startDate)
         )
-      : gte(checkResultsDaily.date, startDate),
+      : and(
+          inArray(checkResultsDaily.monitorId, scopedMonitorIds!),
+          gte(checkResultsDaily.date, startDate)
+        ),
     orderBy: [desc(checkResultsDaily.date)],
   });
 
@@ -66,7 +93,10 @@ analyticsRoutes.get("/uptime", async (c) => {
             eq(checkResultsHourly.monitorId, monitorId),
             gte(checkResultsHourly.hour, startDate)
           )
-        : gte(checkResultsHourly.hour, startDate),
+        : and(
+            inArray(checkResultsHourly.monitorId, scopedMonitorIds!),
+            gte(checkResultsHourly.hour, startDate)
+          ),
       orderBy: [desc(checkResultsHourly.hour)],
     });
 
@@ -907,47 +937,40 @@ analyticsRoutes.get("/web-vitals", async (c) => {
 // Dashboard overview
 analyticsRoutes.get("/dashboard", async (c) => {
   const organizationId = await requireOrganization(c);
+  const includeTrend = c.req.query("includeTrend") === "1" || c.req.query("includeTrend") === "true";
 
-  const allMonitors = await db
-    .select({
-      id: monitors.id,
-      status: monitors.status,
-    })
-    .from(monitors)
-    .where(eq(monitors.organizationId, organizationId));
-
-  const monitorsByStatus = allMonitors.reduce(
-    (acc, monitor) => {
-      acc[monitor.status] = (acc[monitor.status] || 0) + 1;
-      return acc;
-    },
-    {} as Record<string, number>
-  );
-
-  const monitorsWithIssues = await db.query.monitors.findMany({
-    where: and(
-      eq(monitors.organizationId, organizationId),
-      inArray(monitors.status, ["degraded", "down"])
-    ),
-    columns: {
-      id: true,
-      name: true,
-      url: true,
-      status: true,
-    },
-    orderBy: [desc(monitors.updatedAt)],
-    limit: 5,
-  });
-
-  const activeIncidentCount = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(incidents)
-    .where(
-      and(
-        eq(incidents.organizationId, organizationId),
-        sql`${incidents.status} != 'resolved'`
-      )
-    );
+  const [allMonitors, monitorsWithIssues, activeIncidentCount] = await Promise.all([
+    db
+      .select({
+        id: monitors.id,
+        status: monitors.status,
+      })
+      .from(monitors)
+      .where(eq(monitors.organizationId, organizationId)),
+    db.query.monitors.findMany({
+      where: and(
+        eq(monitors.organizationId, organizationId),
+        inArray(monitors.status, ["degraded", "down"])
+      ),
+      columns: {
+        id: true,
+        name: true,
+        url: true,
+        status: true,
+      },
+      orderBy: [desc(monitors.updatedAt)],
+      limit: 5,
+    }),
+    db
+      .select({ count: sql<number>`count(*)` })
+      .from(incidents)
+      .where(
+        and(
+          eq(incidents.organizationId, organizationId),
+          sql`${incidents.status} != 'resolved'`
+        )
+      ),
+  ]);
 
   // Get recent incidents (last 7 days)
   const weekAgo = new Date();
@@ -965,6 +988,14 @@ analyticsRoutes.get("/dashboard", async (c) => {
   // Calculate overall uptime from last 45 days
   const fortyFiveDaysAgo = new Date();
   fortyFiveDaysAgo.setDate(fortyFiveDaysAgo.getDate() - 45);
+
+  const monitorsByStatus = allMonitors.reduce(
+    (acc, monitor) => {
+      acc[monitor.status] = (acc[monitor.status] || 0) + 1;
+      return acc;
+    },
+    {} as Record<string, number>
+  );
 
   let overallUptime: number | null = null;
   let uptimeTrend: Array<{ date: string; uptime: number }> = [];
@@ -994,33 +1025,35 @@ analyticsRoutes.get("/dashboard", async (c) => {
       overallUptime = ((successCount + degradedCount) / totalCount) * 100;
     }
 
-    // Get uptime trend (daily data)
-    const dailyUptimeData = await db
-      .select({
-        date: sql<string>`DATE(${checkResults.createdAt})`.as("date"),
-        successCount: sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'success')`.as("success_count"),
-        degradedCount: sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'degraded')`.as("degraded_count"),
-        totalCount: sql<number>`COUNT(*)`.as("total_count"),
-      })
-      .from(checkResults)
-      .where(
-        and(
-          inArray(checkResults.monitorId, monitorIds),
-          gte(checkResults.createdAt, fortyFiveDaysAgo)
+    if (includeTrend) {
+      // Optional: daily trend is expensive, so only compute when explicitly requested.
+      const dailyUptimeData = await db
+        .select({
+          date: sql<string>`DATE(${checkResults.createdAt})`.as("date"),
+          successCount: sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'success')`.as("success_count"),
+          degradedCount: sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'degraded')`.as("degraded_count"),
+          totalCount: sql<number>`COUNT(*)`.as("total_count"),
+        })
+        .from(checkResults)
+        .where(
+          and(
+            inArray(checkResults.monitorId, monitorIds),
+            gte(checkResults.createdAt, fortyFiveDaysAgo)
+          )
         )
-      )
-      .groupBy(sql`DATE(${checkResults.createdAt})`)
-      .orderBy(sql`DATE(${checkResults.createdAt})`);
+        .groupBy(sql`DATE(${checkResults.createdAt})`)
+        .orderBy(sql`DATE(${checkResults.createdAt})`);
 
-    uptimeTrend = dailyUptimeData.map((d) => {
-      const total = Number(d.totalCount || 0);
-      const success = Number(d.successCount || 0);
-      const degraded = Number(d.degradedCount || 0);
-      return {
-        date: d.date,
-        uptime: total > 0 ? ((success + degraded) / total) * 100 : 0,
-      };
-    });
+      uptimeTrend = dailyUptimeData.map((d) => {
+        const total = Number(d.totalCount || 0);
+        const success = Number(d.successCount || 0);
+        const degraded = Number(d.degradedCount || 0);
+        return {
+          date: d.date,
+          uptime: total > 0 ? ((success + degraded) / total) * 100 : 0,
+        };
+      });
+    }
   }
 
   return c.json({

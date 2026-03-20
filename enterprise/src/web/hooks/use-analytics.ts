@@ -4,14 +4,15 @@ import { useQuery } from "@tanstack/react-query";
 import { apiClient, queryKeys } from "@/lib/api-client";
 import { useDashboardStore } from "@/stores/dashboard-store";
 
-export function useDashboardAnalytics() {
+export function useDashboardAnalytics(options?: { realtimeConnected?: boolean }) {
   const organizationId = useDashboardStore((state) => state.currentOrganizationId);
+  const realtimeConnected = options?.realtimeConnected ?? false;
 
   return useQuery({
     queryKey: queryKeys.analytics.dashboard(),
     queryFn: () => apiClient.analytics.dashboard(organizationId ?? undefined),
     enabled: !!organizationId,
-    refetchInterval: 30000, // Refetch every 30 seconds
+    refetchInterval: realtimeConnected ? false : 30000,
   });
 }
 

@@ -870,6 +870,9 @@ export const apiClient = {
     checkNow: (id: string, organizationId?: string) =>
       unwrap(apiPost<{ queued: boolean }>(`/api/v1/monitors/${id}/check`, {}, { organizationId })),
 
+    duplicate: (id: string, data?: { name?: string }, organizationId?: string) =>
+      unwrap(apiPost<Monitor>(`/api/v1/monitors/${id}/duplicate`, data ?? {}, { organizationId })),
+
     pauseBulk: (ids: string[], organizationId?: string) =>
       unwrap(apiPost<{ updated: number; ids: string[] }>(`/api/v1/monitors/bulk/pause`, { ids }, { organizationId })),
 
@@ -1320,8 +1323,13 @@ export const apiClient = {
   },
 
   analytics: {
-    dashboard: (organizationId?: string) =>
-      unwrap(apiGet<DashboardAnalytics>("/api/v1/analytics/dashboard", { organizationId })),
+    dashboard: (organizationId?: string, options?: { includeTrend?: boolean }) => {
+      const searchParams = new URLSearchParams();
+      if (options?.includeTrend) searchParams.set("includeTrend", "1");
+      const query = searchParams.toString();
+      const path = `/api/v1/analytics/dashboard${query ? `?${query}` : ""}`;
+      return unwrap(apiGet<DashboardAnalytics>(path, { organizationId }));
+    },
 
     uptime: async (params?: { monitorId?: string; days?: number; granularity?: "minute" | "hour" | "day" | "auto" }, organizationId?: string) => {
       const searchParams = new URLSearchParams();
@@ -2684,7 +2692,7 @@ export const queryKeys = {
     pending: () => [...queryKeys.userInvitations.all, "pending"] as const,
   },
   analytics: {
-    dashboard: () => ["analytics", "dashboard"] as const,
+    dashboard: (includeTrend?: boolean) => ["analytics", "dashboard", includeTrend ? "trend" : "summary"] as const,
     uptime: (params?: { monitorId?: string; days?: number; granularity?: string }) => ["analytics", "uptime", params?.monitorId, params?.days, params?.granularity] as const,
     responseTimes: (monitorId: string, hours?: number) => ["analytics", "responseTimes", monitorId, hours] as const,
     pagespeed: (monitorId: string, days?: number) => ["analytics", "pagespeed", monitorId, days] as const,

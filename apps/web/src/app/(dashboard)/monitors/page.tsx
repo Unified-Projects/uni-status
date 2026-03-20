@@ -30,7 +30,7 @@ import {
   DialogTitle,
   cn,
 } from "@uni-status/ui";
-import { useMonitors, useDeleteMonitor, usePauseMonitor, useResumeMonitor, useCheckMonitorNow } from "@/hooks/use-monitors";
+import { useMonitors, useDeleteMonitor, usePauseMonitor, useResumeMonitor, useCheckMonitorNow, useDuplicateMonitor } from "@/hooks/use-monitors";
 import { useDashboardStore, filterMonitors, sortMonitors, type MonitorStatus, type MonitorType } from "@/stores/dashboard-store";
 import { MonitorCard } from "@/components/monitors";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -74,6 +74,7 @@ export default function MonitorsPage() {
   const pauseMonitor = usePauseMonitor();
   const resumeMonitor = useResumeMonitor();
   const checkNow = useCheckMonitorNow();
+  const duplicateMonitor = useDuplicateMonitor();
 
   // Store state
   const {
@@ -125,6 +126,10 @@ export default function MonitorsPage() {
 
   const handleCheckNow = async (id: string) => {
     await checkNow.mutateAsync(id);
+  };
+
+  const handleDuplicate = async (id: string) => {
+    await duplicateMonitor.mutateAsync({ id });
   };
 
   const toggleStatusFilter = (status: MonitorStatus) => {
@@ -341,6 +346,7 @@ export default function MonitorsPage() {
                 onResume={() => handleResume(monitor.id)}
                 onCheckNow={() => handleCheckNow(monitor.id)}
                 onEdit={() => router.push(`/monitors/${monitor.id}/edit`)}
+                onDuplicate={() => handleDuplicate(monitor.id)}
                 onDelete={() => handleDelete(monitor.id)}
               />
             ))}

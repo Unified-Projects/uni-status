@@ -1,6 +1,6 @@
 import { db } from "@uni-status/database";
 import { monitors, maintenanceWindows, statusPageMonitors, subscribers, statusPages, probes } from "@uni-status/database/schema";
-import { eq, lte, and, gte, or, inArray, isNull, lt, ne } from "drizzle-orm";
+import { eq, lte, and, gte, or, inArray, lt, ne } from "drizzle-orm";
 import { Queue } from "bullmq";
 import { connection, queuePrefix } from "./lib/redis";
 import { QUEUE_NAMES } from "@uni-status/shared/constants";
@@ -21,6 +21,9 @@ const STALE_REPORT_INTERVAL = 120000; // 2 minutes for stale report recovery
 const STALE_REPORT_THRESHOLD = 600000; // 10 minutes before a report is considered stuck
 const ENQUEUE_CONCURRENCY = 50;
 const MONITOR_DISPATCH_CONCURRENCY = 20;
+const REPORT_DISPATCH_CONCURRENCY = 20;
+const CERT_DISPATCH_CONCURRENCY = 20;
+const POLL_LOCK_TTL_MS = 120000; // 2 minutes distributed lock to prevent duplicate polling across replicas
 
 let monitorIntervalId: ReturnType<typeof setInterval> | null = null;
 let maintenanceIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -33,6 +36,19 @@ let certCheckIntervalId: ReturnType<typeof setInterval> | null = null;
 let staleReportIntervalId: ReturnType<typeof setInterval> | null = null;
 const startupTimeouts: ReturnType<typeof setTimeout>[] = [];
 const pollInProgress = new Set<string>();
+
+function addNextCheckTarget(
+  grouped: Map<number, string[]>,
+  intervalSeconds: number,
+  monitorId: string
+) {
+  const existing = grouped.get(intervalSeconds);
+  if (existing) {
+    existing.push(monitorId);
+    return;
+  }
+  grouped.set(intervalSeconds, [monitorId]);
+}
 
 async function processInBatches<T>(
   items: T[],
@@ -85,8 +101,43 @@ const reportGenerateQueue = new Queue(QUEUE_NAMES.REPORT_GENERATE, queueOpts);
 const aggregateQueue = new Queue(QUEUE_NAMES.ANALYTICS_AGGREGATE, queueOpts);
 const dailyAggregateQueue = new Queue(QUEUE_NAMES.ANALYTICS_DAILY_AGGREGATE, queueOpts);
 
+type EnterpriseSchema = typeof import("@uni-status/enterprise/database/schema");
+let cachedReportSettingsTable: EnterpriseSchema["reportSettings"] | null | undefined;
+let cachedSlaReportsTable: EnterpriseSchema["slaReports"] | null | undefined;
+
+async function getEnterpriseReportSettingsTable(): Promise<EnterpriseSchema["reportSettings"] | null> {
+  if (cachedReportSettingsTable !== undefined) {
+    return cachedReportSettingsTable;
+  }
+
+  try {
+    const enterpriseSchema = await import("@uni-status/enterprise/database/schema");
+    cachedReportSettingsTable = enterpriseSchema.reportSettings;
+  } catch {
+    cachedReportSettingsTable = null;
+  }
+
+  return cachedReportSettingsTable;
+}
+
+async function getEnterpriseSlaReportsTable(): Promise<EnterpriseSchema["slaReports"] | null> {
+  if (cachedSlaReportsTable !== undefined) {
+    return cachedSlaReportsTable;
+  }
+
+  try {
+    const enterpriseSchema = await import("@uni-status/enterprise/database/schema");
+    cachedSlaReportsTable = enterpriseSchema.slaReports;
+  } catch {
+    cachedSlaReportsTable = null;
+  }
+
+  return cachedSlaReportsTable;
+}
+
 async function pollMonitors() {
   const now = new Date();
+  const nextCheckByInterval = new Map<number, string[]>();
 
   try {
     // Get active maintenance windows
@@ -130,57 +181,55 @@ async function pollMonitors() {
     log.info({ total: allDueMonitors.length, skipped: skippedCount }, 'Monitors due for checking');
 
     await processInBatches(dueMonitors, MONITOR_DISPATCH_CONCURRENCY, async (monitor) => {
-      // Queue the check based on monitor type
-      const queue = getQueueForType(monitor.type);
+      try {
+        // Queue the check based on monitor type
+        const queue = getQueueForType(monitor.type);
 
-      if (queue) {
-        await queue.add(
-          `check-${monitor.id}`,
-          {
-            monitorId: monitor.id,
-            organizationId: monitor.organizationId,  // Organization ID for API key lookup
-            url: monitor.url,
-            method: monitor.method,
-            headers: monitor.headers,
-            body: monitor.body,
-            timeoutMs: monitor.timeoutMs,
-            assertions: monitor.assertions,
-            regions: monitor.regions,
-            config: monitor.config,  // Extended config for new monitor types
-            degradedThresholdMs: monitor.degradedThresholdMs,  // Degraded threshold
-            lastPagespeedAt: monitor.lastPagespeedAt,  // Track when pagespeed was last run
-          },
-          {
-            jobId: `${monitor.id}-${now.getTime()}`,
-            removeOnComplete: 100,
-            removeOnFail: 100,
-          }
-        );
-
-        // Update next check time
-        const nextCheckAt = new Date(
-          now.getTime() + monitor.intervalSeconds * 1000
-        );
-
-        await db
-          .update(monitors)
-          .set({
-            nextCheckAt,
-            lastCheckedAt: now,
-          })
-          .where(eq(monitors.id, monitor.id));
-      } else if (monitor.type === "prometheus_remote_write") {
-        // Passive monitors are driven by remote write ingestion; just advance nextCheckAt to avoid tight loops
-        const nextCheckAt = new Date(now.getTime() + monitor.intervalSeconds * 1000);
-        await db
-          .update(monitors)
-          .set({
-            nextCheckAt,
-            lastCheckedAt: now,
-          })
-          .where(eq(monitors.id, monitor.id));
+        if (queue) {
+          await queue.add(
+            `check-${monitor.id}`,
+            {
+              monitorId: monitor.id,
+              organizationId: monitor.organizationId,  // Organization ID for API key lookup
+              url: monitor.url,
+              method: monitor.method,
+              headers: monitor.headers,
+              body: monitor.body,
+              timeoutMs: monitor.timeoutMs,
+              assertions: monitor.assertions,
+              regions: monitor.regions,
+              config: monitor.config,  // Extended config for new monitor types
+              degradedThresholdMs: monitor.degradedThresholdMs,  // Degraded threshold
+              lastPagespeedAt: monitor.lastPagespeedAt,  // Track when pagespeed was last run
+            },
+            {
+              jobId: `${monitor.id}-${now.getTime()}`,
+              removeOnComplete: 100,
+              removeOnFail: 100,
+            }
+          );
+          addNextCheckTarget(nextCheckByInterval, monitor.intervalSeconds, monitor.id);
+        } else if (monitor.type === "prometheus_remote_write") {
+          // Passive monitors are driven by remote write ingestion; just advance nextCheckAt to avoid tight loops
+          addNextCheckTarget(nextCheckByInterval, monitor.intervalSeconds, monitor.id);
+        }
+      } catch (error) {
+        log.error({ err: error, monitorId: monitor.id }, "Failed to schedule monitor check");
       }
     });
+
+    // Batch nextCheckAt updates by interval to reduce write amplification.
+    for (const [intervalSeconds, monitorIds] of nextCheckByInterval.entries()) {
+      if (monitorIds.length === 0) continue;
+      const nextCheckAt = new Date(now.getTime() + intervalSeconds * 1000);
+      await db
+        .update(monitors)
+        .set({
+          nextCheckAt,
+          lastCheckedAt: now,
+        })
+        .where(inArray(monitors.id, monitorIds));
+    }
   } catch (error) {
     log.error({ err: error }, 'Error polling monitors');
   }
@@ -539,14 +588,8 @@ async function pollScheduledReports() {
   const now = new Date();
 
   try {
-    // Enterprise feature - check if reportSettings schema is available
-    type EnterpriseSchema = typeof import("@uni-status/enterprise/database/schema");
-    let reportSettings: EnterpriseSchema["reportSettings"];
-    try {
-      const enterpriseSchema = await import("@uni-status/enterprise/database/schema");
-      reportSettings = enterpriseSchema.reportSettings;
-    } catch {
-      // Enterprise package not available, skip scheduled reports
+    const reportSettings = await getEnterpriseReportSettingsTable();
+    if (!reportSettings) {
       return;
     }
 
@@ -567,7 +610,7 @@ async function pollScheduledReports() {
 
     log.info({ reportCount: dueReports.length }, 'Found scheduled reports due');
 
-    for (const settings of dueReports) {
+    await processInBatches(dueReports, REPORT_DISPATCH_CONCURRENCY, async (settings) => {
       // Calculate period based on frequency
       const { periodStart, periodEnd } = calculateReportPeriod(settings.frequency);
 
@@ -615,7 +658,7 @@ async function pollScheduledReports() {
         .where(eq(reportSettings.id, settings.id));
 
       log.info({ settingsId: settings.id, nextRun: nextScheduledAt?.toISOString() }, 'Queued report');
-    }
+    });
   } catch (error) {
     log.error({ err: error }, 'Error polling scheduled reports');
   }
@@ -794,11 +837,12 @@ async function pollCertificateChecks() {
 
     log.info({ monitorCount: eligibleMonitors.length }, 'Checking HTTPS/SSL monitors for certificate updates');
 
-    for (const monitor of eligibleMonitors) {
+    await processInBatches(eligibleMonitors, CERT_DISPATCH_CONCURRENCY, async (monitor) => {
       const sslConfig = (monitor.config as { ssl?: Record<string, unknown>; certificateTransparency?: Record<string, unknown> } | null)?.ssl || {};
+      const enqueueTasks: Promise<unknown>[] = [];
 
       // Queue an SSL check job for this HTTPS monitor
-      await sslQueue.add(
+      enqueueTasks.push(sslQueue.add(
         `cert-check-${monitor.id}`,
         {
           monitorId: monitor.id,
@@ -820,13 +864,13 @@ async function pollCertificateChecks() {
           removeOnComplete: 100,
           removeOnFail: 100,
         }
-      );
+      ));
 
       const ctConfig = (monitor.config as { certificateTransparency?: Record<string, unknown> } | null)?.certificateTransparency;
       const ctEnabled = ctConfig?.enabled !== false;
 
       if (ctEnabled) {
-        await ctQueue.add(
+        enqueueTasks.push(ctQueue.add(
           `ct-check-${monitor.id}`,
           {
             monitorId: monitor.id,
@@ -841,11 +885,12 @@ async function pollCertificateChecks() {
             removeOnComplete: 100,
             removeOnFail: 100,
           }
-        );
+        ));
       }
-    }
+      await Promise.all(enqueueTasks);
+    });
 
-    log.info({ jobCount: httpsMonitors.length }, 'Queued certificate check jobs');
+    log.info({ jobCount: eligibleMonitors.length }, 'Queued certificate check jobs');
   } catch (error) {
     log.error({ err: error }, 'Error polling certificate checks');
   }
@@ -858,14 +903,8 @@ async function pollStaleReports() {
   const staleThreshold = new Date(now.getTime() - STALE_REPORT_THRESHOLD);
 
   try {
-    // Enterprise feature - check if slaReports schema is available
-    type EnterpriseSchema = typeof import("@uni-status/enterprise/database/schema");
-    let slaReports: EnterpriseSchema["slaReports"];
-    try {
-      const enterpriseSchema = await import("@uni-status/enterprise/database/schema");
-      slaReports = enterpriseSchema.slaReports;
-    } catch {
-      // Enterprise package not available, skip stale report recovery
+    const slaReports = await getEnterpriseSlaReportsTable();
+    if (!slaReports) {
       return;
     }
 
@@ -913,11 +952,35 @@ async function runPollSafely(name: string, poller: () => Promise<void>) {
     return;
   }
 
+  // Use a short-lived distributed lock so only one replica runs each scheduler loop.
+  const lockKey = `${queuePrefix}:scheduler:lock:${name}`;
+  const lockToken = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const lockAcquired = await connection.set(
+    lockKey,
+    lockToken,
+    "PX",
+    POLL_LOCK_TTL_MS,
+    "NX"
+  );
+  if (lockAcquired !== "OK") {
+    log.debug({ poller: name }, "Skipping poll run due to active distributed lock");
+    return;
+  }
+
   pollInProgress.add(name);
   try {
     await poller();
   } finally {
     pollInProgress.delete(name);
+    // Best-effort lock release guarded by token to avoid deleting another worker's lock.
+    await connection.eval(
+      "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+      1,
+      lockKey,
+      lockToken
+    ).catch((err) => {
+      log.warn({ err, poller: name }, "Failed to release distributed poll lock");
+    });
   }
 }
 

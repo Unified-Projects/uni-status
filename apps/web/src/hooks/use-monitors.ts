@@ -290,6 +290,31 @@ export function useCheckMonitorNow() {
   });
 }
 
+export function useDuplicateMonitor() {
+  const queryClient = useQueryClient();
+  const organizationId = useDashboardStore((state) => state.currentOrganizationId);
+
+  return useMutation({
+    mutationFn: ({ id, name }: { id: string; name?: string }) =>
+      apiClient.monitors.duplicate(id, name ? { name } : undefined, organizationId ?? undefined),
+    onSuccess: () => {
+      toast({
+        title: "Monitor duplicated",
+        description: "A copy of the monitor has been created.",
+      });
+      queryClient.invalidateQueries({ queryKey: queryKeys.monitors.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.analytics.dashboard() });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to duplicate monitor",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+}
+
 export function useBulkPauseMonitors() {
   const queryClient = useQueryClient();
   const organizationId = useDashboardStore((state) => state.currentOrganizationId);

@@ -1039,120 +1039,169 @@ export async function buildPublicStatusPagePayload(params: {
       hoursToFetch <= 168 ? 60 :
       240;
 
-    const allChartResults = await db.query.checkResults.findMany({
-      where: and(
-        inArray(checkResults.monitorId, monitorIds),
-        gte(checkResults.createdAt, chartStartDate)
-      ),
-      columns: {
-        monitorId: true,
-        createdAt: true,
-        responseTimeMs: true,
-        status: true,
-      },
-      orderBy: [checkResults.createdAt],
-    });
+    // For large windows, prefer hourly aggregates to avoid loading large raw datasets.
+    let builtFromHourlyAggregates = false;
+    if (hoursToFetch > 168) {
+      const hourlyChartRows = await db.query.checkResultsHourly.findMany({
+        where: and(
+          inArray(checkResultsHourly.monitorId, monitorIds),
+          gte(checkResultsHourly.hour, chartStartDate)
+        ),
+        columns: {
+          monitorId: true,
+          hour: true,
+          avgResponseTimeMs: true,
+          minResponseTimeMs: true,
+          maxResponseTimeMs: true,
+          p50ResponseTimeMs: true,
+          p90ResponseTimeMs: true,
+          p99ResponseTimeMs: true,
+          degradedCount: true,
+          failureCount: true,
+          totalCount: true,
+        },
+        orderBy: [checkResultsHourly.hour],
+      });
 
-    const rawResultsByMonitor = new Map<
-      string,
-      Array<{
-        monitorId: string;
-        createdAt: Date;
-        responseTimeMs: number | null;
-        status: typeof checkResults.$inferSelect.status;
-      }>
-    >();
+      if (hourlyChartRows.length > 0) {
+        builtFromHourlyAggregates = true;
+        for (const row of hourlyChartRows) {
+          if (!row.totalCount || row.avgResponseTimeMs == null) continue;
+          const status: "success" | "degraded" | "down" =
+            row.failureCount > 0 ? "down" : row.degradedCount > 0 ? "degraded" : "success";
 
-    for (const result of allChartResults) {
-      const monitorResults = rawResultsByMonitor.get(result.monitorId) || [];
-      monitorResults.push(result);
-      rawResultsByMonitor.set(result.monitorId, monitorResults);
+          const existing = responseTimeChartDataByMonitor.get(row.monitorId) || [];
+          existing.push({
+            timestamp: row.hour.toISOString(),
+            avg: row.avgResponseTimeMs,
+            min: row.minResponseTimeMs ?? null,
+            max: row.maxResponseTimeMs ?? null,
+            p50: row.p50ResponseTimeMs ?? null,
+            p90: row.p90ResponseTimeMs ?? null,
+            p99: row.p99ResponseTimeMs ?? null,
+            status,
+          });
+          responseTimeChartDataByMonitor.set(row.monitorId, existing);
+        }
+      }
     }
 
-    for (const monitorId of monitorIds) {
-      const rawResults = rawResultsByMonitor.get(monitorId) || [];
-      if (rawResults.length === 0) {
-        continue;
+    if (!builtFromHourlyAggregates) {
+      const allChartResults = await db.query.checkResults.findMany({
+        where: and(
+          inArray(checkResults.monitorId, monitorIds),
+          gte(checkResults.createdAt, chartStartDate)
+        ),
+        columns: {
+          monitorId: true,
+          createdAt: true,
+          responseTimeMs: true,
+          status: true,
+        },
+        orderBy: [checkResults.createdAt],
+      });
+
+      const rawResultsByMonitor = new Map<
+        string,
+        Array<{
+          monitorId: string;
+          createdAt: Date;
+          responseTimeMs: number | null;
+          status: typeof checkResults.$inferSelect.status;
+        }>
+      >();
+
+      for (const result of allChartResults) {
+        const monitorResults = rawResultsByMonitor.get(result.monitorId) || [];
+        monitorResults.push(result);
+        rawResultsByMonitor.set(result.monitorId, monitorResults);
       }
 
-      // If we have fewer data points than typical bucket count, use raw data
-      const expectedBuckets = (hoursToFetch * 60) / bucketMinutes;
-      if (rawResults.length <= expectedBuckets * 0.8) {
-        // Use raw data points for sparse data
-        const chartData = rawResults
-          .filter((r) => r.responseTimeMs != null)
-          .map((r) => {
-            const status: "success" | "degraded" | "down" =
-              r.status === "success" ? "success" : r.status === "degraded" ? "degraded" : "down";
-            return {
-              timestamp: r.createdAt.toISOString(),
-              avg: r.responseTimeMs!,
-              min: r.responseTimeMs!,
-              max: r.responseTimeMs!,
-              p50: r.responseTimeMs!,
-              p90: r.responseTimeMs!,
-              p99: r.responseTimeMs!,
-              status,
-            };
-          });
+      for (const monitorId of monitorIds) {
+        const rawResults = rawResultsByMonitor.get(monitorId) || [];
+        if (rawResults.length === 0) {
+          continue;
+        }
+
+        // If we have fewer data points than typical bucket count, use raw data
+        const expectedBuckets = (hoursToFetch * 60) / bucketMinutes;
+        if (rawResults.length <= expectedBuckets * 0.8) {
+          // Use raw data points for sparse data
+          const chartData = rawResults
+            .filter((r) => r.responseTimeMs != null)
+            .map((r) => {
+              const status: "success" | "degraded" | "down" =
+                r.status === "success" ? "success" : r.status === "degraded" ? "degraded" : "down";
+              return {
+                timestamp: r.createdAt.toISOString(),
+                avg: r.responseTimeMs!,
+                min: r.responseTimeMs!,
+                max: r.responseTimeMs!,
+                p50: r.responseTimeMs!,
+                p90: r.responseTimeMs!,
+                p99: r.responseTimeMs!,
+                status,
+              };
+            });
+
+          responseTimeChartDataByMonitor.set(monitorId, chartData);
+          continue;
+        }
+
+        // Aggregate into time buckets based on calculated bucket size
+        const bucketMap = new Map<string, { responseTimes: number[]; status: "success" | "degraded" | "down" }>();
+
+        for (const result of rawResults) {
+          const resultDate = new Date(result.createdAt);
+
+          // Calculate bucket boundary
+          let bucketDate: Date;
+          if (bucketMinutes < 60) {
+            // Sub-hour buckets - round to nearest bucket within the hour
+            const minutes = resultDate.getUTCMinutes();
+            const bucketMinute = Math.floor(minutes / bucketMinutes) * bucketMinutes;
+            bucketDate = new Date(resultDate);
+            bucketDate.setUTCMinutes(bucketMinute, 0, 0);
+          } else {
+            // Hour or multi-hour buckets
+            const bucketHours = bucketMinutes / 60;
+            const bucketHour = Math.floor(resultDate.getUTCHours() / bucketHours) * bucketHours;
+            bucketDate = new Date(resultDate);
+            bucketDate.setUTCHours(bucketHour, 0, 0, 0);
+          }
+
+          const bucketKey = bucketDate.toISOString();
+          const existing = bucketMap.get(bucketKey) || { responseTimes: [], status: "success" };
+
+          if (result.responseTimeMs != null) {
+            existing.responseTimes.push(result.responseTimeMs);
+          }
+          // Track worst status in bucket
+          if (result.status === "failure" || result.status === "timeout" || result.status === "error") {
+            existing.status = "down";
+          } else if (result.status === "degraded" && existing.status !== "down") {
+            existing.status = "degraded";
+          }
+
+          bucketMap.set(bucketKey, existing);
+        }
+
+        const chartData = Array.from(bucketMap.entries())
+          .filter(([, data]) => data.responseTimes.length > 0)
+          .map(([bucketKey, data]) => ({
+            timestamp: bucketKey,
+            avg: average(data.responseTimes),
+            min: Math.min(...data.responseTimes),
+            max: Math.max(...data.responseTimes),
+            p50: percentile(data.responseTimes, 50),
+            p90: percentile(data.responseTimes, 90),
+            p99: percentile(data.responseTimes, 99),
+            status: data.status as "success" | "degraded" | "down",
+          }))
+          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
         responseTimeChartDataByMonitor.set(monitorId, chartData);
-        continue;
       }
-
-      // Aggregate into time buckets based on calculated bucket size
-      const bucketMap = new Map<string, { responseTimes: number[]; status: "success" | "degraded" | "down" }>();
-
-      for (const result of rawResults) {
-        const resultDate = new Date(result.createdAt);
-
-        // Calculate bucket boundary
-        let bucketDate: Date;
-        if (bucketMinutes < 60) {
-          // Sub-hour buckets - round to nearest bucket within the hour
-          const minutes = resultDate.getUTCMinutes();
-          const bucketMinute = Math.floor(minutes / bucketMinutes) * bucketMinutes;
-          bucketDate = new Date(resultDate);
-          bucketDate.setUTCMinutes(bucketMinute, 0, 0);
-        } else {
-          // Hour or multi-hour buckets
-          const bucketHours = bucketMinutes / 60;
-          const bucketHour = Math.floor(resultDate.getUTCHours() / bucketHours) * bucketHours;
-          bucketDate = new Date(resultDate);
-          bucketDate.setUTCHours(bucketHour, 0, 0, 0);
-        }
-
-        const bucketKey = bucketDate.toISOString();
-        const existing = bucketMap.get(bucketKey) || { responseTimes: [], status: "success" };
-
-        if (result.responseTimeMs != null) {
-          existing.responseTimes.push(result.responseTimeMs);
-        }
-        // Track worst status in bucket
-        if (result.status === "failure" || result.status === "timeout" || result.status === "error") {
-          existing.status = "down";
-        } else if (result.status === "degraded" && existing.status !== "down") {
-          existing.status = "degraded";
-        }
-
-        bucketMap.set(bucketKey, existing);
-      }
-
-      const chartData = Array.from(bucketMap.entries())
-        .filter(([, data]) => data.responseTimes.length > 0)
-        .map(([bucketKey, data]) => ({
-          timestamp: bucketKey,
-          avg: average(data.responseTimes),
-          min: Math.min(...data.responseTimes),
-          max: Math.max(...data.responseTimes),
-          p50: percentile(data.responseTimes, 50),
-          p90: percentile(data.responseTimes, 90),
-          p99: percentile(data.responseTimes, 99),
-          status: data.status as "success" | "degraded" | "down",
-        }))
-        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-
-      responseTimeChartDataByMonitor.set(monitorId, chartData);
     }
   }
 

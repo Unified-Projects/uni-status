@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm";
 import { publishEvent } from "../lib/redis";
 import { evaluateAlerts } from "../lib/alert-evaluator";
 import { linkCheckToActiveIncident } from "../lib/incident-linker";
+import { buildMonitorTransitionUpdate } from "../lib/monitor-status";
 import type { CheckStatus } from "@uni-status/shared/types";
 import { createLogger } from "@uni-status/shared";
 
@@ -576,24 +577,15 @@ export async function processDnsCheck(job: Job<DnsCheckJob>) {
   // Link failed checks to active incidents
   await linkCheckToActiveIncident(resultId, monitorId, status);
 
-  // Update monitor status
-  const newStatus = status === "success" ? "active" : status === "degraded" ? "degraded" : "down";
-
-  await db
-    .update(monitors)
-    .set({
-      status: newStatus,
-      lastCheckedAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .where(eq(monitors.id, monitorId));
-
-  // Fetch monitor to get organizationId for alert evaluation
-  const monitor = await db
-    .select({ organizationId: monitors.organizationId })
-    .from(monitors)
-    .where(eq(monitors.id, monitorId))
-    .limit(1);
+  const transition = await buildMonitorTransitionUpdate(monitorId, status, {
+    includeLastCheckedAt: true,
+  });
+  if (transition) {
+    await db
+      .update(monitors)
+      .set(transition.update)
+      .where(eq(monitors.id, monitorId));
+  }
 
   // Publish event
   await publishEvent(`monitor:${monitorId}`, {
@@ -609,10 +601,10 @@ export async function processDnsCheck(job: Job<DnsCheckJob>) {
   });
 
   // Evaluate alert policies for this monitor
-  if (monitor[0]) {
+  if (transition) {
     await evaluateAlerts({
       monitorId,
-      organizationId: monitor[0].organizationId,
+      organizationId: transition.organizationId,
       checkResultId: resultId,
       checkStatus: status,
       errorMessage,

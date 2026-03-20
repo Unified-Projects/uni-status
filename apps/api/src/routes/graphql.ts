@@ -193,6 +193,8 @@ const JSONScalar = new GraphQLScalarType({
   parseLiteral: (ast) => parseLiteralValue(ast),
 });
 
+const MAX_STATUS_PAGE_SLUGS_PER_QUERY = 25;
+
 const resolvers = {
   JSON: JSONScalar,
   Query: {
@@ -205,13 +207,25 @@ const resolvers = {
       return buildPublicStatusPagePayload(found);
     },
     statusPages: async (_: unknown, args: { slugs: string[] }) => {
-      const results = await Promise.all(
-        args.slugs.map(async (slug) => {
-          const found = await findStatusPageBySlug(slug);
-          if (!found || !found.page.published || found.page.passwordHash) return null;
-          return buildPublicStatusPagePayload(found);
-        })
-      );
+      const uniqueSlugs = Array.from(new Set(args.slugs.map((slug) => slug.trim()).filter(Boolean)));
+      if (uniqueSlugs.length > MAX_STATUS_PAGE_SLUGS_PER_QUERY) {
+        throw new Error(`Too many slugs requested. Maximum is ${MAX_STATUS_PAGE_SLUGS_PER_QUERY}.`);
+      }
+
+      const results: Array<Awaited<ReturnType<typeof buildPublicStatusPagePayload>> | null> = [];
+      const batchSize = 8;
+
+      for (let i = 0; i < uniqueSlugs.length; i += batchSize) {
+        const batch = uniqueSlugs.slice(i, i + batchSize);
+        const batchResults = await Promise.all(
+          batch.map(async (slug) => {
+            const found = await findStatusPageBySlug(slug);
+            if (!found || !found.page.published || found.page.passwordHash) return null;
+            return buildPublicStatusPagePayload(found);
+          })
+        );
+        results.push(...batchResults);
+      }
       return results.filter(Boolean);
     },
     monitors: async (

@@ -18,9 +18,12 @@ import { ErrorState } from "@/components/ui/error-state";
 
 export default function DashboardPage() {
   // Real-time connection for live updates
-  useSSE({ enabled: true });
+  const { status: realtimeStatus } = useSSE({ enabled: true });
+  const realtimeConnected = realtimeStatus === "connected";
 
-  const { data: analytics, isLoading: analyticsLoading, error: analyticsError } = useDashboardAnalytics();
+  const { data: analytics, isLoading: analyticsLoading, error: analyticsError } = useDashboardAnalytics({
+    realtimeConnected,
+  });
 
   if (analyticsError) {
     return (

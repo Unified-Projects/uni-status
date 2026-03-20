@@ -4,14 +4,23 @@ import { useQuery } from "@tanstack/react-query";
 import { apiClient, queryKeys } from "@/lib/api-client";
 import { useDashboardStore } from "@/stores/dashboard-store";
 
-export function useDashboardAnalytics() {
+export function useDashboardAnalytics(options?: { realtimeConnected?: boolean }) {
   const organizationId = useDashboardStore((state) => state.currentOrganizationId);
+  const includeTrend = false;
+  const realtimeConnected = options?.realtimeConnected ?? false;
 
   return useQuery({
-    queryKey: queryKeys.analytics.dashboard(),
-    queryFn: () => apiClient.analytics.dashboard(organizationId ?? undefined),
+    queryKey: queryKeys.analytics.dashboard(includeTrend),
+    queryFn: () => apiClient.analytics.dashboard(organizationId ?? undefined, { includeTrend }),
     enabled: !!organizationId,
-    refetchInterval: 30000, // Refetch every 30 seconds
+    // Fall back to polling only when realtime is not healthy.
+    refetchInterval: () => {
+      if (realtimeConnected) return false;
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        return false;
+      }
+      return 60000;
+    },
   });
 }
 

@@ -23,7 +23,8 @@ import { getQueue } from "../lib/queues";
 import { eq, and, desc, gte, lte, sql, inArray } from "drizzle-orm";
 import fs from "fs/promises";
 import path from "path";
-import { getStorageConfig } from "@uni-status/shared/config";
+import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { getAwsConfig, getS3Config, getStorageConfig } from "@uni-status/shared/config";
 import { createLogger } from "@uni-status/shared";
 import { createHash } from "node:crypto";
 
@@ -77,19 +78,98 @@ const REPORT_VERIFY_EXTERNAL_FETCH_TIMEOUT_MS = (() => {
   return Math.min(raw, 120000);
 })();
 
+const s3Config = getS3Config();
+const awsConfig = getAwsConfig();
+const reportsS3Bucket = s3Config.bucket || awsConfig.s3Bucket || null;
+const reportsS3Client = (() => {
+  if (s3Config.accessKey && s3Config.secretKey && s3Config.bucket) {
+    return new S3Client({
+      region: s3Config.region,
+      endpoint: s3Config.endpoint,
+      forcePathStyle: s3Config.forcePathStyle,
+      credentials: {
+        accessKeyId: s3Config.accessKey,
+        secretAccessKey: s3Config.secretKey,
+      },
+    });
+  }
+
+  if (awsConfig.accessKeyId && awsConfig.secretAccessKey && awsConfig.s3Bucket) {
+    return new S3Client({
+      region: awsConfig.region,
+      credentials: {
+        accessKeyId: awsConfig.accessKeyId,
+        secretAccessKey: awsConfig.secretAccessKey,
+      },
+    });
+  }
+
+  return null;
+})();
+
 function getReportSha256FromSummary(summary: unknown): string | null {
   if (!summary || typeof summary !== "object") return null;
   const value = (summary as Record<string, unknown>).fileChecksumSha256;
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-async function readReportFileBytes(report: { fileUrl: string }): Promise<Buffer> {
+async function bodyToBuffer(body: unknown): Promise<Buffer> {
+  if (!body) {
+    throw new Error("S3 object has no body");
+  }
+
+  if (typeof (body as { transformToByteArray?: unknown }).transformToByteArray === "function") {
+    const byteArray = await (body as { transformToByteArray: () => Promise<Uint8Array> }).transformToByteArray();
+    return Buffer.from(byteArray);
+  }
+
+  const chunks: Buffer[] = [];
+  for await (const chunk of body as AsyncIterable<Uint8Array | string>) {
+    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
+}
+
+async function readReportFileBytes(report: {
+  fileUrl: string;
+  id?: string;
+  organizationId?: string;
+  fileName?: string | null;
+}): Promise<Buffer> {
   if (report.fileUrl.startsWith("/reports/")) {
     const reportsBaseDir = getStorageConfig().reportsDir;
     const relativePath = report.fileUrl.replace(/^\/reports\//, "");
     const filePath = path.join(reportsBaseDir, relativePath);
     const fileBuffer = await fs.readFile(filePath);
     return Buffer.from(fileBuffer);
+  }
+
+  // For private S3/object storage, fetch via SDK credentials instead of public URL fetch.
+  if (reportsS3Client && reportsS3Bucket && report.id && report.organizationId) {
+    const extension =
+      (report.fileName ? path.extname(report.fileName) : "") ||
+      (() => {
+        try {
+          return path.extname(new URL(report.fileUrl).pathname);
+        } catch {
+          return "";
+        }
+      })() ||
+      ".pdf";
+    const s3Key = `reports/${report.organizationId}/${report.id}${extension}`;
+
+    try {
+      const response = await reportsS3Client.send(
+        new GetObjectCommand({
+          Bucket: reportsS3Bucket,
+          Key: s3Key,
+        })
+      );
+
+      return bodyToBuffer(response.Body);
+    } catch (error) {
+      log.warn({ err: error, reportId: report.id, s3Key }, "Failed to fetch report via S3 SDK, falling back to URL fetch");
+    }
   }
 
   const controller = new AbortController();
@@ -1216,7 +1296,12 @@ reportsRoutes.get("/:id/verify", async (c) => {
   }
 
   try {
-    const fileBytes = await readReportFileBytes({ fileUrl: report.fileUrl });
+    const fileBytes = await readReportFileBytes({
+      fileUrl: report.fileUrl,
+      id: report.id,
+      organizationId: report.organizationId,
+      fileName: report.fileName,
+    });
     const actualSha256 = createHash("sha256").update(fileBytes).digest("hex");
     const verified = actualSha256 === expectedSha256;
 
@@ -1298,7 +1383,7 @@ reportsRoutes.get("/:id", async (c) => {
   }
 });
 
-// Download report (redirect or stream file)
+// Download report (always proxied through API)
 reportsRoutes.get("/:id/download", async (c) => {
   const auth = requireAuth(c);
   const { id } = c.req.param();
@@ -1328,31 +1413,41 @@ reportsRoutes.get("/:id/download", async (c) => {
     );
   }
 
-  // If stored locally, stream the file directly
-  if (report.fileUrl.startsWith("/reports/")) {
-    try {
-      const fileBuffer = await readReportFileBytes({ fileUrl: report.fileUrl });
+  try {
+    const fileBuffer = await readReportFileBytes({
+      fileUrl: report.fileUrl,
+      id: report.id,
+      organizationId: report.organizationId,
+      fileName: report.fileName,
+    });
+    const checksum = getReportSha256FromSummary(report.summary);
+
+    let fallbackName = `${report.id}.pdf`;
+    if (report.fileUrl.startsWith("/reports/")) {
       const relativePath = report.fileUrl.replace(/^\/reports\//, "");
-      const fileName = report.fileName || path.basename(relativePath);
-      const checksum = getReportSha256FromSummary(report.summary);
-
-      const pdfBody = new Uint8Array(fileBuffer);
-
-      return new Response(pdfBody, {
-        headers: {
-          "Content-Type": "application/pdf",
-          "Content-Disposition": `attachment; filename="${fileName}"`,
-          ...(checksum ? { "X-Report-SHA256": checksum } : {}),
-        },
-      });
-    } catch (error) {
-      log.error("Report download error:", error);
-      return c.json({ success: false, error: "Report file not found" }, 404);
+      fallbackName = path.basename(relativePath);
+    } else {
+      try {
+        fallbackName = path.basename(new URL(report.fileUrl).pathname) || fallbackName;
+      } catch {
+        // Ignore malformed URLs and keep the safe fallback filename
+      }
     }
-  }
 
-  // Otherwise redirect to the external URL
-  return c.redirect(report.fileUrl);
+    const fileName = report.fileName || fallbackName;
+    const pdfBody = new Uint8Array(fileBuffer);
+
+    return new Response(pdfBody, {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${fileName}"`,
+        ...(checksum ? { "X-Report-SHA256": checksum } : {}),
+      },
+    });
+  } catch (error) {
+    log.error({ err: error, reportId: report.id }, "Report download error");
+    return c.json({ success: false, error: "Report file not found" }, 404);
+  }
 });
 
 // ==========================================

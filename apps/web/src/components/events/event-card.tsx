@@ -162,16 +162,16 @@ export function EventCard({
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <EventTypeBadge type={event.type} size="sm" />
           <EventStatusBadge
             type={event.type}
             status={event.status as IncidentStatus | MaintenanceStatus}
             size="sm"
           />
-          <div className="flex items-center gap-1 text-sm text-muted-foreground">
+          <div className="flex items-center gap-1 text-sm text-muted-foreground min-w-0">
             <Clock className="h-3.5 w-3.5" />
-            {duration}
+            <span className="whitespace-normal break-words">{duration}</span>
           </div>
         </div>
 
@@ -182,9 +182,9 @@ export function EventCard({
         )}
 
         {event.type === "maintenance" && event.startedAt && (
-          <div className="flex items-center gap-1 text-sm text-muted-foreground">
-            <CalendarDays className="h-3.5 w-3.5" />
-            <span>
+          <div className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground min-w-0">
+            <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+            <span className="min-w-0 break-words">
               {formatDateRange(event.startedAt, event.endedAt, event.timezone)}
             </span>
           </div>
@@ -217,9 +217,9 @@ export function EventCard({
           </div>
         )}
 
-        <div className="flex items-center justify-between pt-2 border-t text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t text-xs text-muted-foreground">
           <span>Created {formatRelativeTime(event.createdAt)}</span>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
             {event.subscriberCount !== undefined && event.subscriberCount > 0 && (
               <span className="flex items-center gap-1">
                 <Bell className="h-3 w-3" />
@@ -227,7 +227,7 @@ export function EventCard({
               </span>
             )}
             {isResolved && event.endedAt && (
-              <span className="text-green-600">
+              <span className="text-green-600 break-words">
                 {event.type === "incident" ? "Resolved" : "Completed"}{" "}
                 {formatRelativeTime(event.endedAt)}
               </span>
@@ -261,7 +261,7 @@ function EventCardCompact({
     <Link
       href={`/events/${event.type}/${event.id}`}
       className={cn(
-        "flex items-center gap-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors",
+        "flex flex-wrap items-center gap-3 sm:gap-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors",
         className
       )}
     >
@@ -279,7 +279,7 @@ function EventCardCompact({
           <span>{duration}</span>
         </div>
       </div>
-      <div className="flex items-center gap-3 shrink-0">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3 min-w-0 sm:shrink-0">
         <EventTypeBadge type={event.type} size="sm" showLabel={false} />
         <EventStatusBadge
           type={event.type}
@@ -299,9 +299,12 @@ function EventCardCompact({
 
 // Helper functions
 function calculateDuration(startedAt: string, endedAt: string | null): string {
-  const start = new Date(startedAt);
-  const end = endedAt ? new Date(endedAt) : new Date();
+  const start = parseValidDate(startedAt);
+  if (!start) return "Duration unavailable";
+
+  const end = endedAt ? parseValidDate(endedAt) ?? new Date() : new Date();
   const diffMs = end.getTime() - start.getTime();
+  if (!Number.isFinite(diffMs) || diffMs < 0) return "Duration unavailable";
   const diffMins = Math.floor(diffMs / (1000 * 60));
   const diffHours = Math.floor(diffMins / 60);
   const diffDays = Math.floor(diffHours / 24);
@@ -318,9 +321,12 @@ function calculateDuration(startedAt: string, endedAt: string | null): string {
 }
 
 function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString);
+  const date = parseValidDate(dateString);
+  if (!date) return "unknown time";
+
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
+  if (!Number.isFinite(diffMs)) return "unknown time";
   const diffSecs = Math.floor(diffMs / 1000);
   const diffMins = Math.floor(diffSecs / 60);
   const diffHours = Math.floor(diffMins / 60);
@@ -348,8 +354,10 @@ function formatRelativeTime(dateString: string): string {
 }
 
 function formatDateRange(startsAt: string, endsAt: string | null, timezone?: string): string {
-  const start = new Date(startsAt);
-  const end = endsAt ? new Date(endsAt) : null;
+  const start = parseValidDate(startsAt);
+  if (!start) return "Date unavailable";
+
+  const end = endsAt ? parseValidDate(endsAt) : null;
   const tz = timezone || "Europe/London";
   const sameDay = end && start.toDateString() === end.toDateString();
 
@@ -376,4 +384,10 @@ function formatDateRange(startsAt: string, endsAt: string | null, timezone?: str
   }
 
   return `${start.toLocaleDateString(undefined, dateOptions)} - ${end.toLocaleDateString(undefined, dateOptions)}`;
+}
+
+function parseValidDate(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
 }

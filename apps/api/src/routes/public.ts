@@ -93,6 +93,20 @@ function setCachedPublicStatusPagePayload(
   }
 }
 
+function buildWeakEtag(seed: string): string {
+  const digest = createHash("sha1").update(seed).digest("hex");
+  return `W/"${digest}"`;
+}
+
+function isNotModified(ifNoneMatch: string | undefined, etag: string): boolean {
+  if (!ifNoneMatch) return false;
+  const candidates = ifNoneMatch
+    .split(",")
+    .map((token) => token.trim())
+    .filter(Boolean);
+  return candidates.includes("*") || candidates.includes(etag);
+}
+
 function getCachedPublicStatusPageShell(
   key: string
 ): Awaited<ReturnType<typeof buildPublicStatusPageShellPayload>> | null {
@@ -347,7 +361,12 @@ publicRoutes.get("/status-pages/:slug", async (c) => {
     if (protectionMode === "none") {
       const cached = getCachedPublicStatusPagePayload(cacheKey);
       if (cached) {
+        const etag = buildWeakEtag(`${page.id}:${cached.lastUpdatedAt}:full`);
+        c.header("ETag", etag);
         c.header("Cache-Control", "public, max-age=30, s-maxage=30");
+        if (isNotModified(c.req.header("if-none-match"), etag)) {
+          return c.body(null, 304);
+        }
         return c.json({
           success: true,
           data: cached,
@@ -361,7 +380,12 @@ publicRoutes.get("/status-pages/:slug", async (c) => {
     // Protected pages need to vary by auth state, so we skip caching for those
     if (protectionMode === "none") {
       setCachedPublicStatusPagePayload(cacheKey, data);
+      const etag = buildWeakEtag(`${page.id}:${data.lastUpdatedAt}:full`);
+      c.header("ETag", etag);
       c.header("Cache-Control", "public, max-age=30, s-maxage=30");
+      if (isNotModified(c.req.header("if-none-match"), etag)) {
+        return c.body(null, 304);
+      }
     }
 
     return c.json({
@@ -395,7 +419,12 @@ publicRoutes.get("/status-pages/:slug/shell", async (c) => {
     if (protectionMode === "none") {
       const cached = getCachedPublicStatusPageShell(cacheKey);
       if (cached) {
+        const etag = buildWeakEtag(`${page.id}:${page.updatedAt.toISOString()}:shell`);
+        c.header("ETag", etag);
         c.header("Cache-Control", "public, max-age=300, s-maxage=300, stale-while-revalidate=30");
+        if (isNotModified(c.req.header("if-none-match"), etag)) {
+          return c.body(null, 304);
+        }
         return c.json({
           success: true,
           data: cached,
@@ -407,7 +436,12 @@ publicRoutes.get("/status-pages/:slug/shell", async (c) => {
 
     if (protectionMode === "none") {
       setCachedPublicStatusPageShell(cacheKey, data);
+      const etag = buildWeakEtag(`${page.id}:${page.updatedAt.toISOString()}:shell`);
+      c.header("ETag", etag);
       c.header("Cache-Control", "public, max-age=300, s-maxage=300, stale-while-revalidate=30");
+      if (isNotModified(c.req.header("if-none-match"), etag)) {
+        return c.body(null, 304);
+      }
     }
 
     return c.json({
@@ -450,7 +484,12 @@ publicRoutes.get("/status-pages/:slug/live", async (c) => {
     const data = extractPublicStatusPageLivePayload(payload);
 
     if (protectionMode === "none") {
+      const etag = buildWeakEtag(`${page.id}:${payload.lastUpdatedAt}:live`);
+      c.header("ETag", etag);
       c.header("Cache-Control", "public, max-age=5, s-maxage=5");
+      if (isNotModified(c.req.header("if-none-match"), etag)) {
+        return c.body(null, 304);
+      }
     }
 
     return c.json({

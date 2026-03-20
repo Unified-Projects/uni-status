@@ -267,6 +267,17 @@ function parseBulkIds(input: unknown): string[] {
   );
 }
 
+async function processInBatches<T>(
+  items: T[],
+  batchSize: number,
+  fn: (item: T) => Promise<void>
+): Promise<void> {
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    await Promise.all(batch.map((item) => fn(item)));
+  }
+}
+
 // Bulk pause monitors
 monitorsRoutes.post("/bulk/pause", async (c) => {
   const organizationId = await requireOrganization(c);
@@ -375,7 +386,7 @@ monitorsRoutes.post("/bulk/check", async (c) => {
   const skippedPaused = rows.length - activeMonitors.length;
   const jobs: string[] = [];
 
-  for (const monitor of activeMonitors) {
+  await processInBatches(activeMonitors, 25, async (monitor) => {
     const jobId = await queueMonitorCheck({
       monitor: {
         id: monitor.id,
@@ -392,7 +403,7 @@ monitorsRoutes.post("/bulk/check", async (c) => {
       },
     });
     jobs.push(jobId);
-  }
+  });
 
   const now = new Date();
   if (activeMonitors.length > 0) {
@@ -587,6 +598,115 @@ monitorsRoutes.get("/:id", async (c) => {
     success: true,
     data: { ...monitor, dependsOn: await getMonitorDependenciesIds(organizationId, monitor.id) },
   });
+});
+
+// Duplicate monitor
+monitorsRoutes.post("/:id/duplicate", async (c) => {
+  const auth = requireAuth(c);
+  const organizationId = await requireOrganization(c);
+  requireScope(c, "write");
+  const { id } = c.req.param();
+
+  const body = await c.req.json().catch(() => ({}));
+  const requestedName = typeof body?.name === "string" ? body.name.trim() : "";
+
+  // License resource limit check
+  const licenseContext = getLicenseContext(c);
+  const currentMonitorCount = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(monitors)
+    .where(eq(monitors.organizationId, organizationId));
+  requireResourceLimit(
+    licenseContext,
+    "monitors",
+    Number(currentMonitorCount[0]?.count ?? 0),
+    "Monitor"
+  );
+
+  const sourceMonitor = await db.query.monitors.findFirst({
+    where: and(eq(monitors.id, id), eq(monitors.organizationId, organizationId)),
+  });
+
+  if (!sourceMonitor) {
+    throw new Error("Not found");
+  }
+
+  const duplicateId = nanoid();
+  const now = new Date();
+  const duplicateName = sanitizeHtml(
+    requestedName.length > 0 ? requestedName : `${sourceMonitor.name} (Copy)`
+  );
+  const heartbeatToken = sourceMonitor.type === "heartbeat" ? nanoid(32) : null;
+
+  const [duplicatedMonitor] = await db
+    .insert(monitors)
+    .values({
+      id: duplicateId,
+      organizationId,
+      name: duplicateName,
+      description: sourceMonitor.description,
+      url: sourceMonitor.url,
+      type: sourceMonitor.type,
+      method: sourceMonitor.method,
+      headers: sourceMonitor.headers,
+      body: sourceMonitor.body,
+      intervalSeconds: sourceMonitor.intervalSeconds,
+      timeoutMs: sourceMonitor.timeoutMs,
+      regions: sourceMonitor.regions,
+      assertions: sourceMonitor.assertions,
+      degradedThresholdMs: sourceMonitor.degradedThresholdMs,
+      config: sourceMonitor.config,
+      status: "pending",
+      paused: false,
+      heartbeatToken,
+      createdBy: auth.user?.id || auth.apiKey!.id,
+      createdAt: now,
+      updatedAt: now,
+      nextCheckAt: now,
+      lastCheckedAt: null,
+    } as typeof monitors.$inferInsert)
+    .returning();
+
+  if (!duplicatedMonitor) {
+    return c.json({ success: false, error: "Failed to duplicate monitor" }, 500);
+  }
+
+  const existingDependsOn = await getMonitorDependenciesIds(organizationId, sourceMonitor.id);
+  if (existingDependsOn.length > 0) {
+    const depNow = new Date();
+    await db.insert(monitorDependencies).values(
+      existingDependsOn.map((upstreamId) => ({
+        id: nanoid(),
+        downstreamMonitorId: duplicatedMonitor.id,
+        upstreamMonitorId: upstreamId,
+        createdAt: depNow,
+      }))
+    );
+  }
+
+  await publishEvent(`${SSE_CHANNELS.ORGANIZATION}${organizationId}`, {
+    type: "monitor:created",
+    data: { id: duplicatedMonitor.id, name: duplicatedMonitor.name, type: duplicatedMonitor.type, status: duplicatedMonitor.status },
+    timestamp: now.toISOString(),
+  });
+
+  await createAuditLog(c, {
+    organizationId,
+    userId: getAuditUserId(c),
+    action: "monitor.create",
+    resourceType: "monitor",
+    resourceId: duplicatedMonitor.id,
+    resourceName: duplicatedMonitor.name,
+    metadata: { duplicatedFrom: sourceMonitor.id },
+  });
+
+  return c.json(
+    {
+      success: true,
+      data: { ...duplicatedMonitor, dependsOn: existingDependsOn },
+    },
+    201
+  );
 });
 
 // Update monitor

@@ -6,6 +6,7 @@ import { eq, desc } from "drizzle-orm";
 import { publishEvent } from "../lib/redis";
 import { evaluateAlerts } from "../lib/alert-evaluator";
 import { linkCheckToActiveIncident } from "../lib/incident-linker";
+import { buildMonitorTransitionUpdate } from "../lib/monitor-status";
 import { fetchPageSpeedData, checkPageSpeedThresholds, checkWebVitalsThresholds, type PageSpeedScores, type WebVitals } from "../lib/pagespeed";
 import { analyzeSecurityHeaders } from "../lib/security-headers";
 import type { CheckStatus, SecurityHeadersAnalysis } from "@uni-status/shared/types";
@@ -865,29 +866,15 @@ export async function processHttpCheck(job: Job<HttpCheckJob>) {
   // Link failed checks to active incidents
   await linkCheckToActiveIncident(resultId, monitorId, status);
 
-  // Update monitor status
-  const newStatus =
-    status === "success"
-      ? "active"
-      : status === "degraded"
-      ? "degraded"
-      : "down";
-
-  // Update monitor status and lastPagespeedAt if pagespeed was run
-  const monitorUpdate: Record<string, unknown> = {
-    status: newStatus,
-    updatedAt: new Date(),
-  };
-
-  // Update lastPagespeedAt if pagespeed was run in this check
-  if (shouldRunPagespeed) {
-    monitorUpdate.lastPagespeedAt = new Date();
+  const transition = await buildMonitorTransitionUpdate(monitorId, status, {
+    extraUpdates: shouldRunPagespeed ? { lastPagespeedAt: new Date() } : undefined,
+  });
+  if (transition) {
+    await db
+      .update(monitors)
+      .set(transition.update)
+      .where(eq(monitors.id, monitorId));
   }
-
-  await db
-    .update(monitors)
-    .set(monitorUpdate)
-    .where(eq(monitors.id, monitorId));
 
   // Publish event for real-time updates
   await publishEvent(`monitor:${monitorId}`, {

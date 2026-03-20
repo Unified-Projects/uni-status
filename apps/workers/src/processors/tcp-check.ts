@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { publishEvent } from "../lib/redis";
 import { evaluateAlerts } from "../lib/alert-evaluator";
 import { linkCheckToActiveIncident } from "../lib/incident-linker";
+import { buildMonitorTransitionUpdate } from "../lib/monitor-status";
 import type { CheckStatus } from "@uni-status/shared/types";
 import { createLogger } from "@uni-status/shared";
 
@@ -176,23 +177,13 @@ export async function processTcpCheck(job: Job<TcpCheckJob>) {
   // Link failed checks to active incidents
   await linkCheckToActiveIncident(resultId, monitorId, status);
 
-  // Update monitor status
-  const newStatus = status === "success" ? "active" : "down";
-
-  await db
-    .update(monitors)
-    .set({
-      status: newStatus,
-      updatedAt: new Date(),
-    })
-    .where(eq(monitors.id, monitorId));
-
-  // Fetch monitor to get organizationId for alert evaluation
-  const monitor = await db
-    .select({ organizationId: monitors.organizationId })
-    .from(monitors)
-    .where(eq(monitors.id, monitorId))
-    .limit(1);
+  const transition = await buildMonitorTransitionUpdate(monitorId, status);
+  if (transition) {
+    await db
+      .update(monitors)
+      .set(transition.update)
+      .where(eq(monitors.id, monitorId));
+  }
 
   // Publish event for real-time updates
   await publishEvent(`monitor:${monitorId}`, {
@@ -206,10 +197,10 @@ export async function processTcpCheck(job: Job<TcpCheckJob>) {
   });
 
   // Evaluate alert policies for this monitor
-  if (monitor[0]) {
+  if (transition) {
     await evaluateAlerts({
       monitorId,
-      organizationId: monitor[0].organizationId,
+      organizationId: transition.organizationId,
       checkResultId: resultId,
       checkStatus: status,
       errorMessage,
@@ -289,20 +280,13 @@ async function handleError(
   // Link failed checks to active incidents
   await linkCheckToActiveIncident(resultId, monitorId, "error");
 
-  // Fetch monitor to get organizationId for alert evaluation
-  const monitor = await db
-    .select({ organizationId: monitors.organizationId })
-    .from(monitors)
-    .where(eq(monitors.id, monitorId))
-    .limit(1);
-
-  await db
-    .update(monitors)
-    .set({
-      status: "down",
-      updatedAt: new Date(),
-    })
-    .where(eq(monitors.id, monitorId));
+  const transition = await buildMonitorTransitionUpdate(monitorId, "error");
+  if (transition) {
+    await db
+      .update(monitors)
+      .set(transition.update)
+      .where(eq(monitors.id, monitorId));
+  }
 
   await publishEvent(`monitor:${monitorId}`, {
     type: "monitor:check",
@@ -316,10 +300,10 @@ async function handleError(
   });
 
   // Evaluate alert policies for this monitor
-  if (monitor[0]) {
+  if (transition) {
     await evaluateAlerts({
       monitorId,
-      organizationId: monitor[0].organizationId,
+      organizationId: transition.organizationId,
       checkResultId: resultId,
       checkStatus: "error",
       errorMessage,

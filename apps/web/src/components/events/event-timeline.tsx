@@ -357,7 +357,9 @@ export function EventsFeedTimeline({ events, className }: EventsFeedTimelineProp
 
 // Helper functions
 function formatDateTime(dateString: string): string {
-  const date = new Date(dateString);
+  const date = parseValidDate(dateString);
+  if (!date) return "Unknown time";
+
   return new Intl.DateTimeFormat(undefined, {
     month: "short",
     day: "numeric",
@@ -369,9 +371,12 @@ function formatDateTime(dateString: string): string {
 }
 
 function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString);
+  const date = parseValidDate(dateString);
+  if (!date) return "unknown time";
+
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
+  if (!Number.isFinite(diffMs)) return "unknown time";
   const diffSecs = Math.floor(diffMs / 1000);
   const diffMins = Math.floor(diffSecs / 60);
   const diffHours = Math.floor(diffMins / 60);
@@ -386,7 +391,9 @@ function formatRelativeTime(dateString: string): string {
 }
 
 function formatDateHeader(dateString: string): string {
-  const date = new Date(dateString);
+  const date = parseValidDate(dateString);
+  if (!date) return "Unknown date";
+
   const today = new Date();
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
@@ -406,10 +413,18 @@ function formatDateHeader(dateString: string): string {
 }
 
 function formatTime(dateString: string): string {
-  const date = new Date(dateString);
+  const date = parseValidDate(dateString);
+  if (!date) return "Unknown time";
+
   return new Intl.DateTimeFormat(undefined, {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
   }).format(date);
+}
+
+function parseValidDate(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
 }

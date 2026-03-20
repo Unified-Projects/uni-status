@@ -7,6 +7,7 @@ import {
   Pause,
   Play,
   RefreshCw,
+  Copy,
   Pencil,
   Trash2,
   Clock,
@@ -36,6 +37,7 @@ export interface MonitorCardProps {
   onResume?: () => void;
   onCheckNow?: () => void;
   onEdit?: () => void;
+  onDuplicate?: () => void;
   onDelete?: () => void;
   showActions?: boolean;
   variant?: "default" | "compact";
@@ -50,6 +52,7 @@ export function MonitorCard({
   onResume,
   onCheckNow,
   onEdit,
+  onDuplicate,
   onDelete,
   showActions = true,
   variant = "default",
@@ -128,6 +131,12 @@ export function MonitorCard({
                     <DropdownMenuItem onClick={onEdit}>
                       <Pencil className="mr-2 h-4 w-4" />
                       Edit
+                    </DropdownMenuItem>
+                  )}
+                  {onDuplicate && (
+                    <DropdownMenuItem onClick={onDuplicate}>
+                      <Copy className="mr-2 h-4 w-4" />
+                      Duplicate
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuSeparator />

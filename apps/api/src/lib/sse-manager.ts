@@ -26,10 +26,45 @@ export interface SSEEvent {
 
 class SSEConnectionManager {
   private clients: Map<string, SSEClient> = new Map();
+  private clientsByOrganization: Map<string, Set<string>> = new Map();
+  private clientsByMonitor: Map<string, Set<string>> = new Map();
+  private clientsByStatusPage: Map<string, Set<string>> = new Map();
   private subscriber: IORedis | null = null;
   private initialized = false;
   private monitorOrgCache = new Map<string, { organizationId: string; timestamp: number }>();
   private readonly monitorOrgCacheTtlMs = 5 * 60 * 1000;
+
+  private addClientToIndex(index: Map<string, Set<string>>, key: string | undefined, clientId: string) {
+    if (!key) return;
+    const existing = index.get(key);
+    if (existing) {
+      existing.add(clientId);
+      return;
+    }
+    index.set(key, new Set([clientId]));
+  }
+
+  private removeClientFromIndex(index: Map<string, Set<string>>, key: string | undefined, clientId: string) {
+    if (!key) return;
+    const existing = index.get(key);
+    if (!existing) return;
+    existing.delete(clientId);
+    if (existing.size === 0) {
+      index.delete(key);
+    }
+  }
+
+  private indexClient(client: SSEClient) {
+    this.addClientToIndex(this.clientsByOrganization, client.organizationId, client.id);
+    this.addClientToIndex(this.clientsByMonitor, client.monitorId, client.id);
+    this.addClientToIndex(this.clientsByStatusPage, client.statusPageSlug, client.id);
+  }
+
+  private unindexClient(client: SSEClient) {
+    this.removeClientFromIndex(this.clientsByOrganization, client.organizationId, client.id);
+    this.removeClientFromIndex(this.clientsByMonitor, client.monitorId, client.id);
+    this.removeClientFromIndex(this.clientsByStatusPage, client.statusPageSlug, client.id);
+  }
 
   /**
    * Initialize the connection manager and subscribe to Redis
@@ -144,22 +179,31 @@ class SSEConnectionManager {
     const addTarget = (client: SSEClient) => {
       targets.set(client.id, client);
     };
+    const addTargetsByIds = (ids: Set<string> | undefined) => {
+      if (!ids) return;
+      for (const id of ids) {
+        const client = this.clients.get(id);
+        if (client) {
+          addTarget(client);
+        }
+      }
+    };
 
     // Monitor channel: monitor:${id}
     if (channel.startsWith(SSE_CHANNELS.MONITOR)) {
       const monitorId = channel.replace(SSE_CHANNELS.MONITOR, "");
       const eventOrgId = this.extractOrganizationId(event) || await this.getOrganizationIdForMonitor(monitorId);
+      const monitorSubscribers = this.clientsByMonitor.get(monitorId);
+      addTargetsByIds(monitorSubscribers);
 
-      for (const client of this.clients.values()) {
-        // Direct monitor subscription
-        if (client.monitorId === monitorId) {
-          addTarget(client);
-        }
-
-        // Dashboard subscriptions only receive monitor events scoped to their organization.
-        if (client.organizationId && !client.monitorId && !client.statusPageSlug) {
-          if (eventOrgId && client.organizationId === eventOrgId) {
-            addTarget(client);
+      if (eventOrgId) {
+        const orgSubscribers = this.clientsByOrganization.get(eventOrgId);
+        if (orgSubscribers) {
+          for (const clientId of orgSubscribers) {
+            const client = this.clients.get(clientId);
+            if (client && !client.monitorId && !client.statusPageSlug) {
+              addTarget(client);
+            }
           }
         }
       }
@@ -168,23 +212,13 @@ class SSEConnectionManager {
     // Organization channel: org:${id}
     if (channel.startsWith(SSE_CHANNELS.ORGANIZATION)) {
       const orgId = channel.replace(SSE_CHANNELS.ORGANIZATION, "");
-
-      for (const client of this.clients.values()) {
-        if (client.organizationId === orgId) {
-          addTarget(client);
-        }
-      }
+      addTargetsByIds(this.clientsByOrganization.get(orgId));
     }
 
     // Status page channel: status:${slug}
     if (channel.startsWith(SSE_CHANNELS.STATUS_PAGE)) {
       const slug = channel.replace(SSE_CHANNELS.STATUS_PAGE, "");
-
-      for (const client of this.clients.values()) {
-        if (client.statusPageSlug === slug) {
-          addTarget(client);
-        }
-      }
+      addTargetsByIds(this.clientsByStatusPage.get(slug));
     }
 
     return Array.from(targets.values());
@@ -195,6 +229,7 @@ class SSEConnectionManager {
    */
   addClient(client: SSEClient) {
     this.clients.set(client.id, client);
+    this.indexClient(client);
     log.info({ clientId: client.id, totalClients: this.clients.size }, "Client connected");
   }
 
@@ -202,8 +237,12 @@ class SSEConnectionManager {
    * Remove an SSE client
    */
   removeClient(clientId: string) {
+    const existing = this.clients.get(clientId);
     const removed = this.clients.delete(clientId);
     if (removed) {
+      if (existing) {
+        this.unindexClient(existing);
+      }
       log.info({ clientId, totalClients: this.clients.size }, "Client disconnected");
     }
   }
@@ -214,7 +253,10 @@ class SSEConnectionManager {
   updateClient(clientId: string, updates: Partial<Omit<SSEClient, "id" | "send">>) {
     const client = this.clients.get(clientId);
     if (!client) return;
-    this.clients.set(clientId, { ...client, ...updates });
+    this.unindexClient(client);
+    const updated = { ...client, ...updates };
+    this.clients.set(clientId, updated);
+    this.indexClient(updated);
   }
 
   /**

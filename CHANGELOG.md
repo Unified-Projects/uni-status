@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-03-20
+
+### Added
+- Added monitor duplication support (`POST /monitors/:id/duplicate`) including dependency cloning, audit logging, and dashboard actions
+- Added threshold-aware monitor transition handling in workers using `degradedAfterCount`/`downAfterCount` with consecutive status counters
+- Added conditional `ETag`/`304` handling for public status page payload, shell, and live endpoints
+- Added optional `includeTrend` support for dashboard analytics payloads to control expensive trend queries
+- Added a composite polling index on monitors (`paused`, `nextCheckAt`, `type`) to improve scheduler query performance
+
+### Changed
+- Updated worker scheduler loops with batch/concurrency controls, grouped `nextCheckAt` updates, and Redis-backed distributed poll locks
+- Updated monitor processors (HTTP/Ping/TCP/DNS/SSL/Email Auth) to use shared transition updates and consistent organization-aware alert evaluation context
+- Updated status page response-time payload generation to prefer hourly aggregate tables for large windows before falling back to raw check results
+- Updated GraphQL public status-page batch resolution with slug deduplication, bounded request size, and chunked resolution
+- Updated enterprise reports verification/download flow to support private object storage reads via S3 SDK and to always proxy downloads through the API
+- Updated dashboard/web analytics polling behavior to rely on SSE health and reduced unnecessary refetch load
+- Updated SSE routing/query invalidation behavior with indexed client targeting and debounced invalidation handling
+- Increased default API rate limit from `100` to `120` requests per minute
+- Bumped workspace package/runtime version references from `0.2.1` to `0.2.2`
+
 ## [0.2.1] - 2026-03-20
 
 ### Added

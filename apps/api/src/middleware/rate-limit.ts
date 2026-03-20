@@ -6,7 +6,7 @@ import { createLogger } from "@uni-status/shared";
 const log = createLogger({ module: "rate-limiter" });
 
 const WINDOW_MS = 60 * 1000; // 1 minute
-const MAX_REQUESTS = 100;
+const MAX_REQUESTS = 120;
 const RATELIMIT_PREFIX = "ratelimit:";
 
 export async function rateLimiter(c: Context, next: Next) {

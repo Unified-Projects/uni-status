@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm";
 import { publishEvent } from "../lib/redis";
 import { evaluateAlerts } from "../lib/alert-evaluator";
 import { linkCheckToActiveIncident } from "../lib/incident-linker";
+import { buildMonitorTransitionUpdate } from "../lib/monitor-status";
 import type { CheckStatus } from "@uni-status/shared/types";
 import { createLogger } from "@uni-status/shared";
 
@@ -603,22 +604,15 @@ export async function processSslCheck(job: Job<SslCheckJob>) {
     // Link failed checks to active incidents
     await linkCheckToActiveIncident(resultId, monitorId, status);
 
-    // Update monitor status
-    const newStatus =
-      status === "success"
-        ? "active"
-        : status === "degraded"
-        ? "degraded"
-        : "down";
-
-    await db
-      .update(monitors)
-      .set({
-        status: newStatus,
-        lastCheckedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(monitors.id, monitorId));
+    const transition = await buildMonitorTransitionUpdate(monitorId, status, {
+      includeLastCheckedAt: true,
+    });
+    if (transition) {
+      await db
+        .update(monitors)
+        .set(transition.update)
+        .where(eq(monitors.id, monitorId));
+    }
 
     // Evaluate alert policies
     if (monitor[0]) {
