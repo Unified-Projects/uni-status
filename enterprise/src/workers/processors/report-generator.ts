@@ -196,6 +196,25 @@ async function gatherReportData(
     where: inArray(monitors.id, jobData.includedMonitors),
   });
 
+  const incidentsInPeriod = await db.query.incidents.findMany({
+    where: and(
+      eq(incidents.organizationId, jobData.organizationId),
+      gte(incidents.startedAt, periodStart),
+      lte(incidents.startedAt, periodEnd)
+    ),
+    orderBy: [desc(incidents.startedAt)],
+  });
+
+  const incidentCountByMonitor = new Map<string, number>();
+  for (const incident of incidentsInPeriod) {
+    const affectedMonitors = Array.isArray(incident.affectedMonitors)
+      ? incident.affectedMonitors as string[]
+      : [];
+    for (const monitorId of new Set(affectedMonitors)) {
+      incidentCountByMonitor.set(monitorId, (incidentCountByMonitor.get(monitorId) || 0) + 1);
+    }
+  }
+
   // Gather monitor stats
   const monitorData: MonitorReportData[] = await Promise.all(
     monitorsList.map(async (monitor) => {
@@ -229,18 +248,6 @@ async function gatherReportData(
       const intervalSeconds = monitor.intervalSeconds ?? 60;
       const downtimeMinutes = failedChecks * (intervalSeconds / 60);
 
-      // Count incidents
-      const incidentCount = await db
-        .select({ count: sql<number>`COUNT(DISTINCT ${incidents.id})` })
-        .from(incidents)
-        .where(
-          and(
-            gte(incidents.startedAt, periodStart),
-            lte(incidents.startedAt, periodEnd)
-            // Would join with incidentAffectedMonitors here
-          )
-        );
-
       return {
         id: monitor.id,
         name: monitor.name,
@@ -252,23 +259,13 @@ async function gatherReportData(
         successfulChecks,
         failedChecks,
         downtimeMinutes,
-        incidentCount: incidentCount[0]?.count || 0,
+        incidentCount: incidentCountByMonitor.get(monitor.id) || 0,
       };
     })
   );
 
   // Get incidents
-  const incidentsList = jobData.settings.includeIncidents
-    ? await db.query.incidents.findMany({
-        where: and(
-          eq(incidents.organizationId, jobData.organizationId),
-          gte(incidents.startedAt, periodStart),
-          lte(incidents.startedAt, periodEnd)
-        ),
-        orderBy: [desc(incidents.startedAt)],
-        with: {},
-      })
-    : [];
+  const incidentsList = jobData.settings.includeIncidents ? incidentsInPeriod : [];
 
   const incidentData: IncidentReportData[] = incidentsList.map((incident) => {
     const resolvedAt = incident.resolvedAt;

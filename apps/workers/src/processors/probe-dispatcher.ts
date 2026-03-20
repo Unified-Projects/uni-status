@@ -28,6 +28,18 @@ const JOB_EXPIRATION_MS = 5 * 60 * 1000;
 
 // Probe offline threshold (2 minutes without heartbeat)
 const OFFLINE_THRESHOLD_MS = 2 * 60 * 1000;
+const DISPATCH_CONCURRENCY = 20;
+
+async function processInBatches<T>(
+  items: T[],
+  batchSize: number,
+  fn: (item: T) => Promise<void>
+) {
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    await Promise.all(batch.map((item) => fn(item)));
+  }
+}
 
 // Dispatch a job to assigned probes for a monitor
 export async function processProbeJobDispatch(
@@ -140,19 +152,18 @@ export async function processProbeHealthCheck(
   const offlineThreshold = new Date(now.getTime() - OFFLINE_THRESHOLD_MS);
 
   // Find probes that should be marked offline
-  let probesQuery = db.query.probes.findMany({
-    where: and(
-      eq(probes.status, "active"),
-      lt(probes.lastHeartbeatAt, offlineThreshold)
-    ),
+  const offlineProbes = await db.query.probes.findMany({
+    where: organizationId
+      ? and(
+          eq(probes.status, "active"),
+          lt(probes.lastHeartbeatAt, offlineThreshold),
+          eq(probes.organizationId, organizationId)
+        )
+      : and(
+          eq(probes.status, "active"),
+          lt(probes.lastHeartbeatAt, offlineThreshold)
+        ),
   });
-
-  let offlineProbes = await probesQuery;
-
-  // Filter by organization if specified
-  if (organizationId) {
-    offlineProbes = offlineProbes.filter((p) => p.organizationId === organizationId);
-  }
 
   if (offlineProbes.length > 0) {
     log.info(`Marking ${offlineProbes.length} probes as offline`);
@@ -239,12 +250,9 @@ export async function getProbeStats(organizationId?: string): Promise<{
   pending: number;
   pendingJobCount: number;
 }> {
-  let probesQuery = db.query.probes.findMany({});
-  let allProbes = await probesQuery;
-
-  if (organizationId) {
-    allProbes = allProbes.filter((p) => p.organizationId === organizationId);
-  }
+  const allProbes = await db.query.probes.findMany({
+    where: organizationId ? eq(probes.organizationId, organizationId) : undefined,
+  });
 
   const statusCounts = {
     total: allProbes.length,
@@ -280,16 +288,18 @@ export async function scheduleProbeJobs(organizationId?: string): Promise<void> 
   // Get all monitors with probe assignments that need checking
   const now = new Date();
 
-  let monitorsToCheck = await db.query.monitors.findMany({
-    where: and(
-      eq(monitors.paused, false),
-      lt(monitors.nextCheckAt, now)
-    ),
+  const monitorsToCheck = await db.query.monitors.findMany({
+    where: organizationId
+      ? and(
+          eq(monitors.paused, false),
+          lt(monitors.nextCheckAt, now),
+          eq(monitors.organizationId, organizationId)
+        )
+      : and(
+          eq(monitors.paused, false),
+          lt(monitors.nextCheckAt, now)
+        ),
   });
-
-  if (organizationId) {
-    monitorsToCheck = monitorsToCheck.filter((m) => m.organizationId === organizationId);
-  }
 
   // Filter to only monitors with probe assignments
   const monitorIds = monitorsToCheck.map((m) => m.id);
@@ -314,7 +324,7 @@ export async function scheduleProbeJobs(organizationId?: string): Promise<void> 
   log.info(`Found ${monitorsWithProbes.length} monitors with probe assignments needing checks`);
 
   // Dispatch jobs for each monitor
-  for (const monitor of monitorsWithProbes) {
+  await processInBatches(monitorsWithProbes, DISPATCH_CONCURRENCY, async (monitor) => {
     await processProbeJobDispatch({
       data: {
         monitorId: monitor.id,
@@ -328,7 +338,7 @@ export async function scheduleProbeJobs(organizationId?: string): Promise<void> 
       .update(monitors)
       .set({ nextCheckAt })
       .where(eq(monitors.id, monitor.id));
-  }
+  });
 
   log.info(`Scheduled ${monitorsWithProbes.length} probe jobs`);
 }

@@ -2,6 +2,9 @@ import IORedis from "ioredis";
 import { SSE_CHANNELS } from "@uni-status/shared/constants";
 import { getRedisUrl } from "@uni-status/shared/config";
 import { createLogger } from "@uni-status/shared";
+import { db } from "@uni-status/database";
+import { monitors } from "@uni-status/database/schema";
+import { eq } from "drizzle-orm";
 
 const log = createLogger({ module: "realtime-hub" });
 const REDIS_URL = getRedisUrl();
@@ -25,6 +28,8 @@ class SSEConnectionManager {
   private clients: Map<string, SSEClient> = new Map();
   private subscriber: IORedis | null = null;
   private initialized = false;
+  private monitorOrgCache = new Map<string, { organizationId: string; timestamp: number }>();
+  private readonly monitorOrgCacheTtlMs = 5 * 60 * 1000;
 
   /**
    * Initialize the connection manager and subscribe to Redis
@@ -43,7 +48,7 @@ class SSEConnectionManager {
 
     // Handle incoming messages
     this.subscriber.on("pmessage", (_pattern, channel, message) => {
-      this.handleMessage(channel, message);
+      void this.handleMessage(channel, message);
     });
 
     this.initialized = true;
@@ -53,7 +58,7 @@ class SSEConnectionManager {
   /**
    * Handle incoming Redis message and fan-out to relevant clients
    */
-  private handleMessage(channel: string, message: string) {
+  private async handleMessage(channel: string, message: string) {
     try {
       const event = JSON.parse(message) as SSEEvent;
 
@@ -63,7 +68,7 @@ class SSEConnectionManager {
       }
 
       // Determine which clients should receive this event
-      const targetClients = this.getTargetClients(channel, event);
+      const targetClients = await this.getTargetClients(channel, event);
 
       // Send to all target clients
       for (const client of targetClients) {
@@ -77,27 +82,85 @@ class SSEConnectionManager {
     }
   }
 
+  private extractOrganizationId(event: SSEEvent): string | null {
+    const eventRecord = (typeof event === "object" && event !== null)
+      ? event as unknown as Record<string, unknown>
+      : null;
+    const dataRecord = (typeof event.data === "object" && event.data !== null)
+      ? event.data as Record<string, unknown>
+      : null;
+
+    const fromData = dataRecord?.organizationId;
+    if (typeof fromData === "string" && fromData.length > 0) {
+      return fromData;
+    }
+
+    const nestedMonitor = dataRecord?.monitor;
+    if (typeof nestedMonitor === "object" && nestedMonitor !== null) {
+      const nestedOrg = (nestedMonitor as Record<string, unknown>).organizationId;
+      if (typeof nestedOrg === "string" && nestedOrg.length > 0) {
+        return nestedOrg;
+      }
+    }
+
+    const fromEvent = eventRecord?.organizationId;
+    if (typeof fromEvent === "string" && fromEvent.length > 0) {
+      return fromEvent;
+    }
+
+    return null;
+  }
+
+  private async getOrganizationIdForMonitor(monitorId: string): Promise<string | null> {
+    const cached = this.monitorOrgCache.get(monitorId);
+    const now = Date.now();
+    if (cached && now - cached.timestamp < this.monitorOrgCacheTtlMs) {
+      return cached.organizationId;
+    }
+
+    const monitor = await db.query.monitors.findFirst({
+      where: eq(monitors.id, monitorId),
+      columns: {
+        organizationId: true,
+      },
+    });
+
+    if (!monitor?.organizationId) {
+      return null;
+    }
+
+    this.monitorOrgCache.set(monitorId, {
+      organizationId: monitor.organizationId,
+      timestamp: now,
+    });
+    return monitor.organizationId;
+  }
+
   /**
    * Get clients that should receive an event based on channel
    */
-  private getTargetClients(channel: string, event: SSEEvent): SSEClient[] {
-    const targets: SSEClient[] = [];
+  private async getTargetClients(channel: string, event: SSEEvent): Promise<SSEClient[]> {
+    const targets = new Map<string, SSEClient>();
+    const addTarget = (client: SSEClient) => {
+      targets.set(client.id, client);
+    };
 
     // Monitor channel: monitor:${id}
     if (channel.startsWith(SSE_CHANNELS.MONITOR)) {
       const monitorId = channel.replace(SSE_CHANNELS.MONITOR, "");
+      const eventOrgId = this.extractOrganizationId(event) || await this.getOrganizationIdForMonitor(monitorId);
 
       for (const client of this.clients.values()) {
         // Direct monitor subscription
         if (client.monitorId === monitorId) {
-          targets.push(client);
+          addTarget(client);
         }
 
-        // Dashboard subscriptions get all monitor events for their org
-        // Note: We'd need organizationId in the event to filter properly
-        // For now, dashboard clients receive all monitor events
+        // Dashboard subscriptions only receive monitor events scoped to their organization.
         if (client.organizationId && !client.monitorId && !client.statusPageSlug) {
-          targets.push(client);
+          if (eventOrgId && client.organizationId === eventOrgId) {
+            addTarget(client);
+          }
         }
       }
     }
@@ -108,7 +171,7 @@ class SSEConnectionManager {
 
       for (const client of this.clients.values()) {
         if (client.organizationId === orgId) {
-          targets.push(client);
+          addTarget(client);
         }
       }
     }
@@ -119,12 +182,12 @@ class SSEConnectionManager {
 
       for (const client of this.clients.values()) {
         if (client.statusPageSlug === slug) {
-          targets.push(client);
+          addTarget(client);
         }
       }
     }
 
-    return targets;
+    return Array.from(targets.values());
   }
 
   /**

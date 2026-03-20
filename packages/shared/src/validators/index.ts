@@ -776,7 +776,7 @@ export const updateStatusPageThemeSchema = createStatusPageThemeSchema.partial()
 
 // Alert validators
 export const alertChannelTypeSchema = z.enum([
-  "email", "slack", "discord", "teams", "pagerduty", "webhook", "sms", "ntfy", "irc", "twitter"
+  "email", "slack", "discord", "teams", "google_chat", "pagerduty", "webhook", "sms", "ntfy", "irc", "twitter"
 ]);
 
 export const alertChannelConfigSchema = z.object({
@@ -866,6 +866,38 @@ function validateAlertChannelWebhookUrl(
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "Outlook webhook URL must include /webhook/ path",
+        path: ["config", "webhookUrl"],
+      });
+    }
+  }
+
+  if (type === "google_chat") {
+    let url: URL;
+    try {
+      url = new URL(webhookUrl);
+    } catch {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Google Chat webhook URL must be a valid HTTPS URL",
+        path: ["config", "webhookUrl"],
+      });
+      return;
+    }
+
+    if (url.protocol !== "https:") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Google Chat webhook URL must use HTTPS",
+        path: ["config", "webhookUrl"],
+      });
+      return;
+    }
+
+    const hostname = url.hostname.toLowerCase();
+    if (hostname !== "chat.googleapis.com") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Google Chat webhook URL must use chat.googleapis.com",
         path: ["config", "webhookUrl"],
       });
     }

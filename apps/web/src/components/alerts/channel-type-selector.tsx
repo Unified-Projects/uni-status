@@ -28,6 +28,7 @@ function getChannelTypeDescription(type: AlertChannelType): string {
     slack: "Post alerts to Slack channels",
     discord: "Post alerts to Discord channels",
     teams: "Post alerts to Microsoft Teams",
+    google_chat: "Post alerts to Google Chat spaces",
     pagerduty: "Create PagerDuty incidents",
     webhook: "Send to custom HTTP webhooks",
     sms: "Send SMS text messages",

@@ -239,6 +239,7 @@ function getConfigSummary(channel: AlertChannel): string | null {
     case "slack":
     case "discord":
     case "teams":
+    case "google_chat":
       return config.webhookUrl
         ? `${config.webhookUrl.substring(0, 40)}...`
         : null;

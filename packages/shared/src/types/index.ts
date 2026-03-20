@@ -183,6 +183,7 @@ export type AlertChannelType =
   | "slack"
   | "discord"
   | "teams"
+  | "google_chat"
   | "pagerduty"
   | "webhook"
   | "sms"

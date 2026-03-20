@@ -15,7 +15,7 @@ import {
   requireResourceLimit,
   requireMinCheckInterval,
 } from "@uni-status/enterprise/api/middleware/license";
-import { eq, and, desc, sql, isNotNull, inArray, gte } from "drizzle-orm";
+import { eq, and, desc, asc, sql, isNotNull, inArray, gte, ilike, or } from "drizzle-orm";
 
 /**
  * Sanitize user input by escaping HTML special characters to prevent XSS attacks.
@@ -104,18 +104,56 @@ monitorsRoutes.get("/", async (c) => {
   // Parse pagination parameters
   const limit = Math.min(Math.max(parseInt(c.req.query("limit") || "100"), 1), 100);
   const offset = Math.max(parseInt(c.req.query("offset") || "0"), 0);
+  const typeFilters = (c.req.query("type") || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const statusFilters = (c.req.query("status") || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const search = (c.req.query("search") || "").trim();
+  const sortBy = (c.req.query("sortBy") || "createdAt").trim();
+  const sortDirection = (c.req.query("sortDirection") || "desc").toLowerCase() === "asc" ? "asc" : "desc";
+
+  const whereConditions = [eq(monitors.organizationId, organizationId)];
+  if (typeFilters.length > 0) {
+    whereConditions.push(inArray(monitors.type, typeFilters as Array<typeof monitors.$inferSelect.type>));
+  }
+  if (statusFilters.length > 0) {
+    whereConditions.push(inArray(monitors.status, statusFilters as Array<typeof monitors.$inferSelect.status>));
+  }
+  if (search.length > 0) {
+    whereConditions.push(
+      or(
+        ilike(monitors.name, `%${search}%`),
+        ilike(monitors.url, `%${search}%`)
+      )!
+    );
+  }
+  const whereClause = and(...whereConditions);
+
+  const sortColumn =
+    sortBy === "name"
+      ? monitors.name
+      : sortBy === "status"
+        ? monitors.status
+        : sortBy === "lastCheckedAt"
+          ? monitors.lastCheckedAt
+          : monitors.createdAt;
+  const orderBy = sortDirection === "asc" ? [asc(sortColumn)] : [desc(sortColumn)];
 
   // Get total count
   const countResult = await db
     .select({ count: sql<number>`count(*)` })
     .from(monitors)
-    .where(eq(monitors.organizationId, organizationId));
+    .where(whereClause);
 
   const total = Number(countResult[0]?.count ?? 0);
 
   const result = await db.query.monitors.findMany({
-    where: eq(monitors.organizationId, organizationId),
-    orderBy: [desc(monitors.createdAt)],
+    where: whereClause,
+    orderBy,
     limit,
     offset,
   });
@@ -212,6 +250,208 @@ monitorsRoutes.get("/", async (c) => {
       offset,
       hasMore: offset + result.length < total,
     },
+  });
+});
+
+function parseBulkIds(input: unknown): string[] {
+  if (!input || typeof input !== "object") return [];
+  const rawIds = (input as { ids?: unknown }).ids;
+  if (!Array.isArray(rawIds)) return [];
+  return Array.from(
+    new Set(
+      rawIds
+        .filter((id): id is string => typeof id === "string")
+        .map((id) => id.trim())
+        .filter((id) => id.length > 0)
+    )
+  );
+}
+
+// Bulk pause monitors
+monitorsRoutes.post("/bulk/pause", async (c) => {
+  const organizationId = await requireOrganization(c);
+  requireScope(c, "write");
+
+  const body = await c.req.json().catch(() => ({}));
+  const ids = parseBulkIds(body);
+  if (ids.length === 0) {
+    return c.json({ success: false, error: "At least one monitor ID is required" }, 400);
+  }
+
+  const now = new Date();
+  const updated = await db
+    .update(monitors)
+    .set({
+      paused: true,
+      status: "paused",
+      updatedAt: now,
+    })
+    .where(and(eq(monitors.organizationId, organizationId), inArray(monitors.id, ids)))
+    .returning({ id: monitors.id, name: monitors.name });
+
+  await publishEvent(`${SSE_CHANNELS.ORGANIZATION}${organizationId}`, {
+    type: "monitor:bulk_status_changed",
+    data: { ids: updated.map((m) => m.id), status: "paused" },
+    timestamp: now.toISOString(),
+  });
+
+  await createAuditLog(c, {
+    organizationId,
+    userId: getAuditUserId(c),
+    action: "monitor.pause",
+    resourceType: "monitor",
+    resourceId: "bulk",
+    resourceName: `Bulk pause (${updated.length})`,
+    metadata: { monitorIds: updated.map((m) => m.id) },
+  });
+
+  return c.json({
+    success: true,
+    data: { updated: updated.length, ids: updated.map((m) => m.id) },
+  });
+});
+
+// Bulk resume monitors
+monitorsRoutes.post("/bulk/resume", async (c) => {
+  const organizationId = await requireOrganization(c);
+  requireScope(c, "write");
+
+  const body = await c.req.json().catch(() => ({}));
+  const ids = parseBulkIds(body);
+  if (ids.length === 0) {
+    return c.json({ success: false, error: "At least one monitor ID is required" }, 400);
+  }
+
+  const now = new Date();
+  const updated = await db
+    .update(monitors)
+    .set({
+      paused: false,
+      status: "pending",
+      nextCheckAt: now,
+      updatedAt: now,
+    })
+    .where(and(eq(monitors.organizationId, organizationId), inArray(monitors.id, ids)))
+    .returning({ id: monitors.id, name: monitors.name });
+
+  await publishEvent(`${SSE_CHANNELS.ORGANIZATION}${organizationId}`, {
+    type: "monitor:bulk_status_changed",
+    data: { ids: updated.map((m) => m.id), status: "pending" },
+    timestamp: now.toISOString(),
+  });
+
+  await createAuditLog(c, {
+    organizationId,
+    userId: getAuditUserId(c),
+    action: "monitor.resume",
+    resourceType: "monitor",
+    resourceId: "bulk",
+    resourceName: `Bulk resume (${updated.length})`,
+    metadata: { monitorIds: updated.map((m) => m.id) },
+  });
+
+  return c.json({
+    success: true,
+    data: { updated: updated.length, ids: updated.map((m) => m.id) },
+  });
+});
+
+// Bulk check now
+monitorsRoutes.post("/bulk/check", async (c) => {
+  const organizationId = await requireOrganization(c);
+  requireScope(c, "write");
+
+  const body = await c.req.json().catch(() => ({}));
+  const ids = parseBulkIds(body);
+  if (ids.length === 0) {
+    return c.json({ success: false, error: "At least one monitor ID is required" }, 400);
+  }
+
+  const rows = await db.query.monitors.findMany({
+    where: and(eq(monitors.organizationId, organizationId), inArray(monitors.id, ids)),
+  });
+
+  const activeMonitors = rows.filter((monitor) => !monitor.paused);
+  const skippedPaused = rows.length - activeMonitors.length;
+  const jobs: string[] = [];
+
+  for (const monitor of activeMonitors) {
+    const jobId = await queueMonitorCheck({
+      monitor: {
+        id: monitor.id,
+        type: monitor.type,
+        url: monitor.url,
+        method: monitor.method,
+        headers: monitor.headers as Record<string, string> | null,
+        body: monitor.body,
+        timeoutMs: monitor.timeoutMs,
+        assertions: monitor.assertions as Record<string, unknown> | null,
+        regions: monitor.regions as string[],
+        degradedThresholdMs: monitor.degradedThresholdMs,
+        config: monitor.config as Record<string, unknown> | null,
+      },
+    });
+    jobs.push(jobId);
+  }
+
+  const now = new Date();
+  if (activeMonitors.length > 0) {
+    await db
+      .update(monitors)
+      .set({
+        lastCheckedAt: now,
+        updatedAt: now,
+      })
+      .where(and(eq(monitors.organizationId, organizationId), inArray(monitors.id, activeMonitors.map((m) => m.id))));
+  }
+
+  return c.json({
+    success: true,
+    data: {
+      queued: jobs.length,
+      skippedPaused,
+      notFound: Math.max(0, ids.length - rows.length),
+      jobIds: jobs,
+    },
+  });
+});
+
+// Bulk delete monitors
+monitorsRoutes.post("/bulk/delete", async (c) => {
+  const organizationId = await requireOrganization(c);
+  requireScope(c, "write");
+
+  const body = await c.req.json().catch(() => ({}));
+  const ids = parseBulkIds(body);
+  if (ids.length === 0) {
+    return c.json({ success: false, error: "At least one monitor ID is required" }, 400);
+  }
+
+  const deleted = await db
+    .delete(monitors)
+    .where(and(eq(monitors.organizationId, organizationId), inArray(monitors.id, ids)))
+    .returning({ id: monitors.id, name: monitors.name });
+
+  const now = new Date();
+  await publishEvent(`${SSE_CHANNELS.ORGANIZATION}${organizationId}`, {
+    type: "monitor:bulk_deleted",
+    data: { ids: deleted.map((m) => m.id) },
+    timestamp: now.toISOString(),
+  });
+
+  await createAuditLog(c, {
+    organizationId,
+    userId: getAuditUserId(c),
+    action: "monitor.delete",
+    resourceType: "monitor",
+    resourceId: "bulk",
+    resourceName: `Bulk delete (${deleted.length})`,
+    metadata: { monitorIds: deleted.map((m) => m.id) },
+  });
+
+  return c.json({
+    success: true,
+    data: { deleted: deleted.length, ids: deleted.map((m) => m.id) },
   });
 });
 

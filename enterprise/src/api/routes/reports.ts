@@ -45,8 +45,21 @@ function isInlineReportMode() {
 
 function isInlineFallbackEnabled() {
   const env = process.env;
+  const explicitDisable =
+    env["UNI_STATUS_REPORT_INLINE_FALLBACK"] === "0" ||
+    env["REPORT_INLINE_FALLBACK"] === "0";
+  if (explicitDisable) {
+    return false;
+  }
+
+  // Default to enabled so queue handoff or worker startup issues don't leave reports stuck.
+  const noExplicitOverride =
+    env["UNI_STATUS_REPORT_INLINE_FALLBACK"] === undefined &&
+    env["REPORT_INLINE_FALLBACK"] === undefined;
+
   return (
     isInlineReportMode() ||
+    noExplicitOverride ||
     env["UNI_STATUS_REPORT_INLINE_FALLBACK"] === "1" ||
     env["REPORT_INLINE_FALLBACK"] === "1"
   );
@@ -94,8 +107,8 @@ async function readReportFileBytes(report: { fileUrl: string }): Promise<Buffer>
 }
 
 const STALE_REPORT_TIMEOUT_MINUTES = (() => {
-  const raw = Number.parseInt(process.env.REPORT_STALE_TIMEOUT_MINUTES || "30", 10);
-  if (!Number.isFinite(raw) || raw < 1) return 30;
+  const raw = Number.parseInt(process.env.REPORT_STALE_TIMEOUT_MINUTES || "10", 10);
+  if (!Number.isFinite(raw) || raw < 1) return 10;
   return Math.min(raw, 24 * 60);
 })();
 

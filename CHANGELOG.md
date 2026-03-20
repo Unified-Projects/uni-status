@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-03-20
+
+### Added
+- Added bulk monitor operations (`pause`, `resume`, `check`, `delete`) with API endpoints, SSE broadcast events, API client methods, and web hooks
+- Added Google Chat alert channel support across database enum/types, validators, notification queue routing, test notification payloads, and dashboard channel UI
+
+### Changed
+- Updated monitor listing APIs/clients to support multi-filter status/type queries, search, and configurable sorting
+- Updated SSE delivery and routing to use authenticated organization context for dashboard streams and organization-aware monitor event fan-out
+- Improved scheduler and probe-dispatch workers with bounded-concurrency batch processing for polling, aggregation, maintenance notifications, and dispatch loops
+- Improved API CORS origin caching with shared refresh deduplication and set-based origin lookups
+- Optimized report generation incident counting by preloading incidents in-range and mapping affected monitors
+- Improved OG image resource caching with cache pruning, stale fallback behavior, and entry limits
+- Bumped workspace package/runtime version references from `0.2.0` to `0.2.1`
+
+### Fixed
+- Prevented alert evaluation and enterprise escalation dispatch while monitors are under active maintenance windows
+- Ensured maintenance notification queueing respects subscriber email-channel preferences
+
+### Tests
+- Updated SSE API/integration tests to use authenticated stream connections
+- Excluded maintenance-suppression integration coverage from containerized test runs that do not mount worker sources
+
 ## [0.2.0] - 2026-03-20
 
 ### Added

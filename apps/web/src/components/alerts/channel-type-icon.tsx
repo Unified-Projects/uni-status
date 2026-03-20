@@ -35,6 +35,7 @@ export type AlertChannelType =
   | "slack"
   | "discord"
   | "teams"
+  | "google_chat"
   | "pagerduty"
   | "webhook"
   | "sms"
@@ -76,6 +77,12 @@ const channelTypeConfig: Record<AlertChannelType, ChannelTypeConfig> = {
     label: "Microsoft Teams",
     color: "text-[#6264A7]",
     bgColor: "bg-violet-100",
+  },
+  google_chat: {
+    icon: MessageSquare,
+    label: "Google Chat",
+    color: "text-[#0F9D58]",
+    bgColor: "bg-green-100",
   },
   pagerduty: {
     icon: PagerDutyIcon,

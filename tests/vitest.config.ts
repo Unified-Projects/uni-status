@@ -16,6 +16,9 @@ export default defineConfig({
       // certificate-scheduling.test.ts imports from apps/workers/src which isn't
       // mounted in the test container. Run via `pnpm test` in dev environment.
       "src/workers/certificate-scheduling.test.ts",
+      // alert-maintenance-suppression.test.ts imports worker alert evaluator from
+      // apps/workers/src which isn't mounted in the test container.
+      "src/integration/alert-maintenance-suppression.test.ts",
     ],
     globals: true,
     environment: "node",

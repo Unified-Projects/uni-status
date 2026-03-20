@@ -29,6 +29,29 @@ let fontData: ArrayBuffer | null = null;
 // Resource cache with TTL for fonts and images
 const resourceCache = new Map<string, { data: ArrayBuffer | string; timestamp: number }>();
 const RESOURCE_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+const RESOURCE_CACHE_MAX_ENTRIES = 500;
+
+function pruneResourceCache() {
+  const now = Date.now();
+  for (const [key, value] of resourceCache.entries()) {
+    if (now - value.timestamp >= RESOURCE_CACHE_TTL) {
+      resourceCache.delete(key);
+    }
+  }
+
+  if (resourceCache.size <= RESOURCE_CACHE_MAX_ENTRIES) {
+    return;
+  }
+
+  const entriesByAge = Array.from(resourceCache.entries()).sort((a, b) => a[1].timestamp - b[1].timestamp);
+  const deleteCount = resourceCache.size - RESOURCE_CACHE_MAX_ENTRIES;
+  for (let i = 0; i < deleteCount; i += 1) {
+    const key = entriesByAge[i]?.[0];
+    if (key) {
+      resourceCache.delete(key);
+    }
+  }
+}
 
 function normalizeHexColor(color: string | undefined, fallback: string): string {
   if (!color) return fallback;
@@ -86,15 +109,25 @@ function buildImageUrlCandidates(url: string, baseUrls: string[]): string[] {
 }
 
 async function loadImageDataUri(url: string, baseUrls: string[]): Promise<string | null> {
-  const cacheKey = `image:${url}`;
-  const cached = resourceCache.get(cacheKey);
+  pruneResourceCache();
+  const candidates = buildImageUrlCandidates(url, baseUrls);
+  let staleFallback: string | null = null;
 
-  if (cached && Date.now() - cached.timestamp < RESOURCE_CACHE_TTL) {
-    return cached.data as string;
+  for (const candidate of candidates) {
+    const cacheKey = `image:${candidate}`;
+    const cached = resourceCache.get(cacheKey);
+    if (cached) {
+      if (Date.now() - cached.timestamp < RESOURCE_CACHE_TTL) {
+        return cached.data as string;
+      }
+      if (!staleFallback) {
+        staleFallback = cached.data as string;
+      }
+    }
   }
 
-  const candidates = buildImageUrlCandidates(url, baseUrls);
   for (const candidate of candidates) {
+    const cacheKey = `image:${candidate}`;
     if (candidate.startsWith("data:")) {
       resourceCache.set(cacheKey, { data: candidate, timestamp: Date.now() });
       return candidate;
@@ -117,16 +150,16 @@ async function loadImageDataUri(url: string, baseUrls: string[]): Promise<string
     }
   }
 
-  // Use stale cache as fallback
-  if (cached) {
+  if (staleFallback) {
     log.warn({ context: 'og' }, 'Using stale cached image');
-    return cached.data as string;
+    return staleFallback;
   }
 
   return null;
 }
 
 async function loadFont(): Promise<ArrayBuffer> {
+  pruneResourceCache();
   const cacheKey = 'inter-font';
   const cached = resourceCache.get(cacheKey);
 

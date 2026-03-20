@@ -19,6 +19,8 @@ const DAILY_AGGREGATION_POLL_INTERVAL = 3600000; // 1 hour for daily aggregation
 const CERT_CHECK_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours for certificate checks on HTTPS monitors
 const STALE_REPORT_INTERVAL = 120000; // 2 minutes for stale report recovery
 const STALE_REPORT_THRESHOLD = 600000; // 10 minutes before a report is considered stuck
+const ENQUEUE_CONCURRENCY = 50;
+const MONITOR_DISPATCH_CONCURRENCY = 20;
 
 let monitorIntervalId: ReturnType<typeof setInterval> | null = null;
 let maintenanceIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -29,6 +31,19 @@ let aggregationIntervalId: ReturnType<typeof setInterval> | null = null;
 let dailyAggregationIntervalId: ReturnType<typeof setInterval> | null = null;
 let certCheckIntervalId: ReturnType<typeof setInterval> | null = null;
 let staleReportIntervalId: ReturnType<typeof setInterval> | null = null;
+const startupTimeouts: ReturnType<typeof setTimeout>[] = [];
+const pollInProgress = new Set<string>();
+
+async function processInBatches<T>(
+  items: T[],
+  batchSize: number,
+  fn: (item: T) => Promise<void>
+) {
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    await Promise.all(batch.map((item) => fn(item)));
+  }
+}
 
 const queueOpts = { connection, prefix: queuePrefix };
 
@@ -114,7 +129,7 @@ async function pollMonitors() {
     const skippedCount = allDueMonitors.length - dueMonitors.length;
     log.info({ total: allDueMonitors.length, skipped: skippedCount }, 'Monitors due for checking');
 
-    for (const monitor of dueMonitors) {
+    await processInBatches(dueMonitors, MONITOR_DISPATCH_CONCURRENCY, async (monitor) => {
       // Queue the check based on monitor type
       const queue = getQueueForType(monitor.type);
 
@@ -165,7 +180,7 @@ async function pollMonitors() {
           })
           .where(eq(monitors.id, monitor.id));
       }
-    }
+    });
   } catch (error) {
     log.error({ err: error }, 'Error polling monitors');
   }
@@ -296,7 +311,7 @@ async function pollMaintenanceNotifications() {
 
     log.info({ windowCount: windows.length }, 'Checking maintenance windows for notifications');
 
-    for (const window of windows) {
+    await processInBatches(windows, ENQUEUE_CONCURRENCY, async (window) => {
       const notifyConfig = (window.notifySubscribers as NotifySubscribersConfig) || {};
       const sentNotifications = (window.notificationsSent as NotificationsSent) || {};
 
@@ -323,7 +338,7 @@ async function pollMaintenanceNotifications() {
           await queueMaintenanceNotification(window, "onEnd", now);
         }
       }
-    }
+    });
   } catch (error) {
     log.error({ err: error }, 'Error polling maintenance notifications');
   }
@@ -382,7 +397,11 @@ async function queueMaintenanceNotification(
       continue;
     }
 
-    totalSubscribers += verifiedSubscribers.length;
+    const emailSubscribers = verifiedSubscribers.filter((subscriber) => {
+      const channels = (subscriber.channels as { email?: boolean }) || { email: true };
+      return channels.email !== false;
+    });
+    totalSubscribers += emailSubscribers.length;
 
     // Determine notification subject and type
     const subjectPrefix = {
@@ -391,42 +410,38 @@ async function queueMaintenanceNotification(
       onEnd: "Scheduled Maintenance Completed",
     }[notificationType];
 
-    // Queue a job for each subscriber
-    for (const subscriber of verifiedSubscribers) {
-      const channels = (subscriber.channels as { email?: boolean }) || { email: true };
-
-      if (channels.email !== false) {
-        await subscriberNotifyQueue.add(
-          `maintenance-${window.id}-${subscriber.id}-${notificationType}`,
-          {
-            type: "maintenance",
-            notificationType,
-            maintenanceWindowId: window.id,
-            maintenanceTitle: window.name,
-            maintenanceDescription: window.description,
-            startsAt: window.startsAt.toISOString(),
-            endsAt: window.endsAt.toISOString(),
-            subscriberId: subscriber.id,
-            subscriberEmail: subscriber.email,
-            unsubscribeToken: subscriber.unsubscribeToken,
-            statusPageId: page.id,
-            statusPageName: page.name,
-            statusPageSlug: page.slug,
-            subject: `${subjectPrefix}: ${window.name}`,
+    // Queue jobs for subscribers with bounded concurrency.
+    await processInBatches(emailSubscribers, ENQUEUE_CONCURRENCY, async (subscriber) => {
+      await subscriberNotifyQueue.add(
+        `maintenance-${window.id}-${subscriber.id}-${notificationType}`,
+        {
+          type: "maintenance",
+          notificationType,
+          maintenanceWindowId: window.id,
+          maintenanceTitle: window.name,
+          maintenanceDescription: window.description,
+          startsAt: window.startsAt.toISOString(),
+          endsAt: window.endsAt.toISOString(),
+          subscriberId: subscriber.id,
+          subscriberEmail: subscriber.email,
+          unsubscribeToken: subscriber.unsubscribeToken,
+          statusPageId: page.id,
+          statusPageName: page.name,
+          statusPageSlug: page.slug,
+          subject: `${subjectPrefix}: ${window.name}`,
+        },
+        {
+          jobId: `maint-${window.id}-${subscriber.id}-${notificationType}-${now.getTime()}`,
+          removeOnComplete: 100,
+          removeOnFail: 100,
+          attempts: 3,
+          backoff: {
+            type: "exponential",
+            delay: 1000,
           },
-          {
-            jobId: `maint-${window.id}-${subscriber.id}-${notificationType}-${now.getTime()}`,
-            removeOnComplete: 100,
-            removeOnFail: 100,
-            attempts: 3,
-            backoff: {
-              type: "exponential",
-              delay: 1000,
-            },
-          }
-        );
-      }
-    }
+        }
+      );
+    });
   }
 
   log.info({ notificationType, windowName: window.name, subscriberCount: totalSubscribers }, 'Queued maintenance notifications');
@@ -501,15 +516,16 @@ async function pollProbeHealth() {
     if (staleProbes.length > 0) {
       log.info({ probeCount: staleProbes.length }, 'Marking probes as offline');
 
-      for (const probe of staleProbes) {
-        await db
-          .update(probes)
-          .set({
-            status: "offline",
-            updatedAt: now,
-          })
-          .where(eq(probes.id, probe.id));
+      const staleProbeIds = staleProbes.map((probe) => probe.id);
+      await db
+        .update(probes)
+        .set({
+          status: "offline",
+          updatedAt: now,
+        })
+        .where(inArray(probes.id, staleProbeIds));
 
+      for (const probe of staleProbes) {
         log.info({ probeName: probe.name, probeId: probe.id }, 'Probe marked offline');
       }
     }
@@ -696,7 +712,7 @@ async function pollAggregation() {
 
     log.info({ monitorCount: allMonitors.length, hour: previousHour.toISOString() }, 'Queueing aggregation');
 
-    for (const monitor of allMonitors) {
+    await processInBatches(allMonitors, ENQUEUE_CONCURRENCY, async (monitor) => {
       await aggregateQueue.add(
         `aggregate-${monitor.id}`,
         {
@@ -709,7 +725,7 @@ async function pollAggregation() {
           removeOnFail: 10,
         }
       );
-    }
+    });
 
     log.info({ jobCount: allMonitors.length }, 'Queued aggregation jobs');
   } catch (error) {
@@ -737,7 +753,7 @@ async function pollDailyAggregation() {
 
     log.info({ monitorCount: allMonitors.length, date: dateStr }, 'Queueing daily aggregation');
 
-    for (const monitor of allMonitors) {
+    await processInBatches(allMonitors, ENQUEUE_CONCURRENCY, async (monitor) => {
       await dailyAggregateQueue.add(
         `daily-aggregate-${monitor.id}`,
         {
@@ -750,7 +766,7 @@ async function pollDailyAggregation() {
           removeOnFail: 10,
         }
       );
-    }
+    });
 
     log.info({ jobCount: allMonitors.length }, 'Queued daily aggregation jobs');
   } catch (error) {
@@ -873,20 +889,43 @@ async function pollStaleReports() {
 
     log.info({ reportCount: stuckReports.length }, 'Found stuck reports, recovering');
 
-    for (const report of stuckReports) {
-      await db
-        .update(slaReports)
-        .set({
-          status: "failed",
-          errorMessage: "Report generation timed out - automatically recovered",
-        })
-        .where(eq(slaReports.id, report.id));
+    const reportIds = stuckReports.map((report) => report.id);
+    await db
+      .update(slaReports)
+      .set({
+        status: "failed",
+        errorMessage: "Report generation timed out - automatically recovered",
+      })
+      .where(inArray(slaReports.id, reportIds));
 
-      log.info({ reportId: report.id, previousStatus: report.status, organizationId: report.organizationId }, 'Stuck report marked as failed');
-    }
+    log.info({
+      reportCount: stuckReports.length,
+      sampleReportIds: stuckReports.slice(0, 10).map((report) => report.id),
+    }, "Stuck reports marked as failed");
   } catch (error) {
     log.error({ err: error }, 'Error polling stale reports');
   }
+}
+
+async function runPollSafely(name: string, poller: () => Promise<void>) {
+  if (pollInProgress.has(name)) {
+    log.warn({ poller: name }, "Skipping overlapping poll run");
+    return;
+  }
+
+  pollInProgress.add(name);
+  try {
+    await poller();
+  } finally {
+    pollInProgress.delete(name);
+  }
+}
+
+function queueInitialPoll(delayMs: number, name: string, poller: () => Promise<void>) {
+  const timeoutId = setTimeout(() => {
+    void runPollSafely(name, poller);
+  }, delayMs);
+  startupTimeouts.push(timeoutId);
 }
 
 export const scheduler = {
@@ -894,45 +933,63 @@ export const scheduler = {
     log.info('Starting schedulers');
 
     // Monitor polling
-    monitorIntervalId = setInterval(pollMonitors, POLL_INTERVAL);
-    pollMonitors();
+    monitorIntervalId = setInterval(() => {
+      void runPollSafely("monitors", pollMonitors);
+    }, POLL_INTERVAL);
+    void runPollSafely("monitors", pollMonitors);
 
     // Maintenance notification polling
-    maintenanceIntervalId = setInterval(pollMaintenanceNotifications, MAINTENANCE_POLL_INTERVAL);
-    pollMaintenanceNotifications();
+    maintenanceIntervalId = setInterval(() => {
+      void runPollSafely("maintenance", pollMaintenanceNotifications);
+    }, MAINTENANCE_POLL_INTERVAL);
+    void runPollSafely("maintenance", pollMaintenanceNotifications);
 
     // SLO calculation polling
-    sloIntervalId = setInterval(pollSloCalculations, SLO_POLL_INTERVAL);
+    sloIntervalId = setInterval(() => {
+      void runPollSafely("slo", pollSloCalculations);
+    }, SLO_POLL_INTERVAL);
     // Delay initial SLO calculation to avoid startup burst
-    setTimeout(pollSloCalculations, 30000);
+    queueInitialPoll(30000, "slo", pollSloCalculations);
 
     // Probe health polling
-    probeHealthIntervalId = setInterval(pollProbeHealth, PROBE_HEALTH_INTERVAL);
-    pollProbeHealth();
+    probeHealthIntervalId = setInterval(() => {
+      void runPollSafely("probe-health", pollProbeHealth);
+    }, PROBE_HEALTH_INTERVAL);
+    void runPollSafely("probe-health", pollProbeHealth);
 
     // Scheduled reports polling
-    reportScheduleIntervalId = setInterval(pollScheduledReports, REPORT_SCHEDULE_INTERVAL);
-    pollScheduledReports();
+    reportScheduleIntervalId = setInterval(() => {
+      void runPollSafely("scheduled-reports", pollScheduledReports);
+    }, REPORT_SCHEDULE_INTERVAL);
+    void runPollSafely("scheduled-reports", pollScheduledReports);
 
     // Aggregation polling (hourly)
-    aggregationIntervalId = setInterval(pollAggregation, AGGREGATION_POLL_INTERVAL);
+    aggregationIntervalId = setInterval(() => {
+      void runPollSafely("aggregation", pollAggregation);
+    }, AGGREGATION_POLL_INTERVAL);
     // Delay initial aggregation to avoid startup burst
-    setTimeout(pollAggregation, 30000);
+    queueInitialPoll(30000, "aggregation", pollAggregation);
 
     // Daily aggregation polling
-    dailyAggregationIntervalId = setInterval(pollDailyAggregation, DAILY_AGGREGATION_POLL_INTERVAL);
+    dailyAggregationIntervalId = setInterval(() => {
+      void runPollSafely("daily-aggregation", pollDailyAggregation);
+    }, DAILY_AGGREGATION_POLL_INTERVAL);
     // Run initial daily aggregation after startup settles
-    setTimeout(pollDailyAggregation, 60000);
+    queueInitialPoll(60000, "daily-aggregation", pollDailyAggregation);
 
     // Certificate check polling for HTTPS monitors
-    certCheckIntervalId = setInterval(pollCertificateChecks, CERT_CHECK_INTERVAL);
+    certCheckIntervalId = setInterval(() => {
+      void runPollSafely("certificate-checks", pollCertificateChecks);
+    }, CERT_CHECK_INTERVAL);
     // Run initial certificate check immediately
-    pollCertificateChecks();
+    void runPollSafely("certificate-checks", pollCertificateChecks);
 
     // Stale report recovery polling
-    staleReportIntervalId = setInterval(pollStaleReports, STALE_REPORT_INTERVAL);
+    staleReportIntervalId = setInterval(() => {
+      void runPollSafely("stale-reports", pollStaleReports);
+    }, STALE_REPORT_INTERVAL);
     // Delay initial check to avoid startup burst
-    setTimeout(pollStaleReports, 30000);
+    queueInitialPoll(30000, "stale-reports", pollStaleReports);
 
     log.info('Monitor scheduler started (10s interval)');
     log.info('Maintenance notification scheduler started (30s interval)');
@@ -982,6 +1039,11 @@ export const scheduler = {
       clearInterval(staleReportIntervalId);
       staleReportIntervalId = null;
     }
+    for (const timeoutId of startupTimeouts) {
+      clearTimeout(timeoutId);
+    }
+    startupTimeouts.length = 0;
+    pollInProgress.clear();
     log.info('All schedulers stopped');
   },
 };

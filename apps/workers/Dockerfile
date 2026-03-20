@@ -61,6 +61,7 @@ COPY --from=builder --chown=appuser:appgroup /app/apps/workers/package.json ./ap
 COPY --from=builder --chown=appuser:appgroup /app/apps/workers/tsconfig.json ./apps/workers/
 COPY --from=builder --chown=appuser:appgroup /app/node_modules ./node_modules
 COPY --from=builder --chown=appuser:appgroup /app/packages ./packages
+COPY --from=builder --chown=appuser:appgroup /app/enterprise ./enterprise
 
 # Create directories for volume mounts with proper permissions
 # These need to exist before volume mount so Docker preserves ownership

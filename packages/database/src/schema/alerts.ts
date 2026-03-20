@@ -18,6 +18,7 @@ export const alertChannelTypeEnum = pgEnum("alert_channel_type", [
   "slack",
   "discord",
   "teams",
+  "google_chat",
   "pagerduty",
   "webhook",
   "sms",

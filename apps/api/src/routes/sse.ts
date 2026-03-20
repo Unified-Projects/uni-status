@@ -1,9 +1,15 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { streamSSE } from "hono/streaming";
 import { nanoid } from "nanoid";
+import { db, monitors } from "@uni-status/database";
+import { and, eq } from "drizzle-orm";
 import { sseManager, type SSEClient, type SSEEvent } from "../lib/sse-manager";
+import { authMiddleware, requireAuth, requireOrganization, requireRole } from "../middleware/auth";
 
 export const sseRoutes = new OpenAPIHono();
+
+sseRoutes.use("/dashboard", authMiddleware);
+sseRoutes.use("/monitors/*", authMiddleware);
 
 // Initialize SSE manager on first request
 let initialized = false;
@@ -18,6 +24,26 @@ async function ensureInitialized() {
 sseRoutes.get("/monitors/:id", async (c) => {
   await ensureInitialized();
   const { id } = c.req.param();
+  await requireRole(c, ["owner", "admin", "member", "viewer"]);
+  const organizationId = await requireOrganization(c);
+
+  const monitor = await db.query.monitors.findFirst({
+    where: and(eq(monitors.id, id), eq(monitors.organizationId, organizationId)),
+    columns: { id: true },
+  });
+
+  if (!monitor) {
+    return c.json(
+      {
+        success: false,
+        error: {
+          code: "MONITOR_NOT_FOUND",
+          message: "Monitor not found in organization",
+        },
+      },
+      404
+    );
+  }
 
   return streamSSE(c, async (stream) => {
     const clientId = nanoid();
@@ -140,9 +166,9 @@ sseRoutes.get("/status-pages/:slug", async (c) => {
 // Dashboard updates (authenticated)
 sseRoutes.get("/dashboard", async (c) => {
   await ensureInitialized();
-
-  // Get organization ID from query param or header
-  const orgId = c.req.query("organizationId") || c.req.header("X-Organization-Id");
+  await requireRole(c, ["owner", "admin", "member", "viewer"]);
+  const auth = requireAuth(c);
+  const orgId = auth.organizationId;
 
   if (!orgId) {
     return c.json(
@@ -150,7 +176,7 @@ sseRoutes.get("/dashboard", async (c) => {
         success: false,
         error: {
           code: "ORGANIZATION_REQUIRED",
-          message: "organizationId query parameter or X-Organization-Id header is required",
+          message: "Active organization context is required",
         },
       },
       400

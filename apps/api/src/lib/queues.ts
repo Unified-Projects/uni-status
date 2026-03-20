@@ -214,6 +214,8 @@ export function getNotifyQueueForType(type: string): Queue {
       return notifyQueues.discord;
     case "teams":
       return notifyQueues.teams;
+    case "google_chat":
+      return notifyQueues.googleChat;
     case "pagerduty":
       return notifyQueues.pagerduty;
     case "sms":
@@ -309,6 +311,19 @@ function buildTestNotificationJobData(
       };
 
     case "teams":
+      return {
+        webhookUrl: channel.config.webhookUrl,
+        message: {
+          title: "[Test] Uni-Status Alert",
+          text: testData.message,
+          severity: "minor",
+          monitorName: testData.monitorName,
+          statusPageUrl: testData.dashboardUrl,
+          timestamp: testData.timestamp,
+        },
+      };
+
+    case "google_chat":
       return {
         webhookUrl: channel.config.webhookUrl,
         message: {

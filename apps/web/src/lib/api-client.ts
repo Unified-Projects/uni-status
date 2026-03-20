@@ -254,7 +254,7 @@ export interface AlertChannel {
   id: string;
   organizationId: string;
   name: string;
-  type: "email" | "slack" | "discord" | "teams" | "pagerduty" | "webhook" | "sms" | "ntfy";
+  type: "email" | "slack" | "discord" | "teams" | "google_chat" | "pagerduty" | "webhook" | "sms" | "ntfy" | "irc" | "twitter";
   config: {
     email?: string;
     fromAddress?: string;
@@ -566,6 +566,14 @@ export interface PaginationParams {
   offset?: number;
 }
 
+export interface MonitorListParams extends PaginationParams {
+  status?: string[];
+  type?: string[];
+  search?: string;
+  sortBy?: "createdAt" | "name" | "status" | "lastCheckedAt";
+  sortDirection?: "asc" | "desc";
+}
+
 export interface AuditActionCount {
   action: AuditAction;
   count: number;
@@ -818,10 +826,15 @@ export const apiClient = {
   },
 
   monitors: {
-    list: async (params?: PaginationParams, organizationId?: string) => {
+    list: async (params?: MonitorListParams, organizationId?: string) => {
       const searchParams = new URLSearchParams();
       if (params?.limit) searchParams.set("limit", params.limit.toString());
       if (params?.offset) searchParams.set("offset", params.offset.toString());
+      if (params?.status?.length) searchParams.set("status", params.status.join(","));
+      if (params?.type?.length) searchParams.set("type", params.type.join(","));
+      if (params?.search) searchParams.set("search", params.search);
+      if (params?.sortBy) searchParams.set("sortBy", params.sortBy);
+      if (params?.sortDirection) searchParams.set("sortDirection", params.sortDirection);
       const query = searchParams.toString();
       const res = await apiGet<Monitor[], { meta: PaginationMeta }>(
         `/api/v1/monitors${query ? `?${query}` : ""}`,
@@ -856,6 +869,22 @@ export const apiClient = {
 
     checkNow: (id: string, organizationId?: string) =>
       unwrap(apiPost<{ queued: boolean }>(`/api/v1/monitors/${id}/check`, {}, { organizationId })),
+
+    pauseBulk: (ids: string[], organizationId?: string) =>
+      unwrap(apiPost<{ updated: number; ids: string[] }>(`/api/v1/monitors/bulk/pause`, { ids }, { organizationId })),
+
+    resumeBulk: (ids: string[], organizationId?: string) =>
+      unwrap(apiPost<{ updated: number; ids: string[] }>(`/api/v1/monitors/bulk/resume`, { ids }, { organizationId })),
+
+    checkBulk: (ids: string[], organizationId?: string) =>
+      unwrap(apiPost<{ queued: number; skippedPaused: number; notFound: number; jobIds: string[] }>(
+        `/api/v1/monitors/bulk/check`,
+        { ids },
+        { organizationId }
+      )),
+
+    deleteBulk: (ids: string[], organizationId?: string) =>
+      unwrap(apiPost<{ deleted: number; ids: string[] }>(`/api/v1/monitors/bulk/delete`, { ids }, { organizationId })),
 
     getResults: (
       id: string,

@@ -2,11 +2,21 @@ import { bootstrapTestContext, TestContext } from "../helpers/context";
 
 const API_BASE_URL = process.env.API_BASE_URL ?? "http://api:3001";
 
-async function readFirstEvent(url: string, timeoutMs = 5000): Promise<string> {
+async function readFirstEvent(
+  url: string,
+  timeoutMs = 5000,
+  headers?: Record<string, string>
+): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-  const response = await fetch(url, { signal: controller.signal });
+  const response = await fetch(url, {
+    signal: controller.signal,
+    headers: {
+      Accept: "text/event-stream",
+      ...(headers ?? {}),
+    },
+  });
   if (!response.body) {
     throw new Error("No SSE body");
   }
@@ -57,7 +67,11 @@ describe("SSE endpoints", () => {
   });
 
   it("connects to monitor SSE and receives connected event", async () => {
-    const event = await readFirstEvent(`${API_BASE_URL}/api/v1/sse/monitors/${monitorId}`);
+    const event = await readFirstEvent(
+      `${API_BASE_URL}/api/v1/sse/monitors/${monitorId}`,
+      5000,
+      ctx.headers
+    );
     expect(event).toBe("connected");
   });
 

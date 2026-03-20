@@ -335,6 +335,7 @@ describe("Real-time Event Broadcast Integration", () => {
           `${API_BASE_URL}/api/v1/sse/monitors/${monitor.id}`,
           {
             headers: {
+              ...ctx.headers,
               Accept: "text/event-stream",
             },
             signal: controller.signal,
@@ -343,7 +344,7 @@ describe("Real-time Event Broadcast Integration", () => {
 
         clearTimeout(timeout);
 
-        // Should accept connection (monitor SSE is public)
+        // Should accept authenticated connection
         expect([200, 400]).toContain(res.status);
 
         controller.abort();

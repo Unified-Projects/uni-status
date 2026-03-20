@@ -1,6 +1,7 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { auth } from "@uni-status/auth/server";
-import { db, organizationMembers, organizations, users, eq, and, like } from "@uni-status/database";
+import { db, organizationMembers, organizations, users, eq, and } from "@uni-status/database";
+import { inArray, ne } from "drizzle-orm";
 import { createLogger } from "@uni-status/shared";
 
 const log = createLogger({ module: "session-verify" });
@@ -100,35 +101,60 @@ sessionVerifyRoutes.post("/mark-portal-only", async (c) => {
     }
 
     const userId = session.user.id;
+    const personalSlug = `personal-${userId.slice(0, 8)}`;
 
-    // Update user to be portal-only
-    await db
-      .update(users)
-      .set({ portalOnly: true })
-      .where(eq(users.id, userId));
+    const deletedOrgIds = await db.transaction(async (tx) => {
+      // Find strict personal-org candidates for this user.
+      const personalOrgs = await tx
+        .select({
+          orgId: organizations.id,
+        })
+        .from(organizationMembers)
+        .innerJoin(organizations, eq(organizationMembers.organizationId, organizations.id))
+        .where(
+          and(
+            eq(organizationMembers.userId, userId),
+            eq(organizationMembers.role, "owner"),
+            eq(organizations.slug, personalSlug),
+            eq(organizations.name, "Personal")
+          )
+        );
 
-    // Find and delete the auto-created personal organization
-    // Personal orgs have slug pattern "personal-{userId prefix}"
-    const personalOrgs = await db
-      .select({
-        orgId: organizations.id,
-        memberId: organizationMembers.id,
-      })
-      .from(organizationMembers)
-      .innerJoin(organizations, eq(organizationMembers.organizationId, organizations.id))
-      .where(
-        and(
-          eq(organizationMembers.userId, userId),
-          eq(organizationMembers.role, "owner"),
-          like(organizations.slug, `personal-${userId.slice(0, 8)}%`)
-        )
-      );
+      const candidateOrgIds = Array.from(new Set(personalOrgs.map((org) => org.orgId)));
+      let orgIds = candidateOrgIds;
 
-    // Delete the personal organization(s)
-    for (const org of personalOrgs) {
-      await db.delete(organizationMembers).where(eq(organizationMembers.organizationId, org.orgId));
-      await db.delete(organizations).where(eq(organizations.id, org.orgId));
-      log.info({ orgId: org.orgId, userId }, "Deleted personal org for portal-only user");
+      if (candidateOrgIds.length > 0) {
+        // Only delete if the org has no members other than this user.
+        const sharedMemberships = await tx
+          .select({
+            orgId: organizationMembers.organizationId,
+          })
+          .from(organizationMembers)
+          .where(
+            and(
+              inArray(organizationMembers.organizationId, candidateOrgIds),
+              ne(organizationMembers.userId, userId)
+            )
+          );
+        const sharedOrgIds = new Set(sharedMemberships.map((m) => m.orgId));
+        orgIds = candidateOrgIds.filter((orgId) => !sharedOrgIds.has(orgId));
+      }
+
+      if (orgIds.length > 0) {
+        await tx.delete(organizationMembers).where(inArray(organizationMembers.organizationId, orgIds));
+        await tx.delete(organizations).where(inArray(organizations.id, orgIds));
+      }
+
+      await tx
+        .update(users)
+        .set({ portalOnly: true })
+        .where(eq(users.id, userId));
+
+      return orgIds;
+    });
+
+    for (const orgId of deletedOrgIds) {
+      log.info({ orgId, userId }, "Deleted personal org for portal-only user");
     }
 
     log.info({ userId }, "Marked user as portal-only");

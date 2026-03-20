@@ -9,8 +9,9 @@ import {
   monitors,
   checkResults,
   organizations,
+  maintenanceWindows,
 } from "@uni-status/database/schema";
-import { eq, and, gte, desc, inArray, asc, isNull } from "drizzle-orm";
+import { eq, and, gte, lte, desc, inArray, asc, isNull } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { connection, queuePrefix, publishEvent } from "./redis";
 import { QUEUE_NAMES } from "@uni-status/shared/constants";
@@ -35,6 +36,7 @@ const slackQueue = new Queue(QUEUE_NAMES.NOTIFY_SLACK, queueOpts);
 const discordQueue = new Queue(QUEUE_NAMES.NOTIFY_DISCORD, queueOpts);
 const webhookQueue = new Queue(QUEUE_NAMES.NOTIFY_WEBHOOK, queueOpts);
 const teamsQueue = new Queue(QUEUE_NAMES.NOTIFY_TEAMS, queueOpts);
+const googleChatQueue = new Queue(QUEUE_NAMES.NOTIFY_GOOGLE_CHAT, queueOpts);
 const pagerdutyQueue = new Queue(QUEUE_NAMES.NOTIFY_PAGERDUTY, queueOpts);
 const smsQueue = new Queue(QUEUE_NAMES.NOTIFY_SMS, queueOpts);
 const ntfyQueue = new Queue(QUEUE_NAMES.NOTIFY_NTFY, queueOpts);
@@ -47,6 +49,7 @@ const notificationQueues = {
   discord: discordQueue,
   webhook: webhookQueue,
   teams: teamsQueue,
+  googleChat: googleChatQueue,
   pagerduty: pagerdutyQueue,
   sms: smsQueue,
   ntfy: ntfyQueue,
@@ -135,11 +138,22 @@ export async function evaluateAlerts(input: EvaluateAlertInput): Promise<void> {
       checkStatus === "error";
     const isDegraded = checkStatus === "degraded";
     const isSuccess = checkStatus === "success";
+    const shouldSuppressForMaintenance =
+      (isFailure || isDegraded) &&
+      (await isMonitorUnderActiveMaintenance(organizationId, monitorId));
+
+    if (shouldSuppressForMaintenance) {
+      log.info(
+        `[Alert] Suppressing alert evaluation for monitor ${monitorId} due to active maintenance window`
+      );
+    }
 
     for (const policy of policies) {
       if (!policy.enabled) continue;
 
       if (isFailure || isDegraded) {
+        if (shouldSuppressForMaintenance) continue;
+
         const conditionResult = await evaluateConditions(policy, input);
 
         if (!conditionResult.met) continue;
@@ -210,6 +224,28 @@ export async function evaluateAlerts(input: EvaluateAlertInput): Promise<void> {
   } catch (error) {
     log.error(`[Alert] Error evaluating alerts for ${monitorId}:`, error);
   }
+}
+
+async function isMonitorUnderActiveMaintenance(
+  organizationId: string,
+  monitorId: string
+): Promise<boolean> {
+  const now = new Date();
+
+  const activeMaintenance = await db.query.maintenanceWindows.findFirst({
+    where: and(
+      eq(maintenanceWindows.organizationId, organizationId),
+      eq(maintenanceWindows.active, true),
+      lte(maintenanceWindows.startsAt, now),
+      gte(maintenanceWindows.endsAt, now),
+      sql`${maintenanceWindows.affectedMonitors} ? ${monitorId}`
+    ),
+    columns: {
+      id: true,
+    },
+  });
+
+  return Boolean(activeMaintenance);
 }
 
 async function getLinkedPolicies(

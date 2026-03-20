@@ -23,7 +23,7 @@ import type { AlertChannel } from "@/lib/api-client";
 
 const alertChannelFormSchema = z.object({
     name: z.string().min(1, "Name is required").max(100),
-    type: z.enum(["email", "slack", "discord", "teams", "pagerduty", "webhook", "sms", "ntfy", "irc", "twitter"]),
+    type: z.enum(["email", "slack", "discord", "teams", "google_chat", "pagerduty", "webhook", "sms", "ntfy", "irc", "twitter"]),
     enabled: z.boolean(),
     config: z.object({
         fromAddress: z.string().email("Invalid email address").optional().or(z.literal("")),
@@ -46,7 +46,7 @@ type AlertChannelFormData = z.infer<typeof alertChannelFormSchema>;
 // Form-specific type that ensures arrays are always present for useFieldArray
 type AlertChannelFormValues = {
     name: string;
-    type: "email" | "slack" | "discord" | "teams" | "pagerduty" | "webhook" | "sms" | "ntfy" | "irc" | "twitter";
+    type: "email" | "slack" | "discord" | "teams" | "google_chat" | "pagerduty" | "webhook" | "sms" | "ntfy" | "irc" | "twitter";
     enabled: boolean;
     config: {
         fromAddress?: string | "";
@@ -314,7 +314,7 @@ export function AlertChannelForm({
                     )}
 
                     {/* Slack/Discord/Teams Config */}
-                    {(watchedType === "slack" || watchedType === "discord" || watchedType === "teams") && (
+                    {(watchedType === "slack" || watchedType === "discord" || watchedType === "teams" || watchedType === "google_chat") && (
                         <div className="space-y-2">
                             <Label htmlFor="config.webhookUrl">Webhook URL *</Label>
                             <Input
@@ -599,6 +599,8 @@ function getHelpLink(type: AlertChannelType): string | null {
             return "https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook";
         case "pagerduty":
             return "https://support.pagerduty.com/docs/services-and-integrations#create-a-generic-events-api-integration";
+        case "google_chat":
+            return "https://developers.google.com/workspace/chat/quickstart/webhooks";
         case "ntfy":
             return "https://ntfy.sh/docs/";
         case "irc":
@@ -618,6 +620,8 @@ function getWebhookPlaceholder(type: AlertChannelType): string {
             return "https://discord.com/api/webhooks/.../...";
         case "teams":
             return "https://xxxxx.webhook.office.com/webhookb2/...";
+        case "google_chat":
+            return "https://chat.googleapis.com/v1/spaces/.../messages?key=...&token=...";
         default:
             return "https://...";
     }
@@ -631,6 +635,8 @@ function getWebhookHelp(type: AlertChannelType): string {
             return "Create a Webhook in Discord: Server Settings > Integrations > Webhooks > New Webhook";
         case "teams":
             return "Add a Webhook in Teams: Channel > Connectors > Incoming Webhook > Configure";
+        case "google_chat":
+            return "Create an incoming webhook in your Google Chat space and paste the chat.googleapis.com URL.";
         default:
             return "";
     }

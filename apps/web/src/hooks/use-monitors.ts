@@ -1,12 +1,18 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiClient, queryKeys, type Monitor, type CheckResult, type PaginationParams } from "@/lib/api-client";
+import {
+  apiClient,
+  queryKeys,
+  type Monitor,
+  type CheckResult,
+  type MonitorListParams,
+} from "@/lib/api-client";
 import type { CreateMonitorInput, UpdateMonitorInput } from "@uni-status/shared/validators";
 import { useDashboardStore } from "@/stores/dashboard-store";
 import { toast } from "@uni-status/ui";
 
-export function useMonitors(params?: PaginationParams) {
+export function useMonitors(params?: MonitorListParams) {
   const organizationId = useDashboardStore((state) => state.currentOrganizationId);
 
   return useQuery({
@@ -280,6 +286,73 @@ export function useCheckMonitorNow() {
         description: error instanceof Error ? error.message : "Please try again.",
         variant: "destructive",
       });
+    },
+  });
+}
+
+export function useBulkPauseMonitors() {
+  const queryClient = useQueryClient();
+  const organizationId = useDashboardStore((state) => state.currentOrganizationId);
+
+  return useMutation({
+    mutationFn: (ids: string[]) => apiClient.monitors.pauseBulk(ids, organizationId ?? undefined),
+    onSuccess: (data) => {
+      toast({
+        title: "Monitors paused",
+        description: `${data.updated} monitor(s) paused.`,
+      });
+      queryClient.invalidateQueries({ queryKey: queryKeys.monitors.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.analytics.dashboard() });
+    },
+  });
+}
+
+export function useBulkResumeMonitors() {
+  const queryClient = useQueryClient();
+  const organizationId = useDashboardStore((state) => state.currentOrganizationId);
+
+  return useMutation({
+    mutationFn: (ids: string[]) => apiClient.monitors.resumeBulk(ids, organizationId ?? undefined),
+    onSuccess: (data) => {
+      toast({
+        title: "Monitors resumed",
+        description: `${data.updated} monitor(s) resumed.`,
+      });
+      queryClient.invalidateQueries({ queryKey: queryKeys.monitors.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.analytics.dashboard() });
+    },
+  });
+}
+
+export function useBulkCheckMonitors() {
+  const queryClient = useQueryClient();
+  const organizationId = useDashboardStore((state) => state.currentOrganizationId);
+
+  return useMutation({
+    mutationFn: (ids: string[]) => apiClient.monitors.checkBulk(ids, organizationId ?? undefined),
+    onSuccess: (data) => {
+      toast({
+        title: "Checks queued",
+        description: `${data.queued} monitor check(s) queued${data.skippedPaused ? `, ${data.skippedPaused} skipped (paused)` : ""}.`,
+      });
+      queryClient.invalidateQueries({ queryKey: queryKeys.monitors.all });
+    },
+  });
+}
+
+export function useBulkDeleteMonitors() {
+  const queryClient = useQueryClient();
+  const organizationId = useDashboardStore((state) => state.currentOrganizationId);
+
+  return useMutation({
+    mutationFn: (ids: string[]) => apiClient.monitors.deleteBulk(ids, organizationId ?? undefined),
+    onSuccess: (data) => {
+      toast({
+        title: "Monitors deleted",
+        description: `${data.deleted} monitor(s) deleted.`,
+      });
+      queryClient.invalidateQueries({ queryKey: queryKeys.monitors.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.analytics.dashboard() });
     },
   });
 }

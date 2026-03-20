@@ -29,6 +29,7 @@ type ChannelQueues = {
   discord: Queue;
   webhook: Queue;
   teams?: Queue;
+  googleChat?: Queue;
   pagerduty?: Queue;
   sms?: Queue;
   ntfy?: Queue;
@@ -48,6 +49,8 @@ export function getQueueForChannelType(type: AlertChannelType, queues: ChannelQu
       return queues.webhook;
     case "teams":
       return queues.teams ?? queues.webhook;
+    case "google_chat":
+      return queues.googleChat ?? queues.webhook;
     case "pagerduty":
       return queues.pagerduty ?? queues.webhook;
     case "ntfy":
@@ -247,6 +250,27 @@ export async function buildNotificationJobData(
           timestamp: alertData.timestamp,
           responseTime: alertData.responseTime,
           statusCode: alertData.statusCode,
+        },
+      };
+    }
+    case "google_chat": {
+      const severity =
+        alertData.status === "recovered"
+          ? "resolved"
+          : alertData.status === "degraded"
+            ? "minor"
+            : "major";
+
+      return {
+        ...loggingIds,
+        webhookUrl: channel.config.webhookUrl,
+        message: {
+          title: `${alertData.monitorName} is ${alertData.status}`,
+          text: alertData.message || `Monitor ${alertData.monitorName} status changed`,
+          severity,
+          monitorName: alertData.monitorName,
+          statusPageUrl: alertData.dashboardUrl,
+          timestamp: alertData.timestamp,
         },
       };
     }

@@ -5,10 +5,11 @@ import {
   alertChannels,
   monitors,
   organizations,
+  maintenanceWindows,
 } from "@uni-status/database/schema";
 import { enterpriseDb as db } from "../../database";
 import { escalationPolicies, escalationSteps } from "../../database/schema";
-import { eq, and, asc, inArray } from "drizzle-orm";
+import { eq, and, asc, inArray, lte, gte, sql } from "drizzle-orm";
 import { Queue } from "bullmq";
 import { getConnection, getPrefix } from "../lib/redis";
 import { QUEUE_NAMES } from "@uni-status/shared/constants";
@@ -96,6 +97,14 @@ export async function processAlertEscalation(job: Job<EscalationJobData>) {
 
   if (alert.status === "acknowledged") {
     log.info(`[Escalation] Alert ${alertHistoryId} acknowledged, skipping escalation`);
+    return;
+  }
+
+  const underMaintenance = await isMonitorUnderActiveMaintenance(organizationId, monitorId);
+  if (underMaintenance) {
+    log.info(
+      `[Escalation] Alert ${alertHistoryId} monitor ${monitorId} is under active maintenance, skipping escalation`
+    );
     return;
   }
 
@@ -198,4 +207,26 @@ export async function processAlertEscalation(job: Job<EscalationJobData>) {
     .where(eq(alertHistory.id, alertHistoryId));
 
   log.info(`[Escalation] Step ${stepNumber} dispatched for alert ${alertHistoryId}`);
+}
+
+async function isMonitorUnderActiveMaintenance(
+  organizationId: string,
+  monitorId: string
+): Promise<boolean> {
+  const now = new Date();
+
+  const activeMaintenance = await db.query.maintenanceWindows.findFirst({
+    where: and(
+      eq(maintenanceWindows.organizationId, organizationId),
+      eq(maintenanceWindows.active, true),
+      lte(maintenanceWindows.startsAt, now),
+      gte(maintenanceWindows.endsAt, now),
+      sql`${maintenanceWindows.affectedMonitors} ? ${monitorId}`
+    ),
+    columns: {
+      id: true,
+    },
+  });
+
+  return Boolean(activeMaintenance);
 }

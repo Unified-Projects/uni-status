@@ -61,12 +61,18 @@ export const app = new OpenAPIHono();
 const log = createLogger({ module: "app" });
 
 // CORS origins cache
-let cachedCorsOrigins: string[] | null = null;
-let cachedStatusPageDomains: Set<string> | null = null;
+type CorsCacheData = {
+  origins: string[];
+  originSet: Set<string>;
+  statusPageDomains: Set<string>;
+};
+
+let cachedCorsData: CorsCacheData | null = null;
 let corsOriginsLastUpdated = 0;
+let corsDataRefreshPromise: Promise<CorsCacheData> | null = null;
 const CORS_CACHE_TTL = 60000; // 1 minute
 
-async function buildCorsOrigins(): Promise<{ origins: string[]; statusPageDomains: Set<string> }> {
+async function buildCorsOrigins(): Promise<CorsCacheData> {
   const corsConfig = getCorsConfig();
   const origins = new Set<string>(corsConfig.origins);
   const statusPageDomains = new Set<string>();
@@ -94,30 +100,30 @@ async function buildCorsOrigins(): Promise<{ origins: string[]; statusPageDomain
 
   return {
     origins: Array.from(origins),
+    originSet: origins,
     statusPageDomains,
   };
 }
 
-async function getCorsOrigins(): Promise<string[]> {
+async function getCorsData(): Promise<CorsCacheData> {
   const now = Date.now();
-  if (!cachedCorsOrigins || now - corsOriginsLastUpdated > CORS_CACHE_TTL) {
-    const result = await buildCorsOrigins();
-    cachedCorsOrigins = result.origins;
-    cachedStatusPageDomains = result.statusPageDomains;
-    corsOriginsLastUpdated = now;
+  if (cachedCorsData && now - corsOriginsLastUpdated <= CORS_CACHE_TTL) {
+    return cachedCorsData;
   }
-  return cachedCorsOrigins;
-}
 
-async function getStatusPageDomains(): Promise<Set<string>> {
-  const now = Date.now();
-  if (!cachedStatusPageDomains || !cachedCorsOrigins || now - corsOriginsLastUpdated > CORS_CACHE_TTL) {
-    const result = await buildCorsOrigins();
-    cachedCorsOrigins = result.origins;
-    cachedStatusPageDomains = result.statusPageDomains;
-    corsOriginsLastUpdated = now;
+  if (!corsDataRefreshPromise) {
+    corsDataRefreshPromise = buildCorsOrigins()
+      .then((result) => {
+        cachedCorsData = result;
+        corsOriginsLastUpdated = Date.now();
+        return result;
+      })
+      .finally(() => {
+        corsDataRefreshPromise = null;
+      });
   }
-  return cachedStatusPageDomains!;
+
+  return corsDataRefreshPromise;
 }
 
 // Global middleware
@@ -128,47 +134,46 @@ app.use("*", secureHeaders());
 // Dynamic CORS middleware (skip health check routes to avoid DB dependency)
 const corsConfig = getCorsConfig();
 if (corsConfig.enabled) {
+  const dynamicCorsMiddleware = cors({
+    origin: async (origin, reqContext) => {
+      const { originSet, statusPageDomains } = await getCorsData();
+
+      // Check if this is a status page custom domain
+      if (statusPageDomains.has(origin)) {
+        // Allow public API paths for custom domains (status page data, feeds, uploads, etc.)
+        const path = reqContext.req.path;
+        const allowedPaths = [
+          "/",
+          "/api/public",
+          "/api/uploads",
+          "/uploads",
+        ];
+        const isAllowed = allowedPaths.some(allowed =>
+          path === allowed || path.startsWith(`${allowed}/`)
+        );
+        if (isAllowed) {
+          return origin;
+        }
+        return null;
+      }
+
+      // Allow other configured origins for all paths
+      if (originSet.has(origin)) {
+        return origin;
+      }
+
+      return null;
+    },
+    credentials: true,
+  });
+
   app.use("*", async (c: Context, next: Next) => {
     // Skip CORS processing for health check endpoints - they must work without DB
     const path = c.req.path;
     if (path === "/health" || path === "/api/health" || path === "/api/v1/health") {
       return next();
     }
-
-    const origins = await getCorsOrigins();
-    const statusPageDomains = await getStatusPageDomains();
-
-    const corsMiddleware = cors({
-      origin: async (origin, reqContext) => {
-        // Check if this is a status page custom domain
-        if (statusPageDomains.has(origin)) {
-          // Allow public API paths for custom domains (status page data, feeds, uploads, etc.)
-          const path = reqContext.req.path;
-          const allowedPaths = [
-            "/",
-            "/api/public",
-            "/api/uploads",
-            "/uploads",
-          ];
-          const isAllowed = allowedPaths.some(allowed =>
-            path === allowed || path.startsWith(`${allowed}/`)
-          );
-          if (isAllowed) {
-            return origin;
-          }
-          return null;
-        }
-
-        // Allow other configured origins for all paths
-        if (origins.includes(origin)) {
-          return origin;
-        }
-
-        return null;
-      },
-      credentials: true,
-    });
-    return corsMiddleware(c, next);
+    return dynamicCorsMiddleware(c, next);
   });
 }
 

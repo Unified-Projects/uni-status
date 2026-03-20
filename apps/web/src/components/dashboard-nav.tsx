@@ -229,11 +229,9 @@ export function DashboardNav({ user }: DashboardNavProps) {
               >
                 <div className="flex items-center gap-2 truncate">
                   {currentOrg?.logoUrl ? (
-                    <Image
+                    <img
                       src={getOrgLogoSrc(currentOrg.logoUrl)}
                       alt={currentOrg.name}
-                      width={16}
-                      height={16}
                       className="h-4 w-4 shrink-0 rounded-sm object-cover"
                     />
                   ) : (
@@ -261,11 +259,9 @@ export function DashboardNav({ user }: DashboardNavProps) {
                   )}
                 >
                   {org.logoUrl ? (
-                    <Image
+                    <img
                       src={getOrgLogoSrc(org.logoUrl)}
                       alt={org.name}
-                      width={16}
-                      height={16}
                       className="mr-2 h-4 w-4 rounded-sm object-cover"
                     />
                   ) : (
@@ -321,11 +317,9 @@ export function DashboardNav({ user }: DashboardNavProps) {
         <div className="border-b p-4">
           <div className="flex items-center gap-2 px-3 py-2">
             {currentOrg.logoUrl ? (
-              <Image
+              <img
                 src={getOrgLogoSrc(currentOrg.logoUrl)}
                 alt={currentOrg.name}
-                width={16}
-                height={16}
                 className="h-4 w-4 shrink-0 rounded-sm object-cover"
               />
             ) : (
