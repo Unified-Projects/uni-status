@@ -24,7 +24,7 @@
     "graphql": "^16.13.1",
     "graphql-yoga": "^5.18.1",
     "hono": "^4.12.8",
-    "ioredis": "5.9.3",
+    "ioredis": "5.10.1",
     "nanoid": "^5.1.7",
     "puppeteer": "^24.39.1",
     "react": "^19.2.4",

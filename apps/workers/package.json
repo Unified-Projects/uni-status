@@ -21,7 +21,7 @@
     "amqplib": "^0.10.5",
     "bullmq": "^5.71.0",
     "drizzle-orm": "^0.45.1",
-    "ioredis": "5.9.3",
+    "ioredis": "5.10.1",
     "irc-framework": "^4.13.1",
     "mongodb": "^7.1.0",
     "mqtt": "^5.15.0",
