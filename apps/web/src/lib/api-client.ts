@@ -290,6 +290,12 @@ export interface AlertPolicy {
       windowMinutes: number;
     };
     degradedDuration?: number;
+    anomalyResponseTime?: {
+      baselineWindowMinutes?: number;
+      minSamples?: number;
+      stdDevMultiplier?: number;
+      minAbsoluteDeviationMs?: number;
+    };
     consecutiveSuccesses?: number;
   };
   channels: string[];

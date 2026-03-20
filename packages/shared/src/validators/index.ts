@@ -898,6 +898,12 @@ export const alertConditionsSchema = z.object({
     windowMinutes: z.number().min(1).max(60),
   }).optional(),
   degradedDuration: z.number().min(1).optional(),
+  anomalyResponseTime: z.object({
+    baselineWindowMinutes: z.number().min(15).max(1440).default(120),
+    minSamples: z.number().min(10).max(1000).default(30),
+    stdDevMultiplier: z.number().min(1).max(6).default(3),
+    minAbsoluteDeviationMs: z.number().min(10).max(10000).default(100),
+  }).optional(),
   consecutiveSuccesses: z.number().min(1).max(10).optional(),
 });
 

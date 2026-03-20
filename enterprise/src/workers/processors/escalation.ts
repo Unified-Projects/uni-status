@@ -22,11 +22,18 @@ import { createLogger } from "@uni-status/shared";
 const log = createLogger({ module: "enterprise-workers-processors-escalation" });
 
 
+let notificationQueues: Record<string, Queue> | null = null;
+
 function getNotificationQueues() {
+  if (notificationQueues) {
+    return notificationQueues;
+  }
+
   const connection = getConnection();
   const prefix = getPrefix();
   const queueOpts = { connection, prefix };
-  return {
+
+  notificationQueues = {
     email: new Queue(QUEUE_NAMES.NOTIFY_EMAIL, queueOpts),
     slack: new Queue(QUEUE_NAMES.NOTIFY_SLACK, queueOpts),
     discord: new Queue(QUEUE_NAMES.NOTIFY_DISCORD, queueOpts),
@@ -39,6 +46,8 @@ function getNotificationQueues() {
     irc: new Queue(QUEUE_NAMES.NOTIFY_IRC, queueOpts),
     twitter: new Queue(QUEUE_NAMES.NOTIFY_TWITTER, queueOpts),
   };
+
+  return notificationQueues;
 }
 
 interface EscalationJobData {
@@ -140,35 +149,43 @@ export async function processAlertEscalation(job: Job<EscalationJobData>) {
 
   const orgCredentials = await getOrgCredentials(organizationId);
   const APP_URL = getAppUrl();
+  const queues = getNotificationQueues();
 
   for (const channel of channels) {
-    const queue = getQueueForChannelType(channel.type as AlertChannelType, getNotificationQueues());
+    try {
+      const queue = getQueueForChannelType(channel.type as AlertChannelType, queues);
 
-    const jobData = await buildNotificationJobData(
-      channel,
-      {
-        alertHistoryId: alertHistoryId,
-        monitorName: monitor[0].name,
-        monitorUrl: monitor[0].url,
-        status: "down",
-        message: alert.metadata?.errorMessage,
-        responseTime: alert.metadata?.responseTimeMs,
-        statusCode: alert.metadata?.statusCode,
-        dashboardUrl: `${APP_URL}/monitors/${monitorId}`,
-        timestamp: new Date().toISOString(),
-      },
-      orgCredentials
-    );
+      const jobData = await buildNotificationJobData(
+        channel,
+        {
+          alertHistoryId: alertHistoryId,
+          monitorName: monitor[0].name,
+          monitorUrl: monitor[0].url,
+          status: "down",
+          message: alert.metadata?.errorMessage,
+          responseTime: alert.metadata?.responseTimeMs,
+          statusCode: alert.metadata?.statusCode,
+          dashboardUrl: `${APP_URL}/monitors/${monitorId}`,
+          timestamp: new Date().toISOString(),
+        },
+        orgCredentials
+      );
 
-    await queue.add(`escalation-${alertHistoryId}-${channel.id}-s${stepNumber}`, jobData, {
-      removeOnComplete: 100,
-      removeOnFail: 100,
-      attempts: 5,
-      backoff: {
-        type: "exponential",
-        delay: 1000,
-      },
-    });
+      await queue.add(`escalation-${alertHistoryId}-${channel.id}-s${stepNumber}`, jobData, {
+        removeOnComplete: 100,
+        removeOnFail: 100,
+        attempts: 5,
+        backoff: {
+          type: "exponential",
+          delay: 1000,
+        },
+      });
+    } catch (error) {
+      log.error(
+        { err: error, alertHistoryId, stepNumber, channelId: channel.id, channelType: channel.type },
+        "Failed to queue escalation notification"
+      );
+    }
   }
 
   await db

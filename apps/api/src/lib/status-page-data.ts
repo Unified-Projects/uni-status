@@ -24,6 +24,31 @@ import {
 } from "drizzle-orm";
 import type { StatusPage, Organization } from "@uni-status/database/schema";
 
+function normalizePublicTheme(theme: StatusPage["theme"] | null | undefined): PublicStatusPagePayload["theme"] {
+  const resolvedTheme = (theme ?? { name: "default" }) as PublicStatusPagePayload["theme"];
+  if (resolvedTheme.colorMode !== "light" || !resolvedTheme.customCss) {
+    return resolvedTheme;
+  }
+
+  return {
+    ...resolvedTheme,
+    customCss: replaceDarkThemeCssWithLight(resolvedTheme.customCss),
+  };
+}
+
+function replaceDarkThemeCssWithLight(css: string): string {
+  const lightModeBlockMatch = css.match(/html\s*\{([\s\S]*?)\}/);
+  if (!lightModeBlockMatch) return css;
+
+  const lightModeDeclarations = lightModeBlockMatch[1] ?? "";
+  if (!lightModeDeclarations.trim()) return css;
+
+  return css.replace(
+    /html\.dark\s*\{[\s\S]*?\}/g,
+    `html.dark {${lightModeDeclarations}}`
+  );
+}
+
 export interface PublicStatusPagePayload {
   id: string;
   name: string;
@@ -259,7 +284,7 @@ export async function buildPublicStatusPageShellPayload(params: {
     logo: page.logo,
     favicon: page.favicon,
     orgLogo: organization?.logo ?? null,
-    theme: page.theme ?? { name: "default" },
+    theme: normalizePublicTheme(page.theme),
     settings: {
       showUptimePercentage: page.settings?.showUptimePercentage ?? true,
       showResponseTime: page.settings?.showResponseTime ?? true,
@@ -1266,7 +1291,7 @@ export async function buildPublicStatusPagePayload(params: {
     logo: page.logo,
     favicon: page.favicon,
     orgLogo: organization?.logo ?? null,
-    theme: page.theme ?? { name: "default" },
+    theme: normalizePublicTheme(page.theme),
     settings: {
       showUptimePercentage: page.settings?.showUptimePercentage ?? true,
       showResponseTime: page.settings?.showResponseTime ?? true,

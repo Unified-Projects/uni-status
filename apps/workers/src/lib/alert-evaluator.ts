@@ -34,6 +34,10 @@ const emailQueue = new Queue(QUEUE_NAMES.NOTIFY_EMAIL, queueOpts);
 const slackQueue = new Queue(QUEUE_NAMES.NOTIFY_SLACK, queueOpts);
 const discordQueue = new Queue(QUEUE_NAMES.NOTIFY_DISCORD, queueOpts);
 const webhookQueue = new Queue(QUEUE_NAMES.NOTIFY_WEBHOOK, queueOpts);
+const teamsQueue = new Queue(QUEUE_NAMES.NOTIFY_TEAMS, queueOpts);
+const pagerdutyQueue = new Queue(QUEUE_NAMES.NOTIFY_PAGERDUTY, queueOpts);
+const smsQueue = new Queue(QUEUE_NAMES.NOTIFY_SMS, queueOpts);
+const ntfyQueue = new Queue(QUEUE_NAMES.NOTIFY_NTFY, queueOpts);
 const ircQueue = new Queue(QUEUE_NAMES.NOTIFY_IRC, queueOpts);
 const twitterQueue = new Queue(QUEUE_NAMES.NOTIFY_TWITTER, queueOpts);
 const escalationQueue = new Queue(QUEUE_NAMES.ALERT_ESCALATION, queueOpts);
@@ -42,7 +46,10 @@ const notificationQueues = {
   slack: slackQueue,
   discord: discordQueue,
   webhook: webhookQueue,
-  sms: emailQueue,
+  teams: teamsQueue,
+  pagerduty: pagerdutyQueue,
+  sms: smsQueue,
+  ntfy: ntfyQueue,
   irc: ircQueue,
   twitter: twitterQueue,
 };
@@ -87,10 +94,27 @@ interface AlertPolicyWithConditions {
       windowMinutes: number;
     };
     degradedDuration?: number;
+    anomalyResponseTime?: {
+      baselineWindowMinutes?: number;
+      minSamples?: number;
+      stdDevMultiplier?: number;
+      minAbsoluteDeviationMs?: number;
+    };
     consecutiveSuccesses?: number;
   };
   channels: string[];
   cooldownMinutes: number;
+}
+
+interface EvaluateConditionResult {
+  met: boolean;
+  message?: string;
+  anomaly?: {
+    observedMs: number;
+    expectedThresholdMs: number;
+    baselineMeanMs: number;
+    baselineStdDevMs: number;
+  };
 }
 
 export async function evaluateAlerts(input: EvaluateAlertInput): Promise<void> {
@@ -116,9 +140,11 @@ export async function evaluateAlerts(input: EvaluateAlertInput): Promise<void> {
       if (!policy.enabled) continue;
 
       if (isFailure || isDegraded) {
-        const conditionMet = await evaluateConditions(policy, input);
+        const conditionResult = await evaluateConditions(policy, input);
 
-        if (!conditionMet) continue;
+        if (!conditionResult.met) continue;
+
+        const derivedMessage = conditionResult.message ?? input.errorMessage;
 
         const unresolvedAlert = await getUnresolvedAlert(policy.id, monitorId);
 
@@ -127,9 +153,10 @@ export async function evaluateAlerts(input: EvaluateAlertInput): Promise<void> {
             unresolvedAlert.id,
             unresolvedAlert.metadata,
             input.checkResultId,
-            input.errorMessage,
+            derivedMessage,
             input.responseTimeMs,
-            input.statusCode
+            input.statusCode,
+            conditionResult.anomaly
           );
           continue;
         }
@@ -152,12 +179,13 @@ export async function evaluateAlerts(input: EvaluateAlertInput): Promise<void> {
           monitorId,
           policyId: policy.id,
           checkResultId: input.checkResultId,
-          errorMessage: input.errorMessage,
+          errorMessage: derivedMessage,
           pagespeedScores: input.pagespeedScores,
           pagespeedViolations: input.pagespeedViolations,
+          anomaly: conditionResult.anomaly,
         });
 
-        await queueNotifications(policy, alertRecord, input);
+        await queueNotifications(policy, alertRecord, { ...input, errorMessage: derivedMessage });
 
         if (policy.escalationPolicyId) {
           await scheduleEscalations({
@@ -236,7 +264,7 @@ async function getLinkedPolicies(
 async function evaluateConditions(
   policy: AlertPolicyWithConditions,
   input: EvaluateAlertInput
-): Promise<boolean> {
+): Promise<EvaluateConditionResult> {
   const { monitorId, checkStatus } = input;
   const conditions = policy.conditions;
 
@@ -245,7 +273,7 @@ async function evaluateConditions(
       monitorId,
       conditions.consecutiveFailures
     );
-    if (met) return true;
+    if (met) return { met: true };
   }
 
   if (conditions.failuresInWindow) {
@@ -254,7 +282,7 @@ async function evaluateConditions(
       conditions.failuresInWindow.count,
       conditions.failuresInWindow.windowMinutes
     );
-    if (met) return true;
+    if (met) return { met: true };
   }
 
   if (conditions.degradedDuration && checkStatus === "degraded") {
@@ -262,10 +290,84 @@ async function evaluateConditions(
       monitorId,
       conditions.degradedDuration
     );
-    if (met) return true;
+    if (met) return { met: true };
   }
 
-  return false;
+  if (conditions.anomalyResponseTime && (checkStatus === "success" || checkStatus === "degraded")) {
+    const anomaly = await checkResponseTimeAnomaly(monitorId, input.responseTimeMs, conditions.anomalyResponseTime);
+    if (anomaly.met) {
+      return anomaly;
+    }
+  }
+
+  return { met: false };
+}
+
+async function checkResponseTimeAnomaly(
+  monitorId: string,
+  currentResponseTimeMs: number | undefined,
+  options: {
+    baselineWindowMinutes?: number;
+    minSamples?: number;
+    stdDevMultiplier?: number;
+    minAbsoluteDeviationMs?: number;
+  }
+): Promise<EvaluateConditionResult> {
+  if (!currentResponseTimeMs || currentResponseTimeMs <= 0) {
+    return { met: false };
+  }
+
+  const baselineWindowMinutes = options.baselineWindowMinutes ?? 120;
+  const minSamples = options.minSamples ?? 30;
+  const stdDevMultiplier = options.stdDevMultiplier ?? 3;
+  const minAbsoluteDeviationMs = options.minAbsoluteDeviationMs ?? 100;
+
+  const windowStart = new Date(Date.now() - baselineWindowMinutes * 60 * 1000);
+
+  const baselineRows = await db
+    .select({ responseTimeMs: checkResults.responseTimeMs })
+    .from(checkResults)
+    .where(
+      and(
+        eq(checkResults.monitorId, monitorId),
+        gte(checkResults.createdAt, windowStart),
+        eq(checkResults.status, "success")
+      )
+    )
+    .orderBy(desc(checkResults.createdAt))
+    .limit(Math.max(minSamples * 3, minSamples));
+
+  const samples = baselineRows
+    .map((row) => row.responseTimeMs)
+    .filter((v): v is number => typeof v === "number" && Number.isFinite(v) && v > 0);
+
+  if (samples.length < minSamples) {
+    return { met: false };
+  }
+
+  const mean = samples.reduce((acc, value) => acc + value, 0) / samples.length;
+  const variance = samples.reduce((acc, value) => acc + Math.pow(value - mean, 2), 0) / samples.length;
+  const stdDev = Math.sqrt(variance);
+  const threshold = mean + stdDevMultiplier * stdDev;
+  const absoluteDelta = currentResponseTimeMs - mean;
+
+  const isAnomaly = currentResponseTimeMs > threshold && absoluteDelta >= minAbsoluteDeviationMs;
+  if (!isAnomaly) {
+    return { met: false };
+  }
+
+  return {
+    met: true,
+    message: `Response-time anomaly detected (${Math.round(currentResponseTimeMs)}ms vs baseline threshold ${Math.round(
+      threshold
+    )}ms)`,
+    anomaly: {
+      observedMs: Math.round(currentResponseTimeMs),
+      expectedThresholdMs: Math.round(threshold),
+      baselineMeanMs: Math.round(mean),
+      baselineStdDevMs: Math.round(stdDev),
+    },
+  };
 }
 
 async function checkConsecutiveFailures(
@@ -381,7 +483,13 @@ async function updateExistingAlert(
   checkResultId: string,
   errorMessage?: string,
   responseTimeMs?: number,
-  statusCode?: number
+  statusCode?: number,
+  anomaly?: {
+    observedMs: number;
+    expectedThresholdMs: number;
+    baselineMeanMs: number;
+    baselineStdDevMs: number;
+  }
 ): Promise<void> {
   const failureCount = (currentMetadata.failureCount || 0) + 1;
   const failureTimestamps = currentMetadata.failureTimestamps || [];
@@ -399,6 +507,13 @@ async function updateExistingAlert(
         errorMessage,
         responseTimeMs,
         statusCode,
+        ...(anomaly && {
+          anomalyDetected: true,
+          anomalyObservedMs: anomaly.observedMs,
+          anomalyExpectedThresholdMs: anomaly.expectedThresholdMs,
+          anomalyBaselineMeanMs: anomaly.baselineMeanMs,
+          anomalyBaselineStdDevMs: anomaly.baselineStdDevMs,
+        }),
       },
     })
     .where(eq(alertHistory.id, alertId));
@@ -414,6 +529,12 @@ async function createAlertHistory(params: {
   errorMessage?: string;
   pagespeedScores?: PageSpeedScores | null;
   pagespeedViolations?: PageSpeedViolation[] | null;
+  anomaly?: {
+    observedMs: number;
+    expectedThresholdMs: number;
+    baselineMeanMs: number;
+    baselineStdDevMs: number;
+  };
 }): Promise<{ id: string; organizationId: string; monitorId: string }> {
   const id = nanoid();
   const now = new Date().toISOString();
@@ -433,6 +554,13 @@ async function createAlertHistory(params: {
       failureTimestamps: [now],
       ...(params.pagespeedScores && { pagespeedScores: params.pagespeedScores }),
       ...(params.pagespeedViolations && { pagespeedViolations: params.pagespeedViolations }),
+      ...(params.anomaly && {
+        anomalyDetected: true,
+        anomalyObservedMs: params.anomaly.observedMs,
+        anomalyExpectedThresholdMs: params.anomaly.expectedThresholdMs,
+        anomalyBaselineMeanMs: params.anomaly.baselineMeanMs,
+        anomalyBaselineStdDevMs: params.anomaly.baselineStdDevMs,
+      }),
     },
     createdAt: new Date(),
   });

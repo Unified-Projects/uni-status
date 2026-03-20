@@ -1,4 +1,4 @@
-FROM node:25.8.0-alpine AS base
+FROM node:25.8.1-alpine AS base
 RUN npm install -g pnpm
 WORKDIR /app
 
@@ -7,6 +7,10 @@ FROM oven/bun:1.3.10-alpine AS bunbase
 
 # Development - install and run in one stage
 FROM base AS dev
+# Install Chromium for Puppeteer PDF generation
+RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser \
+    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/api/package.json ./apps/api/
 COPY packages/database/package.json ./packages/database/
@@ -45,11 +49,14 @@ RUN bun run build
 FROM oven/bun:1.3.10-alpine AS production
 WORKDIR /app
 
-# Install wget for health checks and create non-root user
-RUN apk add --no-cache wget && \
+# Install system dependencies for health checks and Puppeteer
+RUN apk add --no-cache wget chromium nss freetype harfbuzz ca-certificates ttf-freefont && \
     addgroup -g 1001 -S appgroup && \
     adduser -u 1001 -S appuser -G appgroup && \
     chown -R appuser:appgroup /app
+
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser \
+    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
 COPY --from=builder --chown=appuser:appgroup /app/apps/api/dist ./dist
 COPY --from=builder --chown=appuser:appgroup /app/node_modules ./node_modules

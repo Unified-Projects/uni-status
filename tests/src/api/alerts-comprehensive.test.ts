@@ -441,6 +441,32 @@ describe("Alerts API - Comprehensive", () => {
         expect(body.data.conditions.consecutiveSuccesses).toBe(2);
       });
 
+      it("creates a policy with response-time anomaly condition", async () => {
+        const res = await fetch(`${API_BASE_URL}/api/v1/alerts/policies`, {
+          method: "POST",
+          headers: ctx.headers,
+          body: JSON.stringify({
+            name: "Response-Time Anomaly Policy",
+            enabled: true,
+            channels: [channelId],
+            conditions: {
+              anomalyResponseTime: {
+                baselineWindowMinutes: 120,
+                minSamples: 30,
+                stdDevMultiplier: 3,
+                minAbsoluteDeviationMs: 100,
+              },
+            },
+            cooldownMinutes: 10,
+          }),
+        });
+
+        expect(res.status).toBe(201);
+        const body = await res.json();
+        expect(body.data.conditions.anomalyResponseTime.baselineWindowMinutes).toBe(120);
+        expect(body.data.conditions.anomalyResponseTime.minSamples).toBe(30);
+      });
+
       it("creates a policy with monitor filter", async () => {
         const res = await fetch(`${API_BASE_URL}/api/v1/alerts/policies`, {
           method: "POST",
@@ -594,6 +620,28 @@ describe("Alerts API - Comprehensive", () => {
         expect(res.status).toBe(200);
         const body = await res.json();
         expect(body.data.conditions.consecutiveFailures).toBe(5);
+      });
+
+      it("updates policy anomaly condition", async () => {
+        const res = await fetch(`${API_BASE_URL}/api/v1/alerts/policies/${updatePolicyId}`, {
+          method: "PATCH",
+          headers: ctx.headers,
+          body: JSON.stringify({
+            conditions: {
+              anomalyResponseTime: {
+                baselineWindowMinutes: 180,
+                minSamples: 40,
+                stdDevMultiplier: 2.5,
+                minAbsoluteDeviationMs: 150,
+              },
+            },
+          }),
+        });
+
+        expect(res.status).toBe(200);
+        const body = await res.json();
+        expect(body.data.conditions.anomalyResponseTime.baselineWindowMinutes).toBe(180);
+        expect(body.data.conditions.anomalyResponseTime.stdDevMultiplier).toBe(2.5);
       });
 
       it("updates policy cooldown", async () => {

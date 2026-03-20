@@ -17,6 +17,7 @@ import {
 import { eq, and, gte, lte, sql, inArray, desc } from "drizzle-orm";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { createLogger } from "@uni-status/shared";
+import { createHash } from "node:crypto";
 
 const log = createLogger({ module: 'report-generator' });
 
@@ -1656,6 +1657,7 @@ export async function processReportGeneration(
   log.info({ reportId, organizationId, reportType }, 'Generating report');
 
   const startTime = Date.now();
+  const generationStartedAt = new Date();
 
   try {
     // Atomically claim pending reports to avoid duplicate processing.
@@ -1677,6 +1679,11 @@ export async function processReportGeneration(
       );
       return;
     }
+
+    const reportRecord = await db.query.slaReports.findFirst({
+      where: eq(slaReports.id, reportId),
+      columns: { generatedBy: true },
+    });
 
     // Step 1: Gather report data
     log.info({ reportId }, 'Step 1: Gathering data');
@@ -1768,6 +1775,13 @@ export async function processReportGeneration(
     log.info({ reportId, duration: Date.now() - uploadStart, url }, 'Step 4 complete');
 
     const generationDuration = Date.now() - startTime;
+    const generationCompletedAt = new Date();
+    const pdfSha256 = createHash("sha256").update(Buffer.from(pdfBuffer)).digest("hex");
+    const runtimeName = typeof Bun !== "undefined" ? "bun" : "node";
+    const runtimeVersion = typeof Bun !== "undefined" ? Bun.version : process.version;
+    const runtimeLabel = `${runtimeName} ${runtimeVersion}`;
+    const generatorVersion = process.env.UNI_STATUS_REPORT_GENERATOR_VERSION || process.env.npm_package_version || "unknown";
+    const generatedByUser = reportRecord?.generatedBy || null;
 
     // Update report record
     await db
@@ -1802,6 +1816,15 @@ export async function processReportGeneration(
           includeMaintenanceWindows: job.data.settings.includeMaintenanceWindows,
           includeResponseTimes: job.data.settings.includeResponseTimes,
           includeSloStatus: job.data.settings.includeSloStatus,
+          fileChecksumSha256: pdfSha256,
+          generatedByRuntime: runtimeLabel,
+          generatedByVersion: generatorVersion,
+          generatedByEnvironment: process.env.NODE_ENV || "unknown",
+          generatedByUser,
+          generationStartedAt: generationStartedAt.toISOString(),
+          generationCompletedAt: generationCompletedAt.toISOString(),
+          dataQueryWindowStart: job.data.periodStart,
+          dataQueryWindowEnd: job.data.periodEnd,
         },
       })
       .where(eq(slaReports.id, reportId));

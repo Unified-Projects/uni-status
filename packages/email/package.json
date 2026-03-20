@@ -1,6 +1,6 @@
 {
   "name": "@uni-status/email",
-  "version": "0.1.6",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -19,14 +19,14 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@react-email/components": "^1.0.8",
+    "@react-email/components": "^1.0.10",
     "@uni-status/shared": "workspace:*",
-    "nodemailer": "^8.0.1",
-    "react-email": "^5.2.9",
-    "resend": "^6.9.3"
+    "nodemailer": "^8.0.2",
+    "react-email": "^5.2.10",
+    "resend": "^6.9.4"
   },
   "devDependencies": {
-    "@react-email/preview-server": "^5.2.9",
+    "@react-email/preview-server": "^5.2.10",
     "@types/nodemailer": "^7.0.11",
     "@types/react": "^19.2.14",
     "react": "^19.2.4",

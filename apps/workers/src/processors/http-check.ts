@@ -578,10 +578,11 @@ export async function processHttpCheck(job: Job<HttpCheckJob>) {
 
   // PageSpeed Insights check (only if enabled and HTTP check was successful)
   // Only run if enough time has passed since last pagespeed run (default 24 hours)
-  const pagespeedIntervalSeconds = config?.pagespeed?.intervalSeconds ?? 86400; // Default 24 hours
+  const pagespeedConfig = config?.pagespeed;
+  const pagespeedIntervalSeconds = pagespeedConfig?.intervalSeconds ?? 86400; // Default 24 hours
   const lastPagespeedTime = lastPagespeedAt ? new Date(lastPagespeedAt).getTime() : 0;
   const timeSinceLastPagespeed = lastPagespeedTime ? Date.now() - lastPagespeedTime : Infinity;
-  const shouldRunPagespeed = config?.pagespeed?.enabled &&
+  const shouldRunPagespeed = pagespeedConfig?.enabled &&
     (status === "success" || status === "degraded") &&
     timeSinceLastPagespeed >= (pagespeedIntervalSeconds * 1000);
 
@@ -604,8 +605,8 @@ export async function processHttpCheck(job: Job<HttpCheckJob>) {
       // Fetch PageSpeed data
       const results = await fetchPageSpeedData(url, {
         apiKey: pagespeedApiKey,
-        strategy: config.pagespeed.strategy || "mobile",
-        categories: config.pagespeed.categories || ["performance"],
+        strategy: pagespeedConfig?.strategy || "mobile",
+        categories: pagespeedConfig?.categories || ["performance"],
       });
 
       // Use the first result (mobile or the specified strategy)
@@ -622,11 +623,11 @@ export async function processHttpCheck(job: Job<HttpCheckJob>) {
           log.info(`PageSpeed scores for ${monitorId}:`, pagespeedScores);
 
           // Check PageSpeed thresholds
-          if (config.pagespeed.thresholds && pagespeedScores) {
-            const thresholdCheck = checkPageSpeedThresholds(pagespeedScores, config.pagespeed.thresholds);
+          if (pagespeedConfig?.thresholds && pagespeedScores) {
+            const thresholdCheck = checkPageSpeedThresholds(pagespeedScores, pagespeedConfig.thresholds);
             if (!thresholdCheck.passed) {
               // Track violations for alerting
-              const thresholds = config.pagespeed.thresholds;
+              const thresholds = pagespeedConfig.thresholds;
               if (thresholds.performance && pagespeedScores.performance && pagespeedScores.performance < thresholds.performance) {
                 pagespeedViolations.push({ category: "performance", score: pagespeedScores.performance, threshold: thresholds.performance });
               }
@@ -649,8 +650,8 @@ export async function processHttpCheck(job: Job<HttpCheckJob>) {
           }
 
           // Check Web Vitals thresholds
-          if (config.pagespeed.webVitalsThresholds && webVitals) {
-            const vitalsCheck = checkWebVitalsThresholds(webVitals, config.pagespeed.webVitalsThresholds);
+          if (pagespeedConfig?.webVitalsThresholds && webVitals) {
+            const vitalsCheck = checkWebVitalsThresholds(webVitals, pagespeedConfig.webVitalsThresholds);
             if (!vitalsCheck.passed) {
               // Mark as degraded if Web Vitals thresholds are not met
               if (status === "success") {

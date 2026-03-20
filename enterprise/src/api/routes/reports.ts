@@ -25,6 +25,7 @@ import fs from "fs/promises";
 import path from "path";
 import { getStorageConfig } from "@uni-status/shared/config";
 import { createLogger } from "@uni-status/shared";
+import { createHash } from "node:crypto";
 
 const log = createLogger({ module: "enterprise-api-routes-reports" });
 
@@ -40,6 +41,56 @@ function isInlineReportMode() {
     env["NODE_ENV"] === "test" ||
     env["VITEST_WORKER_ID"] !== undefined
   );
+}
+
+function isInlineFallbackEnabled() {
+  const env = process.env;
+  return (
+    isInlineReportMode() ||
+    env["UNI_STATUS_REPORT_INLINE_FALLBACK"] === "1" ||
+    env["REPORT_INLINE_FALLBACK"] === "1"
+  );
+}
+
+const REPORT_QUEUE_HANDOFF_DELAY_MS = (() => {
+  const raw = Number.parseInt(process.env.REPORT_QUEUE_HANDOFF_DELAY_MS || "15000", 10);
+  if (!Number.isFinite(raw) || raw < 1000) return 15000;
+  return Math.min(raw, 5 * 60 * 1000);
+})();
+
+const REPORT_VERIFY_EXTERNAL_FETCH_TIMEOUT_MS = (() => {
+  const raw = Number.parseInt(process.env.REPORT_VERIFY_EXTERNAL_FETCH_TIMEOUT_MS || "15000", 10);
+  if (!Number.isFinite(raw) || raw < 1000) return 15000;
+  return Math.min(raw, 120000);
+})();
+
+function getReportSha256FromSummary(summary: unknown): string | null {
+  if (!summary || typeof summary !== "object") return null;
+  const value = (summary as Record<string, unknown>).fileChecksumSha256;
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+async function readReportFileBytes(report: { fileUrl: string }): Promise<Buffer> {
+  if (report.fileUrl.startsWith("/reports/")) {
+    const reportsBaseDir = getStorageConfig().reportsDir;
+    const relativePath = report.fileUrl.replace(/^\/reports\//, "");
+    const filePath = path.join(reportsBaseDir, relativePath);
+    const fileBuffer = await fs.readFile(filePath);
+    return Buffer.from(fileBuffer);
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REPORT_VERIFY_EXTERNAL_FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(report.fileUrl, { signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(`Failed to fetch report from storage: HTTP ${response.status}`);
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 const STALE_REPORT_TIMEOUT_MINUTES = (() => {
@@ -667,9 +718,36 @@ reportsRoutes.post("/generate", async (c) => {
     log.warn("[reports] Queueing report generation failed, continuing inline:", error);
   }
 
+  const inlineFallbackEnabled = isInlineFallbackEnabled();
+
+  // If queueing fails and inline fallback is disabled, fail fast to avoid stale pending reports.
+  if (!queueAccepted && !inlineFallbackEnabled) {
+    const queueUnavailableMessage = "Report queue unavailable and inline fallback is disabled";
+    await db
+      .update(slaReports)
+      .set({
+        status: "failed",
+        errorMessage: queueUnavailableMessage,
+      })
+      .where(eq(slaReports.id, id));
+
+    log.error({ reportId: id }, `[reports] ${queueUnavailableMessage}`);
+
+    return c.json(
+      {
+        success: false,
+        error: {
+          code: "REPORT_QUEUE_UNAVAILABLE",
+          message: queueUnavailableMessage,
+        },
+      },
+      503
+    );
+  }
+
   // In test/CI environments we always process inline.
-  // In production, if queueing fails we process inline as a fallback to avoid stale pending reports.
-  const shouldProcessInline = isInlineReportMode() || !queueAccepted;
+  // In other environments, inline fallback is optional and explicitly controlled.
+  const shouldProcessInline = isInlineReportMode() || (!queueAccepted && inlineFallbackEnabled);
   if (shouldProcessInline) {
     setTimeout(() => {
       (async () => {
@@ -689,7 +767,7 @@ reportsRoutes.post("/generate", async (c) => {
         }
       })().catch((err) => log.error("[reports] Inline processing error:", err));
     }, 100);
-  } else {
+  } else if (inlineFallbackEnabled) {
     // Self-heal queue handoff issues: if no worker has claimed the report after a short delay,
     // process it inline to avoid leaving reports indefinitely pending.
     setTimeout(() => {
@@ -718,7 +796,9 @@ reportsRoutes.post("/generate", async (c) => {
             .where(and(eq(slaReports.id, id), eq(slaReports.status, "pending")));
         }
       })().catch((err) => log.error("[reports] Delayed inline fallback processing error:", err));
-    }, 15000);
+    }, REPORT_QUEUE_HANDOFF_DELAY_MS);
+  } else {
+    log.debug({ reportId: id }, "[reports] Inline fallback disabled; waiting for worker queue processing");
   }
 
   // Publish event
@@ -1083,6 +1163,86 @@ reportsRoutes.delete("/templates/:id", async (c) => {
 });
 
 // Get report by ID
+reportsRoutes.get("/:id/verify", async (c) => {
+  const auth = requireAuth(c);
+  const { id } = c.req.param();
+  await repairStaleReportIfNeeded(id, auth.organizationId || undefined);
+
+  const report = await db.query.slaReports.findFirst({
+    where: eq(slaReports.id, id),
+  });
+
+  if (!report) {
+    return c.json({ success: false, error: "Report not found" }, 404);
+  }
+
+  if (auth.organizationId && auth.organizationId !== report.organizationId) {
+    return c.json({ success: false, error: "Forbidden" }, 403);
+  }
+
+  if (report.status !== "completed" || !report.fileUrl) {
+    return c.json(
+      {
+        success: false,
+        error: "Report not ready for verification",
+        status: report.status,
+      },
+      400
+    );
+  }
+
+  const expectedSha256 = getReportSha256FromSummary(report.summary);
+  if (!expectedSha256) {
+    return c.json(
+      {
+        success: false,
+        error: "Report checksum metadata is missing",
+      },
+      422
+    );
+  }
+
+  try {
+    const fileBytes = await readReportFileBytes({ fileUrl: report.fileUrl });
+    const actualSha256 = createHash("sha256").update(fileBytes).digest("hex");
+    const verified = actualSha256 === expectedSha256;
+
+    await createAuditLog(c, {
+      organizationId: report.organizationId,
+      userId: getAuditUserId(c),
+      action: "report.verify_integrity",
+      resourceType: "sla_report",
+      resourceId: report.id,
+      metadata: {
+        verified,
+        expectedSha256,
+        actualSha256,
+      },
+    });
+
+    return c.json({
+      success: true,
+      data: {
+        reportId: report.id,
+        verified,
+        expectedSha256,
+        actualSha256,
+        checkedAt: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    log.error({ reportId: report.id, err: error }, "[reports] Report verification failed");
+    return c.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : "Report verification failed",
+      },
+      500
+    );
+  }
+});
+
+// Get report by ID
 reportsRoutes.get("/:id", async (c) => {
   try {
     const organizationId = await requireOrganization(c);
@@ -1157,17 +1317,19 @@ reportsRoutes.get("/:id/download", async (c) => {
 
   // If stored locally, stream the file directly
   if (report.fileUrl.startsWith("/reports/")) {
-    const reportsBaseDir = process.env.REPORTS_DIR || "/app/reports";
-    const relativePath = report.fileUrl.replace(/^\/reports\//, "");
-    const filePath = path.join(reportsBaseDir, relativePath);
     try {
-      const fileBuffer = await fs.readFile(filePath);
-      const fileName = path.basename(filePath);
+      const fileBuffer = await readReportFileBytes({ fileUrl: report.fileUrl });
+      const relativePath = report.fileUrl.replace(/^\/reports\//, "");
+      const fileName = report.fileName || path.basename(relativePath);
+      const checksum = getReportSha256FromSummary(report.summary);
 
-      return new Response(fileBuffer, {
+      const pdfBody = new Uint8Array(fileBuffer);
+
+      return new Response(pdfBody, {
         headers: {
           "Content-Type": "application/pdf",
           "Content-Disposition": `attachment; filename="${fileName}"`,
+          ...(checksum ? { "X-Report-SHA256": checksum } : {}),
         },
       });
     } catch (error) {

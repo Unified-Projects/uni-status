@@ -52,6 +52,7 @@ import { usePendingInvitations, useAcceptInvitation, useDeclineInvitation } from
 import { useSystemStatus } from "@/hooks/use-system-status";
 import { useLicenseStatus, type LicenseEntitlements } from "@/hooks/use-license-status";
 import { InvitationModal } from "@/components/invitations";
+import { getAssetUrl } from "@/lib/api";
 import type { PendingInvitation } from "@/lib/api-client";
 
 interface DashboardNavProps {
@@ -200,6 +201,11 @@ export function DashboardNav({ user }: DashboardNavProps) {
     router.push("/login");
   };
 
+  const getOrgLogoSrc = (logoUrl?: string | null) => {
+    if (!logoUrl) return "";
+    return getAssetUrl(logoUrl);
+  };
+
   // Shared sidebar content
   const SidebarContent = () => (
     <>
@@ -222,7 +228,17 @@ export function DashboardNav({ user }: DashboardNavProps) {
                 disabled={orgsLoading}
               >
                 <div className="flex items-center gap-2 truncate">
-                  <Building2 className="h-4 w-4 shrink-0" />
+                  {currentOrg?.logoUrl ? (
+                    <Image
+                      src={getOrgLogoSrc(currentOrg.logoUrl)}
+                      alt={currentOrg.name}
+                      width={16}
+                      height={16}
+                      className="h-4 w-4 shrink-0 rounded-sm object-cover"
+                    />
+                  ) : (
+                    <Building2 className="h-4 w-4 shrink-0" />
+                  )}
                   {orgsLoading ? (
                     <Skeleton className="h-4 w-24" />
                   ) : (
@@ -244,7 +260,17 @@ export function DashboardNav({ user }: DashboardNavProps) {
                     currentOrganizationId === org.id && "bg-muted"
                   )}
                 >
-                  <Building2 className="mr-2 h-4 w-4" />
+                  {org.logoUrl ? (
+                    <Image
+                      src={getOrgLogoSrc(org.logoUrl)}
+                      alt={org.name}
+                      width={16}
+                      height={16}
+                      className="mr-2 h-4 w-4 rounded-sm object-cover"
+                    />
+                  ) : (
+                    <Building2 className="mr-2 h-4 w-4" />
+                  )}
                   {org.name}
                 </DropdownMenuItem>
               ))}
@@ -294,7 +320,17 @@ export function DashboardNav({ user }: DashboardNavProps) {
       {isSelfHosted && currentOrg && (
         <div className="border-b p-4">
           <div className="flex items-center gap-2 px-3 py-2">
-            <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+            {currentOrg.logoUrl ? (
+              <Image
+                src={getOrgLogoSrc(currentOrg.logoUrl)}
+                alt={currentOrg.name}
+                width={16}
+                height={16}
+                className="h-4 w-4 shrink-0 rounded-sm object-cover"
+              />
+            ) : (
+              <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+            )}
             <span className="text-sm font-medium truncate">{currentOrg.name}</span>
           </div>
         </div>

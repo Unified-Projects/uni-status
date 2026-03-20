@@ -136,6 +136,15 @@ export const slaReports = pgTable(
       includeMaintenanceWindows?: boolean;
       includeResponseTimes?: boolean;
       includeSloStatus?: boolean;
+      fileChecksumSha256?: string;
+      generatedByRuntime?: string;
+      generatedByVersion?: string;
+      generatedByEnvironment?: string;
+      generatedByUser?: string | null;
+      generationStartedAt?: string;
+      generationCompletedAt?: string;
+      dataQueryWindowStart?: string;
+      dataQueryWindowEnd?: string;
     }>().default({}),
     // Which monitors/pages were included
     includedMonitors: jsonb("included_monitors").$type<string[]>().default([]),

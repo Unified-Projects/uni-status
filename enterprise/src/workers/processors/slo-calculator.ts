@@ -16,6 +16,45 @@ import { createLogger } from "@uni-status/shared";
 const log = createLogger({ module: "enterprise-workers-processors-slo-calculator" });
 
 
+let sloAlertQueue: Queue | null = null;
+let notificationQueues: Record<string, Queue> | null = null;
+
+function getSloAlertQueue(): Queue {
+  if (sloAlertQueue) {
+    return sloAlertQueue;
+  }
+
+  const connection = getConnection();
+  const prefix = getPrefix();
+  sloAlertQueue = new Queue(QUEUE_NAMES.SLO_ALERT, { connection, prefix });
+  return sloAlertQueue;
+}
+
+function getNotificationQueues(): Record<string, Queue> {
+  if (notificationQueues) {
+    return notificationQueues;
+  }
+
+  const connection = getConnection();
+  const prefix = getPrefix();
+  const queueOpts = { connection, prefix };
+
+  notificationQueues = {
+    email: new Queue(QUEUE_NAMES.NOTIFY_EMAIL, queueOpts),
+    slack: new Queue(QUEUE_NAMES.NOTIFY_SLACK, queueOpts),
+    discord: new Queue(QUEUE_NAMES.NOTIFY_DISCORD, queueOpts),
+    webhook: new Queue(QUEUE_NAMES.NOTIFY_WEBHOOK, queueOpts),
+    teams: new Queue(QUEUE_NAMES.NOTIFY_TEAMS, queueOpts),
+    pagerduty: new Queue(QUEUE_NAMES.NOTIFY_PAGERDUTY, queueOpts),
+    ntfy: new Queue(QUEUE_NAMES.NOTIFY_NTFY, queueOpts),
+    sms: new Queue(QUEUE_NAMES.NOTIFY_SMS, queueOpts),
+    irc: new Queue(QUEUE_NAMES.NOTIFY_IRC, queueOpts),
+    twitter: new Queue(QUEUE_NAMES.NOTIFY_TWITTER, queueOpts),
+  };
+
+  return notificationQueues;
+}
+
 interface SloCalculateJobData {
   sloTargetId?: string; // Calculate for specific SLO
   organizationId?: string; // Calculate for all SLOs in org
@@ -28,6 +67,82 @@ interface SloAlertJobData {
   threshold: number;
   percentRemaining: number;
   breached: boolean;
+  alertType?: "budget_threshold" | "budget_breach" | "burn_rate";
+  burnRate?: {
+    severity: "fast" | "slow";
+    value: number;
+    shortWindowMinutes: number;
+    longWindowMinutes: number;
+    threshold: number;
+  };
+}
+
+async function calculateWindowErrorRate(monitorId: string, windowMinutes: number): Promise<number | null> {
+  const windowStart = new Date(Date.now() - windowMinutes * 60 * 1000);
+
+  const rows = await db
+    .select({ status: checkResults.status })
+    .from(checkResults)
+    .where(
+      and(
+        eq(checkResults.monitorId, monitorId),
+        gte(checkResults.createdAt, windowStart),
+        sql`COALESCE(${checkResults.metadata} ->> 'checkType', '') <> 'certificate_transparency'`
+      )
+    );
+
+  if (rows.length < 5) {
+    return null;
+  }
+
+  const failures = rows.filter((row) =>
+    row.status === "failure" || row.status === "error" || row.status === "timeout"
+  ).length;
+
+  return failures / rows.length;
+}
+
+async function evaluateBurnRateAlert(slo: typeof sloTargets.$inferSelect): Promise<{
+  severity: "fast" | "slow";
+  value: number;
+  shortWindowMinutes: number;
+  longWindowMinutes: number;
+  threshold: number;
+} | null> {
+  const targetPercentage = parseFloat(slo.targetPercentage);
+  const allowedErrorRate = (100 - targetPercentage) / 100;
+  if (allowedErrorRate <= 0) {
+    return null;
+  }
+
+  const configs = [
+    { severity: "fast" as const, shortWindowMinutes: 5, longWindowMinutes: 60, threshold: 14.4 },
+    { severity: "slow" as const, shortWindowMinutes: 30, longWindowMinutes: 360, threshold: 6 },
+  ];
+
+  for (const config of configs) {
+    const shortErrorRate = await calculateWindowErrorRate(slo.monitorId, config.shortWindowMinutes);
+    const longErrorRate = await calculateWindowErrorRate(slo.monitorId, config.longWindowMinutes);
+
+    if (shortErrorRate === null || longErrorRate === null) {
+      continue;
+    }
+
+    const shortBurnRate = shortErrorRate / allowedErrorRate;
+    const longBurnRate = longErrorRate / allowedErrorRate;
+
+    if (shortBurnRate >= config.threshold && longBurnRate >= config.threshold) {
+      return {
+        severity: config.severity,
+        value: Math.max(shortBurnRate, longBurnRate),
+        shortWindowMinutes: config.shortWindowMinutes,
+        longWindowMinutes: config.longWindowMinutes,
+        threshold: config.threshold,
+      };
+    }
+  }
+
+  return null;
 }
 
 // Get period dates based on window type
@@ -221,16 +336,13 @@ async function calculateSloErrorBudget(slo: typeof sloTargets.$inferSelect): Pro
         log.info(`SLO ${slo.name}: Budget at ${percentRemaining.toFixed(1)}% remaining, threshold ${currentThreshold}% crossed`);
 
         try {
-          const connection = getConnection();
-          const prefix = getPrefix();
-          const sloAlertQueue = new Queue(QUEUE_NAMES.SLO_ALERT, { connection, prefix });
-
-          await sloAlertQueue.add(`slo-alert-${slo.id}-${currentThreshold}`, {
+          await getSloAlertQueue().add(`slo-alert-${slo.id}-${currentThreshold}`, {
             sloTargetId: slo.id,
             organizationId: slo.organizationId,
             threshold: currentThreshold,
             percentRemaining,
             breached: false,
+            alertType: "budget_threshold",
           }, {
             removeOnComplete: 100,
             removeOnFail: 100,
@@ -238,6 +350,27 @@ async function calculateSloErrorBudget(slo: typeof sloTargets.$inferSelect): Pro
         } catch (error) {
           log.error({ err: error, sloName: slo.name, sloId: slo.id }, "Error queueing SLO alert");
         }
+      }
+    }
+
+    const burnRateAlert = await evaluateBurnRateAlert(slo);
+    if (burnRateAlert) {
+      const hourBucket = new Date().toISOString().slice(0, 13);
+      try {
+        await getSloAlertQueue().add(`slo-burn-${slo.id}-${burnRateAlert.severity}-${hourBucket}`, {
+          sloTargetId: slo.id,
+          organizationId: slo.organizationId,
+          threshold: 0,
+          percentRemaining,
+          breached: false,
+          alertType: "burn_rate",
+          burnRate: burnRateAlert,
+        }, {
+          removeOnComplete: 100,
+          removeOnFail: 100,
+        });
+      } catch (error) {
+        log.error({ err: error, sloName: slo.name, sloId: slo.id }, "Error queueing SLO burn-rate alert");
       }
     }
 
@@ -264,6 +397,27 @@ async function calculateSloErrorBudget(slo: typeof sloTargets.$inferSelect): Pro
       createdAt: now,
       updatedAt: now,
     });
+
+    const burnRateAlert = await evaluateBurnRateAlert(slo);
+    if (burnRateAlert) {
+      const hourBucket = new Date().toISOString().slice(0, 13);
+      try {
+        await getSloAlertQueue().add(`slo-burn-${slo.id}-${burnRateAlert.severity}-${hourBucket}`, {
+          sloTargetId: slo.id,
+          organizationId: slo.organizationId,
+          threshold: 0,
+          percentRemaining,
+          breached: false,
+          alertType: "burn_rate",
+          burnRate: burnRateAlert,
+        }, {
+          removeOnComplete: 100,
+          removeOnFail: 100,
+        });
+      } catch (error) {
+        log.error({ err: error, sloName: slo.name, sloId: slo.id }, "Error queueing SLO burn-rate alert");
+      }
+    }
 
     // Record breach if starting breached
     if (breached) {
@@ -306,16 +460,13 @@ async function recordSloBreach(
 
   // Queue breach alert
   try {
-    const connection = getConnection();
-    const prefix = getPrefix();
-    const sloAlertQueue = new Queue(QUEUE_NAMES.SLO_ALERT, { connection, prefix });
-
-    await sloAlertQueue.add(`slo-breach-${slo.id}`, {
+    await getSloAlertQueue().add(`slo-breach-${slo.id}`, {
       sloTargetId: slo.id,
       organizationId: slo.organizationId,
       threshold: 0,
       percentRemaining: 0,
       breached: true,
+      alertType: "budget_breach",
     }, {
       removeOnComplete: 100,
       removeOnFail: 100,
@@ -394,7 +545,7 @@ async function getOrgCredentials(organizationId: string): Promise<OrganizationCr
 
 // Processor for SLO alerts
 export async function processSloAlert(job: Job<SloAlertJobData>): Promise<void> {
-  const { sloTargetId, organizationId, threshold, percentRemaining, breached } = job.data;
+  const { sloTargetId, organizationId, threshold, percentRemaining, breached, alertType, burnRate } = job.data;
 
   const slo = await db.query.sloTargets.findFirst({
     where: eq(sloTargets.id, sloTargetId),
@@ -414,9 +565,13 @@ export async function processSloAlert(job: Job<SloAlertJobData>): Promise<void> 
     return;
   }
 
-  const message = breached
-    ? `SLO BREACH: ${slo.name} for ${slo.monitor.name} has exceeded its error budget`
-    : `SLO WARNING: ${slo.name} for ${slo.monitor.name} error budget is at ${percentRemaining.toFixed(1)}% (threshold: ${threshold}%)`;
+  const message = alertType === "burn_rate" && burnRate
+    ? `SLO BURN-RATE ${burnRate.severity.toUpperCase()}: ${slo.name} for ${slo.monitor.name} is burning error budget at ${burnRate.value.toFixed(
+        1
+      )}x (threshold ${burnRate.threshold}x, windows ${burnRate.shortWindowMinutes}m/${burnRate.longWindowMinutes}m)`
+    : breached
+      ? `SLO BREACH: ${slo.name} for ${slo.monitor.name} has exceeded its error budget`
+      : `SLO WARNING: ${slo.name} for ${slo.monitor.name} error budget is at ${percentRemaining.toFixed(1)}% (threshold: ${threshold}%)`;
 
   log.info({ sloTargetId, sloName: slo.name, threshold, breached, percentRemaining }, "Processing SLO alert");
 
@@ -438,23 +593,7 @@ export async function processSloAlert(job: Job<SloAlertJobData>): Promise<void> 
 
   const orgCredentials = await getOrgCredentials(organizationId);
   const APP_URL = getAppUrl();
-
-  const connection = getConnection();
-  const prefix = getPrefix();
-  const queueOpts = { connection, prefix };
-
-  const queues: Record<string, Queue> = {
-    email: new Queue(QUEUE_NAMES.NOTIFY_EMAIL, queueOpts),
-    slack: new Queue(QUEUE_NAMES.NOTIFY_SLACK, queueOpts),
-    discord: new Queue(QUEUE_NAMES.NOTIFY_DISCORD, queueOpts),
-    webhook: new Queue(QUEUE_NAMES.NOTIFY_WEBHOOK, queueOpts),
-    teams: new Queue(QUEUE_NAMES.NOTIFY_WEBHOOK, queueOpts),
-    pagerduty: new Queue(QUEUE_NAMES.NOTIFY_WEBHOOK, queueOpts),
-    ntfy: new Queue(QUEUE_NAMES.NOTIFY_WEBHOOK, queueOpts),
-    sms: new Queue(QUEUE_NAMES.NOTIFY_EMAIL, queueOpts),
-    irc: new Queue(QUEUE_NAMES.NOTIFY_IRC, queueOpts),
-    twitter: new Queue(QUEUE_NAMES.NOTIFY_TWITTER, queueOpts),
-  };
+  const queues = getNotificationQueues();
 
   const alertHistoryId = nanoid();
   const alertStatus = breached ? "down" : "degraded";
@@ -469,7 +608,7 @@ export async function processSloAlert(job: Job<SloAlertJobData>): Promise<void> 
         monitorUrl: slo.monitor.url || "",
         status: alertStatus,
         message,
-        dashboardUrl: `${APP_URL}/slos/${slo.id}`,
+        dashboardUrl: `${APP_URL}/slo`,
         timestamp: new Date().toISOString(),
       }, orgCredentials);
 

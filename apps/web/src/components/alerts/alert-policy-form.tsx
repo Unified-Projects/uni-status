@@ -41,6 +41,14 @@ const alertPolicyFormSchema = z.object({
             })
             .optional(),
         degradedDuration: z.number().min(1).max(120).optional(),
+        anomalyResponseTime: z
+            .object({
+                baselineWindowMinutes: z.number().min(15).max(1440),
+                minSamples: z.number().min(10).max(1000),
+                stdDevMultiplier: z.number().min(1).max(6),
+                minAbsoluteDeviationMs: z.number().min(10).max(10000),
+            })
+            .optional(),
         consecutiveSuccesses: z.number().min(1).max(10).optional(),
     }),
     cooldownMinutes: z.number().min(1).max(1440),
@@ -101,6 +109,7 @@ export function AlertPolicyForm({
             consecutiveFailures: policy?.conditions.consecutiveFailures,
             failuresInWindow: policy?.conditions.failuresInWindow,
             degradedDuration: policy?.conditions.degradedDuration,
+            anomalyResponseTime: policy?.conditions.anomalyResponseTime,
             consecutiveSuccesses: policy?.conditions.consecutiveSuccesses,
         },
         cooldownMinutes: policy?.cooldownMinutes ?? 15,
@@ -129,11 +138,20 @@ export function AlertPolicyForm({
     const hasConsecutiveFailures = watchedConditions.consecutiveFailures !== undefined;
     const hasFailuresInWindow = watchedConditions.failuresInWindow !== undefined;
     const hasDegradedDuration = watchedConditions.degradedDuration !== undefined;
+    const hasAnomalyResponseTime = watchedConditions.anomalyResponseTime !== undefined;
     const hasConsecutiveSuccesses = watchedConditions.consecutiveSuccesses !== undefined;
 
     const toggleCondition = (
         condition: keyof AlertPolicyFormData["conditions"],
-        defaultValue: number | { count: number; windowMinutes: number }
+        defaultValue:
+            | number
+            | { count: number; windowMinutes: number }
+            | {
+                baselineWindowMinutes: number;
+                minSamples: number;
+                stdDevMultiplier: number;
+                minAbsoluteDeviationMs: number;
+            }
     ) => {
         const current = watchedConditions[condition];
         if (current === undefined) {
@@ -371,6 +389,138 @@ export function AlertPolicyForm({
                             )}
                             <p className="text-xs text-muted-foreground">
                                 Alert when monitor is degraded for X minutes
+                            </p>
+                        </div>
+                    </div>
+
+                    <Separator />
+
+                    {/* Response-Time Anomaly */}
+                    <div className="flex items-start gap-3">
+                        <Checkbox
+                            checked={hasAnomalyResponseTime}
+                            onCheckedChange={() =>
+                                toggleCondition("anomalyResponseTime", {
+                                    baselineWindowMinutes: 120,
+                                    minSamples: 30,
+                                    stdDevMultiplier: 3,
+                                    minAbsoluteDeviationMs: 100,
+                                })
+                            }
+                        />
+                        <div className="flex-1 space-y-2">
+                            <Label className={!hasAnomalyResponseTime ? "text-muted-foreground" : ""}>
+                                Response-Time Anomaly
+                            </Label>
+                            {hasAnomalyResponseTime && (
+                                <div className="space-y-3">
+                                    <div className="grid gap-4 md:grid-cols-2">
+                                        <div className="space-y-2">
+                                            <Label className="text-xs">Baseline Window (minutes)</Label>
+                                            <div className="flex items-center gap-4">
+                                                <Slider
+                                                    value={[watchedConditions.anomalyResponseTime?.baselineWindowMinutes || 120]}
+                                                    onValueChange={([value]) =>
+                                                        setValue("conditions.anomalyResponseTime", {
+                                                            baselineWindowMinutes: value,
+                                                            minSamples: watchedConditions.anomalyResponseTime?.minSamples || 30,
+                                                            stdDevMultiplier: watchedConditions.anomalyResponseTime?.stdDevMultiplier || 3,
+                                                            minAbsoluteDeviationMs:
+                                                                watchedConditions.anomalyResponseTime?.minAbsoluteDeviationMs || 100,
+                                                        })
+                                                    }
+                                                    min={15}
+                                                    max={1440}
+                                                    step={15}
+                                                    className="flex-1"
+                                                />
+                                                <span className="w-14 text-sm">
+                                                    {watchedConditions.anomalyResponseTime?.baselineWindowMinutes}m
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label className="text-xs">Minimum Samples</Label>
+                                            <div className="flex items-center gap-4">
+                                                <Slider
+                                                    value={[watchedConditions.anomalyResponseTime?.minSamples || 30]}
+                                                    onValueChange={([value]) =>
+                                                        setValue("conditions.anomalyResponseTime", {
+                                                            baselineWindowMinutes:
+                                                                watchedConditions.anomalyResponseTime?.baselineWindowMinutes || 120,
+                                                            minSamples: value,
+                                                            stdDevMultiplier: watchedConditions.anomalyResponseTime?.stdDevMultiplier || 3,
+                                                            minAbsoluteDeviationMs:
+                                                                watchedConditions.anomalyResponseTime?.minAbsoluteDeviationMs || 100,
+                                                        })
+                                                    }
+                                                    min={10}
+                                                    max={200}
+                                                    step={5}
+                                                    className="flex-1"
+                                                />
+                                                <span className="w-14 text-sm">
+                                                    {watchedConditions.anomalyResponseTime?.minSamples}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="grid gap-4 md:grid-cols-2">
+                                        <div className="space-y-2">
+                                            <Label className="text-xs">Sensitivity (StdDev)</Label>
+                                            <div className="flex items-center gap-4">
+                                                <Slider
+                                                    value={[watchedConditions.anomalyResponseTime?.stdDevMultiplier || 3]}
+                                                    onValueChange={([value]) =>
+                                                        setValue("conditions.anomalyResponseTime", {
+                                                            baselineWindowMinutes:
+                                                                watchedConditions.anomalyResponseTime?.baselineWindowMinutes || 120,
+                                                            minSamples: watchedConditions.anomalyResponseTime?.minSamples || 30,
+                                                            stdDevMultiplier: value,
+                                                            minAbsoluteDeviationMs:
+                                                                watchedConditions.anomalyResponseTime?.minAbsoluteDeviationMs || 100,
+                                                        })
+                                                    }
+                                                    min={1}
+                                                    max={6}
+                                                    step={0.5}
+                                                    className="flex-1"
+                                                />
+                                                <span className="w-14 text-sm">
+                                                    {watchedConditions.anomalyResponseTime?.stdDevMultiplier}σ
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label className="text-xs">Minimum Spike (ms)</Label>
+                                            <div className="flex items-center gap-4">
+                                                <Slider
+                                                    value={[watchedConditions.anomalyResponseTime?.minAbsoluteDeviationMs || 100]}
+                                                    onValueChange={([value]) =>
+                                                        setValue("conditions.anomalyResponseTime", {
+                                                            baselineWindowMinutes:
+                                                                watchedConditions.anomalyResponseTime?.baselineWindowMinutes || 120,
+                                                            minSamples: watchedConditions.anomalyResponseTime?.minSamples || 30,
+                                                            stdDevMultiplier:
+                                                                watchedConditions.anomalyResponseTime?.stdDevMultiplier || 3,
+                                                            minAbsoluteDeviationMs: value,
+                                                        })
+                                                    }
+                                                    min={10}
+                                                    max={2000}
+                                                    step={10}
+                                                    className="flex-1"
+                                                />
+                                                <span className="w-14 text-sm">
+                                                    {watchedConditions.anomalyResponseTime?.minAbsoluteDeviationMs}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                            <p className="text-xs text-muted-foreground">
+                                Alert when response time spikes above baseline plus standard-deviation threshold.
                             </p>
                         </div>
                     </div>

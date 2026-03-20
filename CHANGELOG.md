@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-03-20
+
+### Added
+- Added response-time anomaly alert conditions across alert policy UI, API types, validators, and database schemas
+- Added anomaly-specific alert history metadata (observed latency, expected threshold, baseline mean/stddev) for triggered updates and new incidents
+- Added SLO burn-rate alert detection (fast and slow windows) with queue-driven notifications
+- Added report integrity verification endpoint (`GET /reports/:id/verify`) with SHA-256 validation and audit logging
+- Added report generation provenance metadata (checksum, runtime/version/environment, generation timestamps, query-window bounds)
+
+### Changed
+- Added configurable report queue handoff timing and explicit inline fallback controls for report generation
+- Updated API Docker runtime to install Chromium and set Puppeteer executable/skip-download environment variables
+- Updated dashboard organization selector to display organization logos in desktop and mobile navigation
+- Improved alert channel card truncation behavior for long names and webhook/config values
+- Normalized light-only status-page custom CSS so `html.dark` reuses light-mode variables
+- Updated alert/escalation notification routing to use dedicated Teams, PagerDuty, SMS, and ntfy queues with cached queue instances
+- Updated base Node Docker images to `25.8.1-alpine`, refreshed CI action pins, and upgraded dependency/security override sets
+
+### Fixed
+- Prevented worker startup from continuing silently when enterprise worker loading fails
+- Fixed SLO alert dashboard links to use the SLO dashboard route
+- Added guarded queue enqueue handling for escalation notifications to prevent processor failure on per-channel enqueue errors
+- Hardened PageSpeed config access paths to avoid undefined-access issues during HTTP checks
+
+### Tests
+- Added comprehensive API tests for alert policy anomaly condition create/update flows
+- Added public API coverage for light-only theme CSS normalization behavior
+
 ## [0.1.6] - 2026-03-18
 
 ### Added

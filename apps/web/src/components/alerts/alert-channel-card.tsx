@@ -106,16 +106,16 @@ export function AlertChannelCard({
     <Card className={cn("group hover:shadow-md transition-shadow", className)}>
       <CardContent className="pt-6">
         <div className="flex items-start justify-between gap-4">
-          <div className="flex items-start gap-3">
+          <div className="flex items-start gap-3 min-w-0">
             <ChannelTypeIcon
               type={channel.type as AlertChannelType}
               size="lg"
               showBackground
               disabled={!channel.enabled}
             />
-            <div className="space-y-1">
+            <div className="space-y-1 min-w-0">
               <div className="flex items-center gap-2">
-                <h3 className="font-medium">{channel.name}</h3>
+                <h3 className="font-medium truncate">{channel.name}</h3>
                 {!channel.enabled && (
                   <Badge variant="secondary" className="text-xs">
                     Disabled
@@ -126,7 +126,7 @@ export function AlertChannelCard({
                 {getChannelTypeLabel(channel.type as AlertChannelType)}
               </p>
               {configSummary && (
-                <p className="text-xs text-muted-foreground truncate max-w-[250px]">
+                <p className="text-xs text-muted-foreground break-all max-w-full">
                   {configSummary}
                 </p>
               )}

@@ -108,6 +108,12 @@ export const alertPolicies = pgTable(
         windowMinutes: number;
       };
       degradedDuration?: number; // Alert after degraded for N minutes
+      anomalyResponseTime?: {
+        baselineWindowMinutes?: number;
+        minSamples?: number;
+        stdDevMultiplier?: number;
+        minAbsoluteDeviationMs?: number;
+      };
       // Recovery conditions
       consecutiveSuccesses?: number; // Recover after N successes
     }>().notNull().default({ consecutiveFailures: 2 }),
@@ -171,6 +177,11 @@ export const alertHistory = pgTable(
       consecutiveFailures?: number;
       responseTimeMs?: number;
       statusCode?: number;
+      anomalyDetected?: boolean;
+      anomalyObservedMs?: number;
+      anomalyExpectedThresholdMs?: number;
+      anomalyBaselineMeanMs?: number;
+      anomalyBaselineStdDevMs?: number;
       failureCount?: number;
       lastFailureAt?: string;
       failureTimestamps?: string[];

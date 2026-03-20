@@ -28,7 +28,10 @@ type ChannelQueues = {
   slack: Queue;
   discord: Queue;
   webhook: Queue;
+  teams?: Queue;
+  pagerduty?: Queue;
   sms?: Queue;
+  ntfy?: Queue;
   irc?: Queue;
   twitter?: Queue;
 };
@@ -42,10 +45,13 @@ export function getQueueForChannelType(type: AlertChannelType, queues: ChannelQu
     case "discord":
       return queues.discord;
     case "webhook":
-    case "teams":
-    case "pagerduty":
-    case "ntfy":
       return queues.webhook;
+    case "teams":
+      return queues.teams ?? queues.webhook;
+    case "pagerduty":
+      return queues.pagerduty ?? queues.webhook;
+    case "ntfy":
+      return queues.ntfy ?? queues.webhook;
     case "sms":
       return queues.sms ?? queues.email;
     case "irc":

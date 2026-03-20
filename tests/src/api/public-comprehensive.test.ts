@@ -116,6 +116,39 @@ describe("Public API Comprehensive Tests", () => {
         // API returns activeIncidents not incidents
         expect(json.data.activeIncidents).toBeDefined();
       });
+
+      it("normalizes dark theme CSS to light CSS when page is light-only", async () => {
+        const slug = `light-only-theme-${validSlugId()}`;
+        const lightCss = "--background: 0 0% 100% !important; --foreground: 0 0% 10% !important;";
+        const darkCss = "--background: 0 0% 10% !important; --foreground: 0 0% 98% !important;";
+
+        await ctx.dbClient`
+          INSERT INTO status_pages (id, organization_id, name, slug, published, theme, created_at, updated_at)
+          VALUES (
+            ${nanoid()},
+            ${ctx.organizationId},
+            'Light Only Theme Page',
+            ${slug},
+            true,
+            ${JSON.stringify({
+              name: "custom",
+              colorMode: "light",
+              customCss: `html { ${lightCss} } html.dark { ${darkCss} }`,
+            })}::jsonb,
+            NOW(),
+            NOW()
+          )
+        `;
+
+        const response = await fetch(`${apiUrl}/public/status-pages/${slug}`);
+        expect(response.status).toBe(200);
+
+        const json = await response.json();
+        expect(json.success).toBe(true);
+        expect(json.data.theme.colorMode).toBe("light");
+        expect(json.data.theme.customCss).toContain(`html.dark { ${lightCss} }`);
+        expect(json.data.theme.customCss).not.toContain(darkCss);
+      });
     });
 
     describe("password protection", () => {
