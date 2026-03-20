@@ -247,64 +247,45 @@ analyticsRoutes.get("/uptime", async (c) => {
       currentIntervalStart.setSeconds(0, 0);
     }
 
-    // Fetch raw check results for the current interval
-    const recentResults = await db
-      .select({
-        successCount: sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'success')`.as("success_count"),
-        failureCount: sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} IN ('failure', 'timeout', 'error'))`.as("failure_count"),
-        degradedCount: sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'degraded')`.as("degraded_count"),
-        totalCount: sql<number>`COUNT(*)`.as("total_count"),
-      })
-      .from(checkResults)
-      .where(
-        and(
-          eq(checkResults.monitorId, monitorId),
-          gte(checkResults.createdAt, currentIntervalStart)
-        )
-      );
+    // Only supplement when aggregates do not yet include the current interval.
+    const currentIntervalKey = currentIntervalStart.toISOString();
+    const hasCurrentAggregateInterval = intervals.some(
+      (i) => i.timestamp.toISOString() === currentIntervalKey
+    );
 
-    const recentResult = recentResults[0];
-    if (recentResult) {
-      const success = Number(recentResult.successCount) || 0;
-      const failure = Number(recentResult.failureCount) || 0;
-      const degraded = Number(recentResult.degradedCount) || 0;
-      const total = Number(recentResult.totalCount) || 0;
-
-      if (total > 0) {
-        // Check if we already have an interval for the current period
-        const currentIntervalKey = currentIntervalStart.toISOString();
-        const existingCurrentIndex = intervals.findIndex(
-          (i) => i.timestamp.toISOString() === currentIntervalKey
+    if (!hasCurrentAggregateInterval) {
+      // Fetch raw check results for the current interval
+      const recentResults = await db
+        .select({
+          successCount: sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'success')`.as("success_count"),
+          failureCount: sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} IN ('failure', 'timeout', 'error'))`.as("failure_count"),
+          degradedCount: sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'degraded')`.as("degraded_count"),
+          totalCount: sql<number>`COUNT(*)`.as("total_count"),
+        })
+        .from(checkResults)
+        .where(
+          and(
+            eq(checkResults.monitorId, monitorId),
+            gte(checkResults.createdAt, currentIntervalStart)
+          )
         );
 
-        const newInterval: IntervalData = {
-          timestamp: currentIntervalStart,
-          successCount: success,
-          degradedCount: degraded,
-          failureCount: failure,
-          totalCount: total,
-          uptimePercentage: total > 0 ? ((success + degraded) / total) * 100 : null,
-        };
+      const recentResult = recentResults[0];
+      if (recentResult) {
+        const success = Number(recentResult.successCount) || 0;
+        const failure = Number(recentResult.failureCount) || 0;
+        const degraded = Number(recentResult.degradedCount) || 0;
+        const total = Number(recentResult.totalCount) || 0;
 
-        if (existingCurrentIndex >= 0) {
-          // Update existing interval - prefer raw data since it's more recent
-          const existing = intervals[existingCurrentIndex];
-          if (!existing) {
-            intervals.push(newInterval);
-          } else {
-            intervals[existingCurrentIndex] = {
-              ...existing,
-              successCount: Math.max(existing.successCount, success),
-              degradedCount: Math.max(existing.degradedCount, degraded),
-              failureCount: Math.max(existing.failureCount, failure),
-              totalCount: Math.max(existing.totalCount, total),
-              uptimePercentage:
-                total > 0 ? ((success + degraded) / total) * 100 : existing.uptimePercentage,
-            };
-          }
-        } else {
-          // Add new interval for current period
-          intervals.push(newInterval);
+        if (total > 0) {
+          intervals.push({
+            timestamp: currentIntervalStart,
+            successCount: success,
+            degradedCount: degraded,
+            failureCount: failure,
+            totalCount: total,
+            uptimePercentage: ((success + degraded) / total) * 100,
+          });
         }
       }
     }
