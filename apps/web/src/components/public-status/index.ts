@@ -11,6 +11,7 @@ export { PasswordProtectedPage } from "./password-protected-page";
 export { ReportDownButton } from "./report-down-button";
 export { StatusPageContainer } from "./status-page-container";
 export { OAuthGate } from "./oauth-gate";
+export { StatusPageRouteShell } from "./status-page-route-shell";
 
 // Template-based components
 export * from "./indicators";

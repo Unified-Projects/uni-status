@@ -230,14 +230,23 @@ async function linkCheckResultsToIncident(
 
 export const incidentsRoutes = new OpenAPIHono();
 
+function parsePaginationParam(value: string | undefined, defaultValue: number, min = 0, max = Number.MAX_SAFE_INTEGER): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return defaultValue;
+  }
+
+  return Math.min(Math.max(Math.trunc(parsed), min), max);
+}
+
 // List incidents
 incidentsRoutes.get("/", async (c) => {
   const organizationId = await requireOrganization(c);
   const status = c.req.query("status");
 
   // Parse pagination parameters
-  const limit = Math.min(Math.max(parseInt(c.req.query("limit") || "100"), 1), 100);
-  const offset = Math.max(parseInt(c.req.query("offset") || "0"), 0);
+  const limit = parsePaginationParam(c.req.query("limit"), 100, 1, 100);
+  const offset = parsePaginationParam(c.req.query("offset"), 0, 0);
 
   // Build where conditions
   const conditions = [eq(incidents.organizationId, organizationId)];

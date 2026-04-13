@@ -1,7 +1,14 @@
 "use client";
 
 import { cn } from "@uni-status/ui";
-import { UptimeBar, type UptimeDataPoint } from "@/components/monitors/uptime-bar";
+import {
+  UptimeBar,
+  type UptimeDataPoint,
+  type UptimeGranularity,
+  formatUptimeAgoLabel,
+  getUptimeCurrentLabel,
+  getUptimeRangeMetadata,
+} from "@/components/monitors/uptime-bar";
 import { StatusIndicator, type MonitorStatus } from "@/components/monitors";
 import { showsUptime, type MonitorType } from "./monitors/types";
 
@@ -14,6 +21,7 @@ interface PublicMonitor {
   uptimePercentage: number | null;
   responseTimeMs: number | null;
   uptimeData: UptimeDataPoint[];
+  uptimeGranularity?: UptimeGranularity;
 }
 
 interface PublicMonitorItemProps {
@@ -42,9 +50,11 @@ export function PublicMonitorItem({
     return `${percentage.toFixed(2)}%`;
   };
 
-  const adjustedDays = monitor.uptimeData?.length
-    ? Math.max(1, Math.min(uptimeDays, monitor.uptimeData.length))
-    : uptimeDays;
+  const rangeMetadata = getUptimeRangeMetadata(
+    monitor.uptimeData,
+    uptimeDays,
+    monitor.uptimeGranularity
+  );
 
   return (
     <div
@@ -108,14 +118,19 @@ export function PublicMonitorItem({
         <div className="mt-4">
           <UptimeBar
             data={monitor.uptimeData}
-            days={adjustedDays}
+            days={uptimeDays}
+            granularity={rangeMetadata.granularity}
             height={24}
             showTooltip
             showLegend={false}
           />
           <div className="mt-1 flex items-center justify-between text-xs text-[var(--status-muted-text)]">
-            <span>{adjustedDays} days ago</span>
-            <span>Today</span>
+            <span>
+              {rangeMetadata.visibleRange > 0
+                ? formatUptimeAgoLabel(rangeMetadata.visibleRange, rangeMetadata.granularity)
+                : "No data"}
+            </span>
+            <span>{getUptimeCurrentLabel(rangeMetadata.granularity)}</span>
           </div>
         </div>
       )}

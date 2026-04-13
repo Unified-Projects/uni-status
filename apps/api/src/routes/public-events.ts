@@ -15,15 +15,20 @@ import {
 import { eq, and, desc, gte, lte, inArray, ilike, or } from "drizzle-orm";
 import type { UnifiedEvent, EventType, ImpactScopeData } from "@uni-status/shared";
 import { IMPACT_SEVERITY_THRESHOLDS } from "@uni-status/shared/constants";
-import { getCookie } from "hono/cookie";
-import { verify } from "hono/jwt";
-import { getJwtSecret, getAppUrl } from "@uni-status/shared/config";
+import { getAppUrl } from "@uni-status/shared/config";
 import { sendEventSubscriptionVerificationEmail } from "../lib/email";
-
-// Use function to get JWT secret with fallback for tests
-const getJwtSecretOrFallback = () => getJwtSecret() || "test-secret";
+import { resolvePublicStatusPageAccessFromHeaders } from "./public";
 
 export const publicEventsRoutes = new OpenAPIHono();
+
+function parsePaginationParam(value: string | undefined, defaultValue: number, min = 0, max = Number.MAX_SAFE_INTEGER): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return defaultValue;
+  }
+
+  return Math.min(Math.max(Math.trunc(parsed), min), max);
+}
 
 // Helper to determine maintenance window status
 function getMaintenanceStatus(startsAt: Date, endsAt: Date): "scheduled" | "active" | "completed" {
@@ -239,33 +244,15 @@ async function getImpactScopeData(
 
 // Helper to verify status page access
 async function verifyStatusPageAccess(c: any, slug: string) {
-  const page = await db.query.statusPages.findFirst({
-    where: eq(statusPages.slug, slug),
-  });
-
-  if (!page || !page.published) {
-    return { error: { code: "NOT_FOUND", message: "Status page not found" }, status: 404 };
+  const access = await resolvePublicStatusPageAccessFromHeaders(c.req.raw.headers, slug);
+  if ("denied" in access) {
+    return {
+      error: access.denied.body.error,
+      status: access.denied.status,
+    };
   }
 
-  // Check password protection
-  if (page.passwordHash) {
-    const tokenCookie = getCookie(c, `sp_token_${slug}`);
-
-    if (!tokenCookie) {
-      return { error: { code: "PASSWORD_REQUIRED", message: "This status page is password protected" }, status: 401 };
-    }
-
-    try {
-      const payload = await verify(tokenCookie, getJwtSecretOrFallback(), "HS256");
-      if (payload.slug !== slug) {
-        throw new Error("Invalid token");
-      }
-    } catch {
-      return { error: { code: "PASSWORD_REQUIRED", message: "This status page is password protected" }, status: 401 };
-    }
-  }
-
-  return { page };
+  return { page: access.page };
 }
 
 // Get public events for a status page (unified incidents + maintenance)
@@ -290,8 +277,8 @@ publicEventsRoutes.get("/status-pages/:slug/events", async (c) => {
   const search = c.req.query("search");
   const startDate = c.req.query("startDate");
   const endDate = c.req.query("endDate");
-  const limit = Math.min(parseInt(c.req.query("limit") || "50"), 100);
-  const offset = parseInt(c.req.query("offset") || "0");
+  const limit = parsePaginationParam(c.req.query("limit"), 50, 1, 100);
+  const offset = parsePaginationParam(c.req.query("offset"), 0, 0);
 
   // Advanced filter parameters
   const severityFilter = c.req.query("severity")?.split(",");

@@ -4,7 +4,6 @@ const API_BASE_URL = process.env.API_BASE_URL ?? "http://api:3001";
 
 describe("Uploads API", () => {
   let ctx: TestContext;
-  let uploadedFilename: string;
 
   beforeAll(async () => {
     ctx = await bootstrapTestContext();
@@ -30,19 +29,46 @@ describe("Uploads API", () => {
     expect(body.data.path).toMatch(/^\/api\/uploads\//);
     const asset = await fetch(body.data.url);
     expect(asset.status).toBe(200);
-    uploadedFilename = body.data.filename;
+    const uploadedFilename = body.data.filename;
     expect(uploadedFilename).toMatch(/\.png$/);
-  });
 
-  it("deletes the uploaded file", async () => {
-    const response = await fetch(`${API_BASE_URL}/api/v1/uploads/${uploadedFilename}`, {
+    const deleteResponse = await fetch(`${API_BASE_URL}/api/v1/uploads/${uploadedFilename}`, {
       method: "DELETE",
       headers: ctx.headers,
     });
 
-    expect(response.status).toBe(200);
+    expect(deleteResponse.status).toBe(200);
+    const deleteBody = await deleteResponse.json();
+    expect(deleteBody.success).toBe(true);
+    expect(deleteBody.data.deleted).toBe(true);
+  });
+
+  it("rejects upload without a file", async () => {
+    const formData = new FormData();
+
+    const response = await fetch(`${API_BASE_URL}/api/v1/uploads`, {
+      method: "POST",
+      headers: {
+        Authorization: ctx.headers.Authorization!,
+      },
+      body: formData,
+    });
+
+    expect(response.status).toBe(400);
     const body = await response.json();
-    expect(body.success).toBe(true);
-    expect(body.data.deleted).toBe(true);
+    expect(body.success).toBe(false);
+    expect(body.error).toContain("No file provided");
+  });
+
+  it("rejects path traversal filenames on delete", async () => {
+    const response = await fetch(`${API_BASE_URL}/api/v1/uploads/..%5C..%5Cevil.png`, {
+      method: "DELETE",
+      headers: ctx.headers,
+    });
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.success).toBe(false);
+    expect(body.error).toBe("Invalid filename");
   });
 });

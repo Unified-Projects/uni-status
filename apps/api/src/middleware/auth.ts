@@ -21,6 +21,7 @@ export interface AuthContext {
     name: string;
   } | null;
   organizationId: string | null;
+  organizationRole: "owner" | "admin" | "member" | "viewer" | null;
   apiKey: {
     id: string;
     scopes: string[];
@@ -44,6 +45,7 @@ export async function authMiddleware(c: Context, next: Next) {
   let authContext: AuthContext = {
     user: null,
     organizationId: orgHeader || orgQuery || null,
+    organizationRole: null,
     apiKey: null,
   };
 
@@ -116,6 +118,11 @@ export async function authMiddleware(c: Context, next: Next) {
           scopes,
         };
         authContext.organizationId = key.organizationId;
+        authContext.organizationRole = scopes.includes("admin")
+          ? "admin"
+          : scopes.includes("write")
+            ? "member"
+            : "viewer";
 
         // Hydrate user context from the API key creator for FK-backed created_by fields
         const createdByUser =
@@ -168,6 +175,9 @@ export async function authMiddleware(c: Context, next: Next) {
           if (payload.organizationId) {
             authContext.organizationId = payload.organizationId;
           }
+          if (payload.organizationRole && ["owner", "admin", "member", "viewer"].includes(payload.organizationRole)) {
+            authContext.organizationRole = payload.organizationRole as AuthContext["organizationRole"];
+          }
           // Mark request as federated for audit purposes
           c.set("federatedFrom", "uni-console");
           c.set("federatedPayload", payload);
@@ -213,6 +223,21 @@ export function requireAuth(c: Context): AuthContext {
   return auth;
 }
 
+async function ensureOrganizationExists(organizationId: string) {
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, organizationId),
+    columns: {
+      id: true,
+    },
+  });
+
+  if (!org) {
+    throw new HTTPException(404, {
+      message: "Organization not found - please select a valid organization",
+    });
+  }
+}
+
 export async function requireOrganization(c: Context): Promise<string> {
   const auth = requireAuth(c);
 
@@ -220,25 +245,48 @@ export async function requireOrganization(c: Context): Promise<string> {
     throw new HTTPException(400, { message: "Organization context required" });
   }
 
-  // Verify the organization actually exists in the database
   try {
-    const org = await db.query.organizations.findFirst({
-      where: eq(organizations.id, auth.organizationId),
+    if (auth.apiKey) {
+      await ensureOrganizationExists(auth.organizationId);
+      return auth.organizationId;
+    }
+
+    const federatedPayload = c.get("federatedPayload");
+    if (federatedPayload?.organizationId === auth.organizationId) {
+      await ensureOrganizationExists(auth.organizationId);
+      if (federatedPayload.organizationRole && ["owner", "admin", "member", "viewer"].includes(federatedPayload.organizationRole)) {
+        auth.organizationRole = federatedPayload.organizationRole as AuthContext["organizationRole"];
+      }
+      return auth.organizationId;
+    }
+
+    if (!auth.user) {
+      throw new HTTPException(401, { message: "User authentication required" });
+    }
+
+    const membership = await db.query.organizationMembers.findFirst({
+      where: and(
+        eq(organizationMembers.organizationId, auth.organizationId),
+        eq(organizationMembers.userId, auth.user.id)
+      ),
+      columns: {
+        organizationId: true,
+        role: true,
+      },
     });
 
-    if (!org) {
-      throw new HTTPException(404, { message: "Organization not found - please select a valid organization" });
+    if (!membership) {
+      throw new HTTPException(403, { message: "Not a member of this organization" });
     }
+
+    auth.organizationRole = membership.role as AuthContext["organizationRole"];
+    return auth.organizationId;
   } catch (error) {
-    // Re-throw HTTPException as-is
     if (error instanceof HTTPException) {
       throw error;
     }
-    // Log and wrap other errors
     throw new HTTPException(500, { message: "Database error while verifying organization" });
   }
-
-  return auth.organizationId;
 }
 
 export function requireScope(c: Context, scope: string): void {
@@ -256,6 +304,32 @@ export function requireScope(c: Context, scope: string): void {
     if (!hasScope) {
       throw new HTTPException(403, { message: `Insufficient permissions: ${scope} required` });
     }
+    return;
+  }
+
+  if (!auth.user) {
+    throw new HTTPException(401, { message: "User authentication required" });
+  }
+
+  if (scope === "read") {
+    if (!auth.organizationRole) {
+      throw new HTTPException(403, { message: "Organization membership required" });
+    }
+    return;
+  }
+
+  if (scope === "write") {
+    if (!auth.organizationRole || auth.organizationRole === "viewer") {
+      throw new HTTPException(403, { message: "Insufficient permissions: write required" });
+    }
+    return;
+  }
+
+  if (scope === "admin") {
+    if (auth.organizationRole !== "owner" && auth.organizationRole !== "admin") {
+      throw new HTTPException(403, { message: "Insufficient permissions: admin required" });
+    }
+    return;
   }
 }
 

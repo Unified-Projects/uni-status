@@ -1,7 +1,12 @@
 "use client";
 
 import { cn } from "@uni-status/ui";
-import { UptimeBar } from "@/components/monitors/uptime-bar";
+import {
+  UptimeBar,
+  formatUptimeAgoLabel,
+  getUptimeCurrentLabel,
+  getUptimeRangeMetadata,
+} from "@/components/monitors/uptime-bar";
 import { ResponseTimeChart, type TooltipMetricsConfig } from "@/components/monitors/response-time-chart";
 import { StatusIndicatorWrapper } from "../indicators";
 import { ReportDownButton } from "../report-down-button";
@@ -42,8 +47,11 @@ export function RowMonitor({
   displayMode = "bars",
   graphTooltipMetrics = { avg: true },
 }: RowMonitorProps) {
-  const granularity = monitor.uptimeGranularity || "day";
-  const unitLabel = granularity === "day" ? "days" : granularity === "hour" ? "hours" : "minutes";
+  const rangeMetadata = getUptimeRangeMetadata(
+    monitor.uptimeData,
+    uptimeDays,
+    monitor.uptimeGranularity
+  );
 
   return (
     <div
@@ -150,14 +158,18 @@ export function RowMonitor({
           <UptimeBar
             data={monitor.uptimeData}
             days={uptimeDays}
-            granularity={granularity}
+            granularity={rangeMetadata.granularity}
             height={24}
             showTooltip
             showLegend={false}
           />
           <div className="mt-1 flex items-center justify-between text-xs text-[var(--status-muted-text)]">
-            <span>{uptimeDays} {unitLabel} ago</span>
-            <span>Now</span>
+            <span>
+              {rangeMetadata.visibleRange > 0
+                ? formatUptimeAgoLabel(rangeMetadata.visibleRange, rangeMetadata.granularity)
+                : "No data"}
+            </span>
+            <span>{getUptimeCurrentLabel(rangeMetadata.granularity)}</span>
           </div>
         </div>
       )}

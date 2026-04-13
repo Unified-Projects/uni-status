@@ -34,6 +34,7 @@ import {
   PublicEventFilters,
   type PublicEventFiltersState,
 } from "@/components/public-status/events/public-event-filters";
+import { StatusPageRouteShell } from "@/components/public-status";
 import { useStatusPage } from "../status-page-context";
 
 const DEFAULT_API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
@@ -305,8 +306,7 @@ export default function PublicEventsPage() {
 
   if (isError) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
+      <StatusPageRouteShell containerClassName="max-w-4xl">
           <div className="py-12 text-center">
             <AlertTriangle className="mx-auto h-12 w-12 text-destructive" />
             <h2 className="mt-4 text-lg font-semibold">Failed to load events</h2>
@@ -317,14 +317,12 @@ export default function PublicEventsPage() {
               Try Again
             </Button>
           </div>
-        </div>
-      </div>
+      </StatusPageRouteShell>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
+    <StatusPageRouteShell containerClassName="max-w-4xl">
         <div className="mb-8">
           <Link
             href={basePath || "/"}
@@ -538,8 +536,7 @@ export default function PublicEventsPage() {
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </StatusPageRouteShell>
   );
 }
 

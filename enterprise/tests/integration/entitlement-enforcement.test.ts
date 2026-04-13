@@ -243,7 +243,13 @@ describe("Entitlement Enforcement", () => {
       expect(response.status).toBe(FREE_MONITOR_LIMIT === -1 ? 201 : 403);
       const body = await response.json();
       if (FREE_MONITOR_LIMIT !== -1) {
-        expect(body.error || body.message).toContain("limit");
+        const errorMessage =
+          typeof body.error === "string"
+            ? body.error
+            : typeof body.error?.message === "string"
+              ? body.error.message
+              : body.message;
+        expect(errorMessage).toContain("limit");
       }
     });
 

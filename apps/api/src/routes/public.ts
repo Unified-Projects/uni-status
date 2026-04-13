@@ -21,10 +21,12 @@ import {
   checkResultsDaily,
   probes,
   probeAssignments,
+  sessions,
+  users,
 } from "@uni-status/database/schema";
 import { eq, and, desc, gte, lte, sql, ne, inArray, ilike, or, lt } from "drizzle-orm";
 import type { UnifiedEvent, EventType } from "@uni-status/shared";
-import { getCookie, setCookie } from "hono/cookie";
+import { setCookie } from "hono/cookie";
 import { sign, verify } from "hono/jwt";
 import {
   sendSubscriberVerificationEmail,
@@ -37,7 +39,7 @@ import {
   buildPublicStatusPageShellPayload,
   extractPublicStatusPageLivePayload,
 } from "../lib/status-page-data";
-import { getEnabledGlobalProviders } from "@uni-status/auth/server";
+import { auth, getEnabledGlobalProviders } from "@uni-status/auth/server";
 import { getJwtSecret } from "@uni-status/shared/config";
 import { createLogger } from "@uni-status/shared";
 
@@ -143,8 +145,155 @@ function setCachedPublicStatusPageShell(
   }
 }
 
-// Helper to check OAuth access for status pages
-async function checkOAuthAccess(
+type StatusPageAuthConfig = {
+  protectionMode: string;
+  oauthMode?: string;
+  allowedEmails?: string[];
+  allowedDomains?: string[];
+  allowedRoles?: string[];
+} | null;
+
+type StatusPageAccessMeta = {
+  name: string | null;
+  logo: string | null;
+  protectionMode: string;
+  oauthMode?: string;
+  requiresPassword: boolean;
+  requiresOAuth: boolean;
+  providers: Array<{ id: string; name: string }>;
+};
+
+export type StatusPageAccessDenied = {
+  status: number;
+  body: {
+    success: false;
+    error: {
+      code: string;
+      message: string;
+    };
+    meta?: StatusPageAccessMeta;
+  };
+};
+
+export type StatusPageIdentity = {
+  email: string;
+  userId?: string;
+};
+
+export type PublicStatusPageAccessResult =
+  | {
+      page: typeof statusPages.$inferSelect;
+      organization: typeof organizations.$inferSelect | null;
+      protectionMode: string;
+    }
+  | {
+      denied: StatusPageAccessDenied;
+    };
+
+function getStatusPageAuthConfig(
+  page: typeof statusPages.$inferSelect
+): StatusPageAuthConfig {
+  return page.authConfig as StatusPageAuthConfig;
+}
+
+function getStatusPageCookieValue(cookieHeader: string | undefined, key: string): string | undefined {
+  if (!cookieHeader) {
+    return undefined;
+  }
+
+  for (const entry of cookieHeader.split(";")) {
+    const trimmed = entry.trim();
+    if (!trimmed) {
+      continue;
+    }
+
+    const separatorIndex = trimmed.indexOf("=");
+    if (separatorIndex <= 0) {
+      continue;
+    }
+
+    const cookieName = trimmed.slice(0, separatorIndex).trim();
+    if (cookieName !== key) {
+      continue;
+    }
+
+    const rawValue = trimmed.slice(separatorIndex + 1);
+    try {
+      return decodeURIComponent(rawValue);
+    } catch {
+      return rawValue;
+    }
+  }
+
+  return undefined;
+}
+
+async function evaluateOAuthAccessForIdentity(
+  page: typeof statusPages.$inferSelect,
+  identity: StatusPageIdentity | null
+): Promise<{ allowed: boolean; email?: string; userId?: string }> {
+  if (!identity?.email) {
+    return { allowed: false };
+  }
+
+  const email = identity.email;
+  const userId = identity.userId;
+  const authConfig = getStatusPageAuthConfig(page);
+
+  if (!authConfig || authConfig.protectionMode === "none") {
+    return { allowed: true, email, userId };
+  }
+
+  const oauthMode = authConfig.oauthMode || "any_authenticated";
+
+  switch (oauthMode) {
+    case "any_authenticated":
+      return { allowed: true, email, userId };
+
+    case "allowlist": {
+      const emailDomain = email.split("@")[1]?.toLowerCase();
+      const allowedEmails = authConfig.allowedEmails || [];
+      const allowedDomains = authConfig.allowedDomains || [];
+
+      if (allowedEmails.map((entry) => entry.toLowerCase()).includes(email.toLowerCase())) {
+        return { allowed: true, email, userId };
+      }
+      if (emailDomain && allowedDomains.map((entry) => entry.toLowerCase()).includes(emailDomain)) {
+        return { allowed: true, email, userId };
+      }
+      return { allowed: false, email, userId };
+    }
+
+    case "org_members": {
+      if (!userId) {
+        return { allowed: false, email };
+      }
+
+      const membership = await db.query.organizationMembers.findFirst({
+        where: and(
+          eq(organizationMembers.organizationId, page.organizationId),
+          eq(organizationMembers.userId, userId)
+        ),
+      });
+
+      if (!membership) {
+        return { allowed: false, email, userId };
+      }
+
+      const allowedRoles = authConfig.allowedRoles;
+      if (allowedRoles && allowedRoles.length > 0 && !allowedRoles.includes(membership.role)) {
+        return { allowed: false, email, userId };
+      }
+
+      return { allowed: true, email, userId };
+    }
+
+    default:
+      return { allowed: false, email, userId };
+  }
+}
+
+export async function checkOAuthAccess(
   page: typeof statusPages.$inferSelect,
   oauthToken: string | undefined
 ): Promise<{ allowed: boolean; email?: string; userId?: string }> {
@@ -154,128 +303,104 @@ async function checkOAuthAccess(
 
   try {
     const payload = await verify(oauthToken, getJwtSecretOrFallback(), "HS256");
-    const email = payload.email as string;
-    const userId = payload.userId as string;
-    const authConfig = page.authConfig as {
-      protectionMode: string;
-      oauthMode?: string;
-      allowedEmails?: string[];
-      allowedDomains?: string[];
-      allowedRoles?: string[];
-    } | null;
-
-    if (!authConfig || authConfig.protectionMode === "none") {
-      return { allowed: true, email, userId };
-    }
-
-    const oauthMode = authConfig.oauthMode || "any_authenticated";
-
-    switch (oauthMode) {
-      case "any_authenticated":
-        // Any authenticated user can access
-        return { allowed: true, email, userId };
-
-      case "allowlist":
-        // Check email and domain allowlists
-        const emailDomain = email.split("@")[1]?.toLowerCase();
-        const allowedEmails = authConfig.allowedEmails || [];
-        const allowedDomains = authConfig.allowedDomains || [];
-
-        if (allowedEmails.map(e => e.toLowerCase()).includes(email.toLowerCase())) {
-          return { allowed: true, email, userId };
-        }
-        if (emailDomain && allowedDomains.map(d => d.toLowerCase()).includes(emailDomain)) {
-          return { allowed: true, email, userId };
-        }
-        return { allowed: false, email, userId };
-
-      case "org_members":
-        // Check if user is a member of the organization
-        if (!userId) {
-          return { allowed: false, email };
-        }
-
-        const membership = await db.query.organizationMembers.findFirst({
-          where: and(
-            eq(organizationMembers.organizationId, page.organizationId),
-            eq(organizationMembers.userId, userId)
-          ),
-        });
-
-        if (!membership) {
-          return { allowed: false, email, userId };
-        }
-
-        // Check role restrictions if specified
-        const allowedRoles = authConfig.allowedRoles;
-        if (allowedRoles && allowedRoles.length > 0) {
-          if (!allowedRoles.includes(membership.role)) {
-            return { allowed: false, email, userId };
-          }
-        }
-
-        return { allowed: true, email, userId };
-
-      default:
-        return { allowed: false, email, userId };
-    }
+    return evaluateOAuthAccessForIdentity(page, {
+      email: payload.email as string,
+      userId: typeof payload.userId === "string" ? payload.userId : undefined,
+    });
   } catch {
     return { allowed: false };
   }
 }
 
-async function resolvePublicStatusPageAccess(c: any, slug: string): Promise<{
-  page: typeof statusPages.$inferSelect;
-  organization: typeof organizations.$inferSelect | null;
-  protectionMode: string;
-} | { response: Response }> {
+export async function getStatusPageSessionIdentity(headers: Headers): Promise<StatusPageIdentity | null> {
+  const sessionToken = getStatusPageCookieValue(headers.get("cookie") ?? undefined, "better-auth.session_token")
+    ?? getStatusPageCookieValue(headers.get("cookie") ?? undefined, "__Secure-better-auth.session_token");
+
+  if (sessionToken) {
+    const [dbSession] = await db
+      .select({
+        email: users.email,
+        userId: users.id,
+      })
+      .from(sessions)
+      .innerJoin(users, eq(sessions.userId, users.id))
+      .where(
+        and(
+          eq(sessions.token, sessionToken),
+          gte(sessions.expiresAt, new Date())
+        )
+      )
+      .limit(1);
+
+    if (dbSession?.email && dbSession.userId) {
+      return {
+        email: dbSession.email,
+        userId: dbSession.userId,
+      };
+    }
+  }
+
+  try {
+    const session = await auth.api.getSession({ headers });
+    if (!session?.user?.email || !session.user.id) {
+      return null;
+    }
+
+    return {
+      email: session.user.email,
+      userId: session.user.id,
+    };
+  } catch (error) {
+    log.warn({ err: error }, "Failed to resolve session for status page OAuth verification");
+    return null;
+  }
+}
+
+export async function resolvePublicStatusPageAccessFromHeaders(
+  headers: Headers,
+  slug: string
+): Promise<PublicStatusPageAccessResult> {
   const page = await db.query.statusPages.findFirst({
     where: eq(statusPages.slug, slug),
   });
 
   if (!page) {
     return {
-      response: c.json(
-        {
+      denied: {
+        status: 404,
+        body: {
           success: false,
           error: {
             code: "NOT_FOUND",
             message: "Status page not found",
           },
         },
-        404
-      ),
+      },
     };
   }
 
   if (!page.published) {
     return {
-      response: c.json(
-        {
+      denied: {
+        status: 404,
+        body: {
           success: false,
           error: {
             code: "NOT_PUBLISHED",
             message: "This status page is not available",
           },
         },
-        404
-      ),
+      },
     };
   }
 
-  const authConfig = page.authConfig as {
-    protectionMode: string;
-    oauthMode?: string;
-    allowedEmails?: string[];
-    allowedDomains?: string[];
-    allowedRoles?: string[];
-  } | null;
-
+  const authConfig = getStatusPageAuthConfig(page);
   const protectionMode = authConfig?.protectionMode || "none";
 
   if (protectionMode !== "none") {
-    const passwordToken = getCookie(c, `sp_token_${slug}`);
-    const oauthToken = getCookie(c, `sp_oauth_${slug}`);
+    const cookieHeader = headers.get("cookie") ?? undefined;
+    const passwordToken = getStatusPageCookieValue(cookieHeader, `sp_token_${slug}`);
+    const oauthToken = getStatusPageCookieValue(cookieHeader, `sp_oauth_${slug}`);
 
     let passwordValid = false;
     let oauthValid = false;
@@ -313,8 +438,9 @@ async function resolvePublicStatusPageAccess(c: any, slug: string): Promise<{
         : [];
 
       return {
-        response: c.json(
-          {
+        denied: {
+          status: 401,
+          body: {
             success: false,
             error: {
               code: "AUTH_REQUIRED",
@@ -330,8 +456,7 @@ async function resolvePublicStatusPageAccess(c: any, slug: string): Promise<{
               providers: providers.map((p) => ({ id: p.id, name: p.name })),
             },
           },
-          401
-        ),
+        },
       };
     }
   }
@@ -345,6 +470,22 @@ async function resolvePublicStatusPageAccess(c: any, slug: string): Promise<{
     organization: organization ?? null,
     protectionMode,
   };
+}
+
+async function resolvePublicStatusPageAccess(c: any, slug: string): Promise<{
+  page: typeof statusPages.$inferSelect;
+  organization: typeof organizations.$inferSelect | null;
+  protectionMode: string;
+} | { response: Response }> {
+  const access = await resolvePublicStatusPageAccessFromHeaders(c.req.raw.headers, slug);
+
+  if ("denied" in access) {
+    return {
+      response: c.json(access.denied.body, access.denied.status),
+    };
+  }
+
+  return access;
 }
 
 export const publicRoutes = new OpenAPIHono();
@@ -619,21 +760,6 @@ publicRoutes.post("/status-pages/:slug/verify-password", async (c) => {
 
 publicRoutes.post("/status-pages/:slug/verify-oauth", async (c) => {
   const { slug } = c.req.param();
-  const body = await c.req.json();
-  const { email, userId, sessionToken } = body;
-
-  if (!email) {
-    return c.json(
-      {
-        success: false,
-        error: {
-          code: "INVALID_REQUEST",
-          message: "Email is required",
-        },
-      },
-      400
-    );
-  }
 
   const page = await db.query.statusPages.findFirst({
     where: eq(statusPages.slug, slug),
@@ -652,14 +778,7 @@ publicRoutes.post("/status-pages/:slug/verify-oauth", async (c) => {
     );
   }
 
-  const authConfig = page.authConfig as {
-    protectionMode: string;
-    oauthMode?: string;
-    allowedEmails?: string[];
-    allowedDomains?: string[];
-    allowedRoles?: string[];
-  } | null;
-
+  const authConfig = getStatusPageAuthConfig(page);
   const protectionMode = authConfig?.protectionMode || "none";
 
   if (protectionMode !== "oauth" && protectionMode !== "both") {
@@ -675,51 +794,22 @@ publicRoutes.post("/status-pages/:slug/verify-oauth", async (c) => {
     );
   }
 
-  // Check access based on OAuth mode
-  const oauthMode = authConfig?.oauthMode || "any_authenticated";
-  let accessGranted = false;
-
-  switch (oauthMode) {
-    case "any_authenticated":
-      // Any authenticated user can access
-      accessGranted = true;
-      break;
-
-    case "allowlist":
-      // Check email and domain allowlists
-      const emailDomain = email.split("@")[1]?.toLowerCase();
-      const allowedEmails = authConfig?.allowedEmails || [];
-      const allowedDomains = authConfig?.allowedDomains || [];
-
-      if (allowedEmails.map((e: string) => e.toLowerCase()).includes(email.toLowerCase())) {
-        accessGranted = true;
-      } else if (emailDomain && allowedDomains.map((d: string) => d.toLowerCase()).includes(emailDomain)) {
-        accessGranted = true;
-      }
-      break;
-
-    case "org_members":
-      // Check if user is a member of the organization
-      if (userId) {
-        const membership = await db.query.organizationMembers.findFirst({
-          where: and(
-            eq(organizationMembers.organizationId, page.organizationId),
-            eq(organizationMembers.userId, userId)
-          ),
-        });
-
-        if (membership) {
-          // Check role restrictions if specified
-          const allowedRoles = authConfig?.allowedRoles;
-          if (!allowedRoles || allowedRoles.length === 0 || allowedRoles.includes(membership.role)) {
-            accessGranted = true;
-          }
-        }
-      }
-      break;
+  const identity = await getStatusPageSessionIdentity(c.req.raw.headers);
+  if (!identity) {
+    return c.json(
+      {
+        success: false,
+        error: {
+          code: "UNAUTHORIZED",
+          message: "An authenticated session is required",
+        },
+      },
+      401
+    );
   }
 
-  if (!accessGranted) {
+  const oauthAccess = await evaluateOAuthAccessForIdentity(page, identity);
+  if (!oauthAccess.allowed) {
     return c.json(
       {
         success: false,
@@ -739,8 +829,8 @@ publicRoutes.post("/status-pages/:slug/verify-oauth", async (c) => {
     token = await sign(
       {
         slug,
-        email,
-        userId,
+        email: oauthAccess.email,
+        userId: oauthAccess.userId,
         type: "oauth_access",
         exp: Math.floor(expiresAt.getTime() / 1000),
       },
@@ -1722,6 +1812,8 @@ publicRoutes.get("/status-pages/:slug/services", async (c) => {
   });
 
   const monitorIds = linkedMonitors.map((lm) => lm.monitorId);
+  const monitorIdSet = new Set(monitorIds);
+  const linkedMonitorsById = new Map(linkedMonitors.map((linkedMonitor) => [linkedMonitor.monitorId, linkedMonitor.monitor]));
 
   if (monitorIds.length === 0) {
     return c.json({
@@ -1808,7 +1900,7 @@ publicRoutes.get("/status-pages/:slug/services", async (c) => {
   for (const incident of activeIncidents) {
     const affectedMonitors = incident.affectedMonitors || [];
     for (const monitorId of affectedMonitors) {
-      if (monitorIds.includes(monitorId as string)) {
+      if (monitorIdSet.has(monitorId as string)) {
         const list = activeIncidentsByMonitor.get(monitorId as string) || [];
         list.push({
           id: incident.id,
@@ -1834,16 +1926,44 @@ publicRoutes.get("/status-pages/:slug/services", async (c) => {
   }>();
 
   if (sslMonitorIds.length > 0) {
-    for (const monitorId of sslMonitorIds) {
-      const latestResult = await db.query.checkResults.findFirst({
-        where: and(
-          eq(checkResults.monitorId, monitorId),
+    const latestCertificateTimestamps = db
+      .select({
+        monitorId: checkResults.monitorId,
+        createdAt: sql<Date>`max(${checkResults.createdAt})`.as("createdAt"),
+      })
+      .from(checkResults)
+      .where(
+        and(
+          inArray(checkResults.monitorId, sslMonitorIds),
           sql`${checkResults.certificateInfo} IS NOT NULL`
-        ),
-        orderBy: [desc(checkResults.createdAt)],
-      });
-      if (latestResult?.certificateInfo) {
-        certificateInfoByMonitor.set(monitorId, latestResult.certificateInfo);
+        )
+      )
+      .groupBy(checkResults.monitorId)
+      .as("latest_certificate_timestamps");
+
+    const latestCertificateRows = await db
+      .select({
+        monitorId: checkResults.monitorId,
+        certificateInfo: checkResults.certificateInfo,
+      })
+      .from(checkResults)
+      .innerJoin(
+        latestCertificateTimestamps,
+        and(
+          eq(checkResults.monitorId, latestCertificateTimestamps.monitorId),
+          eq(checkResults.createdAt, latestCertificateTimestamps.createdAt)
+        )
+      )
+      .where(
+        and(
+          inArray(checkResults.monitorId, sslMonitorIds),
+          sql`${checkResults.certificateInfo} IS NOT NULL`
+        )
+      );
+
+    for (const row of latestCertificateRows) {
+      if (row.certificateInfo) {
+        certificateInfoByMonitor.set(row.monitorId, row.certificateInfo);
       }
     }
   }
@@ -1861,22 +1981,50 @@ publicRoutes.get("/status-pages/:slug/services", async (c) => {
   }>();
 
   if (emailAuthMonitorIds.length > 0) {
-    for (const monitorId of emailAuthMonitorIds) {
-      const latestResult = await db.query.checkResults.findFirst({
-        where: and(
-          eq(checkResults.monitorId, monitorId),
+    const latestEmailAuthTimestamps = db
+      .select({
+        monitorId: checkResults.monitorId,
+        createdAt: sql<Date>`max(${checkResults.createdAt})`.as("createdAt"),
+      })
+      .from(checkResults)
+      .where(
+        and(
+          inArray(checkResults.monitorId, emailAuthMonitorIds),
           sql`${checkResults.emailAuthDetails} IS NOT NULL`
-        ),
-        orderBy: [desc(checkResults.createdAt)],
-      });
-      if (latestResult?.emailAuthDetails) {
-        const details = latestResult.emailAuthDetails as {
+        )
+      )
+      .groupBy(checkResults.monitorId)
+      .as("latest_email_auth_timestamps");
+
+    const latestEmailAuthRows = await db
+      .select({
+        monitorId: checkResults.monitorId,
+        emailAuthDetails: checkResults.emailAuthDetails,
+      })
+      .from(checkResults)
+      .innerJoin(
+        latestEmailAuthTimestamps,
+        and(
+          eq(checkResults.monitorId, latestEmailAuthTimestamps.monitorId),
+          eq(checkResults.createdAt, latestEmailAuthTimestamps.createdAt)
+        )
+      )
+      .where(
+        and(
+          inArray(checkResults.monitorId, emailAuthMonitorIds),
+          sql`${checkResults.emailAuthDetails} IS NOT NULL`
+        )
+      );
+
+    for (const row of latestEmailAuthRows) {
+      if (row.emailAuthDetails) {
+        const details = row.emailAuthDetails as {
           overallScore?: number;
           spf?: { status?: string };
           dkim?: { status?: string };
           dmarc?: { status?: string };
         };
-        emailAuthInfoByMonitor.set(monitorId, {
+        emailAuthInfoByMonitor.set(row.monitorId, {
           overallScore: details.overallScore ?? 0,
           spfStatus: (details.spf?.status || "none") as "pass" | "fail" | "none" | "error",
           dkimStatus: (details.dkim?.status || "none") as "pass" | "partial" | "fail" | "none" | "error",
@@ -1898,24 +2046,44 @@ publicRoutes.get("/status-pages/:slug/services", async (c) => {
   }>();
 
   if (heartbeatMonitorIds.length > 0) {
-    for (const monitorId of heartbeatMonitorIds) {
-      const latestPing = await db.query.heartbeatPings.findFirst({
-        where: eq(heartbeatPings.monitorId, monitorId),
-        orderBy: [desc(heartbeatPings.createdAt)],
-      });
+    const latestHeartbeatTimestamps = db
+      .select({
+        monitorId: heartbeatPings.monitorId,
+        createdAt: sql<Date>`max(${heartbeatPings.createdAt})`.as("createdAt"),
+      })
+      .from(heartbeatPings)
+      .where(inArray(heartbeatPings.monitorId, heartbeatMonitorIds))
+      .groupBy(heartbeatPings.monitorId)
+      .as("latest_heartbeat_timestamps");
 
-      const monitorData = linkedMonitors.find((lm) => lm.monitorId === monitorId)?.monitor;
+    const latestHeartbeatRows = await db
+      .select({
+        monitorId: heartbeatPings.monitorId,
+        createdAt: heartbeatPings.createdAt,
+      })
+      .from(heartbeatPings)
+      .innerJoin(
+        latestHeartbeatTimestamps,
+        and(
+          eq(heartbeatPings.monitorId, latestHeartbeatTimestamps.monitorId),
+          eq(heartbeatPings.createdAt, latestHeartbeatTimestamps.createdAt)
+        )
+      )
+      .where(inArray(heartbeatPings.monitorId, heartbeatMonitorIds));
+
+    for (const row of latestHeartbeatRows) {
+      const monitorData = linkedMonitorsById.get(row.monitorId);
       const heartbeatConfig = monitorData?.config as { heartbeat?: { expectedIntervalSeconds?: number } } | null;
       const expectedInterval = heartbeatConfig?.heartbeat?.expectedIntervalSeconds ?? 60;
 
-      const missedBeats = latestPing && monitorData?.lastCheckedAt
+      const missedBeats = row.createdAt && monitorData?.lastCheckedAt
         ? Math.max(0, Math.floor(
-            (Date.now() - new Date(latestPing.createdAt).getTime()) / (expectedInterval * 1000)
+            (Date.now() - new Date(row.createdAt).getTime()) / (expectedInterval * 1000)
           ) - 1)
         : 0;
 
-      heartbeatInfoByMonitor.set(monitorId, {
-        lastPingAt: latestPing?.createdAt.toISOString() || null,
+      heartbeatInfoByMonitor.set(row.monitorId, {
+        lastPingAt: row.createdAt.toISOString(),
         expectedIntervalSeconds: expectedInterval,
         missedBeats,
       });

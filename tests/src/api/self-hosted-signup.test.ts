@@ -2,8 +2,7 @@ import { bootstrapTestContext, type TestContext } from "../helpers/context";
 import {
   initializeSystemSettings,
   getSystemSettings,
-  insertInvitation,
-  getPendingApprovals,
+  insertPendingApproval,
   setUserSystemRole,
   clearSystemSettings,
 } from "../helpers/data";
@@ -107,6 +106,30 @@ describe("Self-hosted signup modes", () => {
       const body = await response.json();
       expect(body.success).toBe(true);
       expect(Array.isArray(body.data)).toBe(true);
+    });
+
+    it("returns pending approvals including inserted approval requests", async () => {
+      await setUserSystemRole(ctx.userId, "super_admin");
+
+      await insertPendingApproval({
+        userId: ctx.userId,
+        organizationId: ctx.organizationId,
+      });
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/pending-approvals`, {
+        headers: ctx.headers,
+      });
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.success).toBe(true);
+      expect(Array.isArray(body.data)).toBe(true);
+      expect(
+        body.data.some(
+          (approval: { userId: string; status: string }) =>
+            approval.userId === ctx.userId && approval.status === "pending"
+        )
+      ).toBe(true);
     });
   });
 

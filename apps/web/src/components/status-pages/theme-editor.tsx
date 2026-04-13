@@ -31,7 +31,9 @@ const themeFormSchema = z.object({
     background: hexColorSchema,
     backgroundDark: hexColorSchema.optional(),
     text: hexColorSchema,
+    mutedText: hexColorSchema.optional(),
     textDark: hexColorSchema.optional(),
+    mutedTextDark: hexColorSchema.optional(),
     surface: hexColorSchema,
     surfaceDark: hexColorSchema.optional(),
     border: hexColorSchema.optional(),
@@ -52,7 +54,9 @@ const DEFAULT_COLORS: StatusPageThemeColors = {
   background: "#FFFFFF",
   backgroundDark: "#0F172A",
   text: "#1F2937",
+  mutedText: "#6B7280",
   textDark: "#F9FAFB",
+  mutedTextDark: "#94A3B8",
   surface: "#F9FAFB",
   surfaceDark: "#1E293B",
   border: "#E5E7EB",
@@ -374,6 +378,14 @@ export function ThemeEditor({ theme, onSave, onCancel, isSaving }: ThemeEditorPr
               description="Primary text color"
             />
             <ColorPickerField
+              label="Secondary Text"
+              value={watchedColors.mutedText}
+              onChange={(v) => handleColorChange("mutedText", v)}
+              placeholder="#6B7280"
+              optional
+              description="Descriptions, metadata, and footer text"
+            />
+            <ColorPickerField
               label="Border"
               value={watchedColors.border}
               onChange={(v) => handleColorChange("border", v)}
@@ -408,6 +420,13 @@ export function ThemeEditor({ theme, onSave, onCancel, isSaving }: ThemeEditorPr
               value={watchedColors.textDark}
               onChange={(v) => handleColorChange("textDark", v)}
               placeholder="#F9FAFB"
+              optional
+            />
+            <ColorPickerField
+              label="Secondary Text (Dark)"
+              value={watchedColors.mutedTextDark}
+              onChange={(v) => handleColorChange("mutedTextDark", v)}
+              placeholder="#94A3B8"
               optional
             />
             <ColorPickerField

@@ -33,6 +33,7 @@ class SSEConnectionManager {
   private initialized = false;
   private monitorOrgCache = new Map<string, { organizationId: string; timestamp: number }>();
   private readonly monitorOrgCacheTtlMs = 5 * 60 * 1000;
+  private readonly monitorOrgCacheMaxEntries = 2048;
 
   private addClientToIndex(index: Map<string, Set<string>>, key: string | undefined, clientId: string) {
     if (!key) return;
@@ -64,6 +65,36 @@ class SSEConnectionManager {
     this.removeClientFromIndex(this.clientsByOrganization, client.organizationId, client.id);
     this.removeClientFromIndex(this.clientsByMonitor, client.monitorId, client.id);
     this.removeClientFromIndex(this.clientsByStatusPage, client.statusPageSlug, client.id);
+  }
+
+  private pruneMonitorOrgCache(now = Date.now()) {
+    for (const [monitorId, entry] of this.monitorOrgCache.entries()) {
+      if (now - entry.timestamp >= this.monitorOrgCacheTtlMs) {
+        this.monitorOrgCache.delete(monitorId);
+      }
+    }
+
+    if (this.monitorOrgCache.size <= this.monitorOrgCacheMaxEntries) {
+      return;
+    }
+
+    const overflow = this.monitorOrgCache.size - this.monitorOrgCacheMaxEntries;
+    const oldestEntries = Array.from(this.monitorOrgCache.entries())
+      .sort((a, b) => a[1].timestamp - b[1].timestamp)
+      .slice(0, overflow);
+
+    for (const [monitorId] of oldestEntries) {
+      this.monitorOrgCache.delete(monitorId);
+    }
+  }
+
+  private setMonitorOrgCacheEntry(monitorId: string, organizationId: string, now = Date.now()) {
+    this.monitorOrgCache.delete(monitorId);
+    this.monitorOrgCache.set(monitorId, {
+      organizationId,
+      timestamp: now,
+    });
+    this.pruneMonitorOrgCache(now);
   }
 
   /**
@@ -147,10 +178,17 @@ class SSEConnectionManager {
   }
 
   private async getOrganizationIdForMonitor(monitorId: string): Promise<string | null> {
-    const cached = this.monitorOrgCache.get(monitorId);
     const now = Date.now();
+    this.pruneMonitorOrgCache(now);
+
+    const cached = this.monitorOrgCache.get(monitorId);
     if (cached && now - cached.timestamp < this.monitorOrgCacheTtlMs) {
+      this.setMonitorOrgCacheEntry(monitorId, cached.organizationId, now);
       return cached.organizationId;
+    }
+
+    if (cached) {
+      this.monitorOrgCache.delete(monitorId);
     }
 
     const monitor = await db.query.monitors.findFirst({
@@ -164,10 +202,7 @@ class SSEConnectionManager {
       return null;
     }
 
-    this.monitorOrgCache.set(monitorId, {
-      organizationId: monitor.organizationId,
-      timestamp: now,
-    });
+    this.setMonitorOrgCacheEntry(monitorId, monitor.organizationId, now);
     return monitor.organizationId;
   }
 

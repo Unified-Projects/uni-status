@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-04-13
+
+### Added
+- Added role-aware organization access enforcement so authenticated users, API keys, federated sessions, WebSocket clients, and monitor SSE subscriptions are validated against real organization membership and ownership context
+- Added brute-force protection for public status-page password verification and required real authenticated sessions for OAuth verification on protected public status pages
+- Added shared public status-page route shell handling for subpages plus new light/dark `mutedText` theme colors for secondary copy styling
+- Added per-monitor TLS behavior controls for HTTP checks and expanded pending-approval responses with `userId`
+
+### Changed
+- Unified public status-page access handling across REST, GraphQL, live events, and shell rendering so password- and OAuth-protected pages behave consistently across the API and web app
+- Updated monitor list, dashboard analytics, enterprise analytics, and public status-page charts to combine historical aggregate tables with recent raw check data, push dense response-time aggregation into SQL, and reduce unnecessary refetch pressure when realtime connectivity is healthy
+- Updated dashboard monitor filtering and web data hooks to use stronger server-side filtering, organization-scoped query keys, and safer invalidation behavior when switching organizations
+- Improved certificate listing and related API pagination handling with grouped latest-result queries, clamped pagination parsing, normalized HTTP error payloads, and proxied report download URLs instead of exposing raw file URLs
+- Refined public status-page layout, theme editing, uptime visualization, and monitor presentation behavior for more consistent shells, anchored footers, fresher shell data, and more accurate short-range uptime labels
+- Bumped workspace package/runtime version references from `0.2.2` to `0.2.3`
+
+### Fixed
+- Prevented forged identity payloads and unauthenticated requests from silently accessing OAuth-protected status-page verification, monitor SSE streams, and WebSocket routes
+- Prevented dashboard setup redirects caused by organization-fetch failures and clarified HTTPS uptime checks so certificate metadata remains separate from dedicated SSL monitor results
+- Hardened OIDC discovery validation by rejecting non-public or non-HTTPS discovery targets
+
+### Tests
+- Expanded coverage for protected public status pages, realtime auth guards, monitor ingestion aggregate-backed uptime, self-hosted approval/setup flows, upload validation, and entitlement/report response handling
+- Replaced certificate scheduling unit coverage with fuller worker integration coverage, updated maintenance-suppression integration flows, and re-enabled previously excluded worker/integration suites in Vitest
+- Updated CI TLS test certificates with SAN support and longer validity for containerized SSL coverage
+
 ## [0.2.2] - 2026-03-20
 
 ### Added

@@ -28,7 +28,7 @@ export * from "./api/routes";
 export * from "./lib";
 
 // Feature detection
-export const ENTERPRISE_VERSION = "0.2.2";
+export const ENTERPRISE_VERSION = "0.2.3";
 
 export const ENTERPRISE_FEATURES = {
   AUDIT_LOGS: "audit_logs",

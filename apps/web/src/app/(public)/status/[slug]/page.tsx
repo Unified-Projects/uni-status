@@ -244,8 +244,8 @@ export default async function PublicStatusPage({
       defaultTimezone={defaultTimezone}
       initialLocale={initialLocale}
     >
-      <div className="min-h-screen bg-background text-foreground">
-        <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="min-h-screen bg-background text-foreground flex flex-col">
+        <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8 flex-1 w-full">
           {message && (
             <div className="mb-6 rounded-lg border p-4 text-[var(--status-success-text)] bg-[var(--status-success-bg)] border-[var(--status-success-text)]/20">
               {message === "subscribed" && "You have been subscribed to status updates."}
@@ -303,7 +303,7 @@ export default async function PublicStatusPage({
             slug={slug}
             basePath={basePath}
             localization={localization}
-            className="mt-8"
+            className="mt-auto pt-8"
           />
         </div>
       </div>

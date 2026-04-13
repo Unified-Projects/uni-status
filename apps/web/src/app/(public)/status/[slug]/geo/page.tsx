@@ -26,6 +26,7 @@ import {
   Skeleton,
 } from "@uni-status/ui";
 import { GeoMapControls } from "@/components/public-status/geo/geo-map-controls";
+import { StatusPageRouteShell } from "@/components/public-status";
 import type {
   GeoControlState,
   GeoData,
@@ -279,8 +280,7 @@ export default function PublicGeoPage() {
 
   if (isError) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="mx-auto max-w-7xl px-4 py-8">
+      <StatusPageRouteShell containerClassName="max-w-7xl">
           <div className="py-12 text-center">
             <AlertTriangle className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
             <h2 className="text-lg font-medium">Unable to load geo view</h2>
@@ -288,15 +288,13 @@ export default function PublicGeoPage() {
               {(error as Error)?.message || "Please try again later"}
             </p>
           </div>
-        </div>
-      </div>
+      </StatusPageRouteShell>
     );
   }
 
   if (geoData && geoData.success === false) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="mx-auto max-w-7xl px-4 py-8">
+      <StatusPageRouteShell containerClassName="max-w-7xl">
           <div className="py-12 text-center">
             <AlertTriangle className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
             <h2 className="text-lg font-medium">Geo view unavailable</h2>
@@ -304,14 +302,12 @@ export default function PublicGeoPage() {
               {geoData.error?.message || "The geo view is disabled for this status page."}
             </p>
           </div>
-        </div>
-      </div>
+      </StatusPageRouteShell>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-7xl px-4 py-8">
+    <StatusPageRouteShell containerClassName="max-w-7xl">
         <div className="mb-8">
           <Link
             href={`/status/${slug}`}
@@ -512,8 +508,7 @@ export default function PublicGeoPage() {
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </StatusPageRouteShell>
   );
 }
 

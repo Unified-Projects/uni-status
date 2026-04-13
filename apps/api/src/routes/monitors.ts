@@ -2,20 +2,50 @@ import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { nanoid } from "nanoid";
 import { db } from "@uni-status/database";
-import { monitors, checkResults, incidents, heartbeatPings, monitorDependencies } from "@uni-status/database/schema";
-import { createMonitorSchema, updateMonitorSchema } from "@uni-status/shared/validators";
+import {
+  monitors,
+  checkResults,
+  checkResultsDaily,
+  incidents,
+  heartbeatPings,
+  monitorDependencies,
+} from "@uni-status/database/schema";
+import {
+  createMonitorSchema,
+  updateMonitorSchema,
+} from "@uni-status/shared/validators";
 import { encryptConfigSecrets } from "@uni-status/shared/crypto";
 import { SSE_CHANNELS } from "@uni-status/shared/constants";
-import { requireAuth, requireOrganization, requireScope } from "../middleware/auth";
+import {
+  requireAuth,
+  requireOrganization,
+  requireScope,
+} from "../middleware/auth";
 import { publishEvent } from "../lib/redis";
 import { queueMonitorCheck } from "../lib/queues";
-import { createAuditLog, createAuditLogWithChanges, getAuditUserId } from "../lib/audit";
+import {
+  createAuditLog,
+  createAuditLogWithChanges,
+  getAuditUserId,
+} from "../lib/audit";
 import {
   getLicenseContext,
   requireResourceLimit,
   requireMinCheckInterval,
 } from "@uni-status/enterprise/api/middleware/license";
-import { eq, and, desc, asc, sql, isNotNull, inArray, gte, ilike, or } from "drizzle-orm";
+import {
+  eq,
+  and,
+  desc,
+  asc,
+  sql,
+  isNotNull,
+  inArray,
+  gte,
+  lt,
+  ilike,
+  or,
+} from "drizzle-orm";
 
 /**
  * Sanitize user input by escaping HTML special characters to prevent XSS attacks.
@@ -31,7 +61,54 @@ function sanitizeHtml(input: string): string {
 
 export const monitorsRoutes = new OpenAPIHono();
 
-async function getMonitorDependenciesIds(organizationId: string, monitorId: string) {
+type MonitorCountStats = {
+  successCount: number;
+  degradedCount: number;
+  totalCount: number;
+};
+
+function parsePaginationParam(
+  value: string | undefined,
+  defaultValue: number,
+  min = 0,
+  max = Number.MAX_SAFE_INTEGER,
+): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return defaultValue;
+  }
+
+  return Math.min(Math.max(Math.trunc(parsed), min), max);
+}
+
+function combineMonitorCountStats(
+  base: Map<string, MonitorCountStats>,
+  rows: Array<{
+    monitorId: string;
+    successCount: number | string | null;
+    degradedCount: number | string | null;
+    totalCount: number | string | null;
+  }>,
+) {
+  rows.forEach((row) => {
+    const existing = base.get(row.monitorId) ?? {
+      successCount: 0,
+      degradedCount: 0,
+      totalCount: 0,
+    };
+
+    existing.successCount += Number(row.successCount ?? 0);
+    existing.degradedCount += Number(row.degradedCount ?? 0);
+    existing.totalCount += Number(row.totalCount ?? 0);
+
+    base.set(row.monitorId, existing);
+  });
+}
+
+async function getMonitorDependenciesIds(
+  organizationId: string,
+  monitorId: string,
+) {
   const upstream = await db
     .select({ upstreamMonitorId: monitorDependencies.upstreamMonitorId })
     .from(monitorDependencies)
@@ -39,8 +116,8 @@ async function getMonitorDependenciesIds(organizationId: string, monitorId: stri
     .where(
       and(
         eq(monitorDependencies.downstreamMonitorId, monitorId),
-        eq(monitors.organizationId, organizationId)
-      )
+        eq(monitors.organizationId, organizationId),
+      ),
     );
 
   return upstream.map((dep) => dep.upstreamMonitorId);
@@ -49,10 +126,13 @@ async function getMonitorDependenciesIds(organizationId: string, monitorId: stri
 async function replaceDependencies(
   organizationId: string,
   monitorId: string,
-  dependsOn?: string[]
+  dependsOn?: string[],
 ): Promise<{ ok: boolean; ids: string[]; error?: string; status?: 400 | 404 }> {
   if (dependsOn === undefined) {
-    return { ok: true, ids: await getMonitorDependenciesIds(organizationId, monitorId) };
+    return {
+      ok: true,
+      ids: await getMonitorDependenciesIds(organizationId, monitorId),
+    };
   }
 
   const uniqueDependsOn = Array.from(new Set(dependsOn));
@@ -68,13 +148,19 @@ async function replaceDependencies(
   const upstreamMonitors = await db
     .select({ id: monitors.id })
     .from(monitors)
-    .where(and(eq(monitors.organizationId, organizationId), inArray(monitors.id, uniqueDependsOn)));
+    .where(
+      and(
+        eq(monitors.organizationId, organizationId),
+        inArray(monitors.id, uniqueDependsOn),
+      ),
+    );
 
   if (upstreamMonitors.length !== uniqueDependsOn.length) {
     return {
       ok: false,
       ids: [],
-      error: "One or more upstream monitors were not found in this organization",
+      error:
+        "One or more upstream monitors were not found in this organization",
       status: 404,
     };
   }
@@ -91,7 +177,7 @@ async function replaceDependencies(
       downstreamMonitorId: monitorId,
       upstreamMonitorId: upstream.id,
       createdAt: now,
-    }))
+    })),
   );
 
   return { ok: true, ids: upstreamMonitors.map((m) => m.id) };
@@ -102,8 +188,8 @@ monitorsRoutes.get("/", async (c) => {
   const organizationId = await requireOrganization(c);
 
   // Parse pagination parameters
-  const limit = Math.min(Math.max(parseInt(c.req.query("limit") || "100"), 1), 100);
-  const offset = Math.max(parseInt(c.req.query("offset") || "0"), 0);
+  const limit = parsePaginationParam(c.req.query("limit"), 100, 1, 100);
+  const offset = parsePaginationParam(c.req.query("offset"), 0, 0);
   const typeFilters = (c.req.query("type") || "")
     .split(",")
     .map((value) => value.trim())
@@ -114,21 +200,34 @@ monitorsRoutes.get("/", async (c) => {
     .filter(Boolean);
   const search = (c.req.query("search") || "").trim();
   const sortBy = (c.req.query("sortBy") || "createdAt").trim();
-  const sortDirection = (c.req.query("sortDirection") || "desc").toLowerCase() === "asc" ? "asc" : "desc";
+  const sortDirection =
+    (c.req.query("sortDirection") || "desc").toLowerCase() === "asc"
+      ? "asc"
+      : "desc";
 
   const whereConditions = [eq(monitors.organizationId, organizationId)];
   if (typeFilters.length > 0) {
-    whereConditions.push(inArray(monitors.type, typeFilters as Array<typeof monitors.$inferSelect.type>));
+    whereConditions.push(
+      inArray(
+        monitors.type,
+        typeFilters as Array<typeof monitors.$inferSelect.type>,
+      ),
+    );
   }
   if (statusFilters.length > 0) {
-    whereConditions.push(inArray(monitors.status, statusFilters as Array<typeof monitors.$inferSelect.status>));
+    whereConditions.push(
+      inArray(
+        monitors.status,
+        statusFilters as Array<typeof monitors.$inferSelect.status>,
+      ),
+    );
   }
   if (search.length > 0) {
     whereConditions.push(
       or(
         ilike(monitors.name, `%${search}%`),
-        ilike(monitors.url, `%${search}%`)
-      )!
+        ilike(monitors.url, `%${search}%`),
+      )!,
     );
   }
   const whereClause = and(...whereConditions);
@@ -141,7 +240,8 @@ monitorsRoutes.get("/", async (c) => {
         : sortBy === "lastCheckedAt"
           ? monitors.lastCheckedAt
           : monitors.createdAt;
-  const orderBy = sortDirection === "asc" ? [asc(sortColumn)] : [desc(sortColumn)];
+  const orderBy =
+    sortDirection === "asc" ? [asc(sortColumn)] : [desc(sortColumn)];
 
   // Get total count
   const countResult = await db
@@ -177,23 +277,66 @@ monitorsRoutes.get("/", async (c) => {
   // Get uptime stats for last 45 days
   const fortyFiveDaysAgo = new Date();
   fortyFiveDaysAgo.setDate(fortyFiveDaysAgo.getDate() - 45);
+  const historicalAggregateCutoff = new Date();
+  historicalAggregateCutoff.setUTCHours(0, 0, 0, 0);
+  historicalAggregateCutoff.setUTCDate(
+    historicalAggregateCutoff.getUTCDate() - 1,
+  );
+  const rawUptimeWindowStart =
+    historicalAggregateCutoff > fortyFiveDaysAgo
+      ? historicalAggregateCutoff
+      : fortyFiveDaysAgo;
 
-  const uptimeStats = await db
-    .select({
-      monitorId: checkResults.monitorId,
-      successCount: sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'success')`.as("success_count"),
-      degradedCount: sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'degraded')`.as("degraded_count"),
-      totalCount: sql<number>`COUNT(*)`.as("total_count"),
-    })
-    .from(checkResults)
-    .where(
-      and(
-        inArray(checkResults.monitorId, monitorIds),
-        gte(checkResults.createdAt, fortyFiveDaysAgo),
-        sql`COALESCE(${checkResults.metadata} ->> 'checkType', '') <> 'certificate_transparency'`
+  const [historicalUptimeStats, recentUptimeStats] = await Promise.all([
+    historicalAggregateCutoff > fortyFiveDaysAgo
+      ? db
+          .select({
+            monitorId: checkResultsDaily.monitorId,
+            successCount:
+              sql<number>`SUM(${checkResultsDaily.successCount})`.as(
+                "success_count",
+              ),
+            degradedCount:
+              sql<number>`SUM(${checkResultsDaily.degradedCount})`.as(
+                "degraded_count",
+              ),
+            totalCount: sql<number>`SUM(${checkResultsDaily.totalCount})`.as(
+              "total_count",
+            ),
+          })
+          .from(checkResultsDaily)
+          .where(
+            and(
+              inArray(checkResultsDaily.monitorId, monitorIds),
+              gte(checkResultsDaily.date, fortyFiveDaysAgo),
+              lt(checkResultsDaily.date, historicalAggregateCutoff),
+            ),
+          )
+          .groupBy(checkResultsDaily.monitorId)
+      : Promise.resolve([]),
+    db
+      .select({
+        monitorId: checkResults.monitorId,
+        successCount:
+          sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'success')`.as(
+            "success_count",
+          ),
+        degradedCount:
+          sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'degraded')`.as(
+            "degraded_count",
+          ),
+        totalCount: sql<number>`COUNT(*)`.as("total_count"),
+      })
+      .from(checkResults)
+      .where(
+        and(
+          inArray(checkResults.monitorId, monitorIds),
+          gte(checkResults.createdAt, rawUptimeWindowStart),
+          sql`COALESCE(${checkResults.metadata} ->> 'checkType', '') <> 'certificate_transparency'`,
+        ),
       )
-    )
-    .groupBy(checkResults.monitorId);
+      .groupBy(checkResults.monitorId),
+  ]);
 
   // Get average response time for last 24 hours
   const twentyFourHoursAgo = new Date();
@@ -202,7 +345,9 @@ monitorsRoutes.get("/", async (c) => {
   const responseStats = await db
     .select({
       monitorId: checkResults.monitorId,
-      avgResponseTime: sql<number>`AVG(${checkResults.responseTimeMs})`.as("avg_response_time"),
+      avgResponseTime: sql<number>`AVG(${checkResults.responseTimeMs})`.as(
+        "avg_response_time",
+      ),
     })
     .from(checkResults)
     .where(
@@ -210,28 +355,29 @@ monitorsRoutes.get("/", async (c) => {
         inArray(checkResults.monitorId, monitorIds),
         gte(checkResults.createdAt, twentyFourHoursAgo),
         isNotNull(checkResults.responseTimeMs),
-        inArray(checkResults.status, ['success', 'degraded']),
-        sql`COALESCE(${checkResults.metadata} ->> 'checkType', '') <> 'certificate_transparency'`
-      )
+        inArray(checkResults.status, ["success", "degraded"]),
+        sql`COALESCE(${checkResults.metadata} ->> 'checkType', '') <> 'certificate_transparency'`,
+      ),
     )
     .groupBy(checkResults.monitorId);
 
   // Build lookup maps
   // Ensure counts are numbers (PostgreSQL bigint may come as strings)
+  const uptimeTotalsByMonitor = new Map<string, MonitorCountStats>();
+  combineMonitorCountStats(uptimeTotalsByMonitor, historicalUptimeStats);
+  combineMonitorCountStats(uptimeTotalsByMonitor, recentUptimeStats);
+
   const uptimeMap = new Map(
-    uptimeStats.map((s) => {
-      const successCount = Number(s.successCount);
-      const degradedCount = Number(s.degradedCount);
-      const totalCount = Number(s.totalCount);
-      return [
-        s.monitorId,
-        totalCount > 0 ? ((successCount + degradedCount) / totalCount) * 100 : null,
-      ];
-    })
+    Array.from(uptimeTotalsByMonitor.entries()).map(([monitorId, stats]) => [
+      monitorId,
+      stats.totalCount > 0
+        ? ((stats.successCount + stats.degradedCount) / stats.totalCount) * 100
+        : null,
+    ]),
   );
 
   const responseMap = new Map(
-    responseStats.map((s) => [s.monitorId, s.avgResponseTime])
+    responseStats.map((s) => [s.monitorId, s.avgResponseTime]),
   );
 
   // Enrich monitors with stats
@@ -262,15 +408,15 @@ function parseBulkIds(input: unknown): string[] {
       rawIds
         .filter((id): id is string => typeof id === "string")
         .map((id) => id.trim())
-        .filter((id) => id.length > 0)
-    )
+        .filter((id) => id.length > 0),
+    ),
   );
 }
 
 async function processInBatches<T>(
   items: T[],
   batchSize: number,
-  fn: (item: T) => Promise<void>
+  fn: (item: T) => Promise<void>,
 ): Promise<void> {
   for (let i = 0; i < items.length; i += batchSize) {
     const batch = items.slice(i, i + batchSize);
@@ -286,7 +432,10 @@ monitorsRoutes.post("/bulk/pause", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const ids = parseBulkIds(body);
   if (ids.length === 0) {
-    return c.json({ success: false, error: "At least one monitor ID is required" }, 400);
+    return c.json(
+      { success: false, error: "At least one monitor ID is required" },
+      400,
+    );
   }
 
   const now = new Date();
@@ -297,7 +446,12 @@ monitorsRoutes.post("/bulk/pause", async (c) => {
       status: "paused",
       updatedAt: now,
     })
-    .where(and(eq(monitors.organizationId, organizationId), inArray(monitors.id, ids)))
+    .where(
+      and(
+        eq(monitors.organizationId, organizationId),
+        inArray(monitors.id, ids),
+      ),
+    )
     .returning({ id: monitors.id, name: monitors.name });
 
   await publishEvent(`${SSE_CHANNELS.ORGANIZATION}${organizationId}`, {
@@ -330,7 +484,10 @@ monitorsRoutes.post("/bulk/resume", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const ids = parseBulkIds(body);
   if (ids.length === 0) {
-    return c.json({ success: false, error: "At least one monitor ID is required" }, 400);
+    return c.json(
+      { success: false, error: "At least one monitor ID is required" },
+      400,
+    );
   }
 
   const now = new Date();
@@ -342,7 +499,12 @@ monitorsRoutes.post("/bulk/resume", async (c) => {
       nextCheckAt: now,
       updatedAt: now,
     })
-    .where(and(eq(monitors.organizationId, organizationId), inArray(monitors.id, ids)))
+    .where(
+      and(
+        eq(monitors.organizationId, organizationId),
+        inArray(monitors.id, ids),
+      ),
+    )
     .returning({ id: monitors.id, name: monitors.name });
 
   await publishEvent(`${SSE_CHANNELS.ORGANIZATION}${organizationId}`, {
@@ -375,11 +537,17 @@ monitorsRoutes.post("/bulk/check", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const ids = parseBulkIds(body);
   if (ids.length === 0) {
-    return c.json({ success: false, error: "At least one monitor ID is required" }, 400);
+    return c.json(
+      { success: false, error: "At least one monitor ID is required" },
+      400,
+    );
   }
 
   const rows = await db.query.monitors.findMany({
-    where: and(eq(monitors.organizationId, organizationId), inArray(monitors.id, ids)),
+    where: and(
+      eq(monitors.organizationId, organizationId),
+      inArray(monitors.id, ids),
+    ),
   });
 
   const activeMonitors = rows.filter((monitor) => !monitor.paused);
@@ -413,7 +581,15 @@ monitorsRoutes.post("/bulk/check", async (c) => {
         lastCheckedAt: now,
         updatedAt: now,
       })
-      .where(and(eq(monitors.organizationId, organizationId), inArray(monitors.id, activeMonitors.map((m) => m.id))));
+      .where(
+        and(
+          eq(monitors.organizationId, organizationId),
+          inArray(
+            monitors.id,
+            activeMonitors.map((m) => m.id),
+          ),
+        ),
+      );
   }
 
   return c.json({
@@ -435,12 +611,20 @@ monitorsRoutes.post("/bulk/delete", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const ids = parseBulkIds(body);
   if (ids.length === 0) {
-    return c.json({ success: false, error: "At least one monitor ID is required" }, 400);
+    return c.json(
+      { success: false, error: "At least one monitor ID is required" },
+      400,
+    );
   }
 
   const deleted = await db
     .delete(monitors)
-    .where(and(eq(monitors.organizationId, organizationId), inArray(monitors.id, ids)))
+    .where(
+      and(
+        eq(monitors.organizationId, organizationId),
+        inArray(monitors.id, ids),
+      ),
+    )
     .returning({ id: monitors.id, name: monitors.name });
 
   const now = new Date();
@@ -483,7 +667,7 @@ monitorsRoutes.post("/", async (c) => {
       licenseContext,
       "monitors",
       Number(currentMonitorCount[0]?.count ?? 0),
-      "Monitor"
+      "Monitor",
     );
   } catch (error) {
     // If it's an HTTPException (403 from requireResourceLimit), re-throw it
@@ -513,12 +697,16 @@ monitorsRoutes.post("/", async (c) => {
   // Encrypt secrets in config if present
   let config = validated.config;
   if (config) {
-    config = await encryptConfigSecrets(config as Record<string, unknown>) as typeof config;
+    config = (await encryptConfigSecrets(
+      config as Record<string, unknown>,
+    )) as typeof config;
   }
 
   // Sanitize user-provided strings to prevent XSS
   const sanitizedName = sanitizeHtml(validated.name);
-  const sanitizedDescription = validated.description ? sanitizeHtml(validated.description) : null;
+  const sanitizedDescription = validated.description
+    ? sanitizeHtml(validated.description)
+    : null;
 
   const [monitor] = await db
     .insert(monitors)
@@ -545,7 +733,12 @@ monitorsRoutes.post("/", async (c) => {
   // Publish monitor created event
   await publishEvent(`${SSE_CHANNELS.ORGANIZATION}${organizationId}`, {
     type: "monitor:created",
-    data: { id: monitor.id, name: monitor.name, type: monitor.type, status: monitor.status },
+    data: {
+      id: monitor.id,
+      name: monitor.name,
+      type: monitor.type,
+      status: monitor.status,
+    },
     timestamp: now.toISOString(),
   });
 
@@ -557,15 +750,24 @@ monitorsRoutes.post("/", async (c) => {
     resourceType: "monitor",
     resourceId: monitor.id,
     resourceName: monitor.name,
-    metadata: { after: { name: monitor.name, url: monitor.url, type: monitor.type } },
+    metadata: {
+      after: { name: monitor.name, url: monitor.url, type: monitor.type },
+    },
   });
 
-  const depsResult = await replaceDependencies(organizationId, monitor.id, dependsOn);
+  const depsResult = await replaceDependencies(
+    organizationId,
+    monitor.id,
+    dependsOn,
+  );
   if (!depsResult.ok) {
     await db.delete(monitors).where(eq(monitors.id, monitor.id));
     return c.json(
-      { success: false, error: depsResult.error ?? "Invalid monitor dependencies" },
-      (depsResult.status ?? 400) as 400 | 404
+      {
+        success: false,
+        error: depsResult.error ?? "Invalid monitor dependencies",
+      },
+      (depsResult.status ?? 400) as 400 | 404,
     );
   }
 
@@ -574,7 +776,7 @@ monitorsRoutes.post("/", async (c) => {
       success: true,
       data: { ...monitor, dependsOn: depsResult.ids },
     },
-    201
+    201,
   );
 });
 
@@ -586,7 +788,7 @@ monitorsRoutes.get("/:id", async (c) => {
   const monitor = await db.query.monitors.findFirst({
     where: and(
       eq(monitors.id, id),
-      eq(monitors.organizationId, organizationId)
+      eq(monitors.organizationId, organizationId),
     ),
   });
 
@@ -596,7 +798,10 @@ monitorsRoutes.get("/:id", async (c) => {
 
   return c.json({
     success: true,
-    data: { ...monitor, dependsOn: await getMonitorDependenciesIds(organizationId, monitor.id) },
+    data: {
+      ...monitor,
+      dependsOn: await getMonitorDependenciesIds(organizationId, monitor.id),
+    },
   });
 });
 
@@ -620,11 +825,14 @@ monitorsRoutes.post("/:id/duplicate", async (c) => {
     licenseContext,
     "monitors",
     Number(currentMonitorCount[0]?.count ?? 0),
-    "Monitor"
+    "Monitor",
   );
 
   const sourceMonitor = await db.query.monitors.findFirst({
-    where: and(eq(monitors.id, id), eq(monitors.organizationId, organizationId)),
+    where: and(
+      eq(monitors.id, id),
+      eq(monitors.organizationId, organizationId),
+    ),
   });
 
   if (!sourceMonitor) {
@@ -634,7 +842,7 @@ monitorsRoutes.post("/:id/duplicate", async (c) => {
   const duplicateId = nanoid();
   const now = new Date();
   const duplicateName = sanitizeHtml(
-    requestedName.length > 0 ? requestedName : `${sourceMonitor.name} (Copy)`
+    requestedName.length > 0 ? requestedName : `${sourceMonitor.name} (Copy)`,
   );
   const heartbeatToken = sourceMonitor.type === "heartbeat" ? nanoid(32) : null;
 
@@ -668,10 +876,16 @@ monitorsRoutes.post("/:id/duplicate", async (c) => {
     .returning();
 
   if (!duplicatedMonitor) {
-    return c.json({ success: false, error: "Failed to duplicate monitor" }, 500);
+    return c.json(
+      { success: false, error: "Failed to duplicate monitor" },
+      500,
+    );
   }
 
-  const existingDependsOn = await getMonitorDependenciesIds(organizationId, sourceMonitor.id);
+  const existingDependsOn = await getMonitorDependenciesIds(
+    organizationId,
+    sourceMonitor.id,
+  );
   if (existingDependsOn.length > 0) {
     const depNow = new Date();
     await db.insert(monitorDependencies).values(
@@ -680,13 +894,18 @@ monitorsRoutes.post("/:id/duplicate", async (c) => {
         downstreamMonitorId: duplicatedMonitor.id,
         upstreamMonitorId: upstreamId,
         createdAt: depNow,
-      }))
+      })),
     );
   }
 
   await publishEvent(`${SSE_CHANNELS.ORGANIZATION}${organizationId}`, {
     type: "monitor:created",
-    data: { id: duplicatedMonitor.id, name: duplicatedMonitor.name, type: duplicatedMonitor.type, status: duplicatedMonitor.status },
+    data: {
+      id: duplicatedMonitor.id,
+      name: duplicatedMonitor.name,
+      type: duplicatedMonitor.type,
+      status: duplicatedMonitor.status,
+    },
     timestamp: now.toISOString(),
   });
 
@@ -705,7 +924,7 @@ monitorsRoutes.post("/:id/duplicate", async (c) => {
       success: true,
       data: { ...duplicatedMonitor, dependsOn: existingDependsOn },
     },
-    201
+    201,
   );
 });
 
@@ -728,19 +947,24 @@ monitorsRoutes.patch("/:id", async (c) => {
 
   // Get existing monitor for audit log
   const existingMonitor = await db.query.monitors.findFirst({
-    where: and(eq(monitors.id, id), eq(monitors.organizationId, organizationId)),
+    where: and(
+      eq(monitors.id, id),
+      eq(monitors.organizationId, organizationId),
+    ),
   });
 
   if (!existingMonitor) {
     throw new Error("Not found");
   }
 
-  const updateData = { ...monitorUpdates, updatedAt: now } as Partial<typeof monitors.$inferInsert>;
+  const updateData = { ...monitorUpdates, updatedAt: now } as Partial<
+    typeof monitors.$inferInsert
+  >;
   const [monitor] = await db
     .update(monitors)
     .set(updateData)
     .where(
-      and(eq(monitors.id, id), eq(monitors.organizationId, organizationId))
+      and(eq(monitors.id, id), eq(monitors.organizationId, organizationId)),
     )
     .returning();
 
@@ -751,7 +975,12 @@ monitorsRoutes.patch("/:id", async (c) => {
   // Publish monitor updated event
   await publishEvent(`${SSE_CHANNELS.ORGANIZATION}${organizationId}`, {
     type: "monitor:updated",
-    data: { id: monitor.id, name: monitor.name, type: monitor.type, status: monitor.status },
+    data: {
+      id: monitor.id,
+      name: monitor.name,
+      type: monitor.type,
+      status: monitor.status,
+    },
     timestamp: now.toISOString(),
   });
 
@@ -763,15 +992,28 @@ monitorsRoutes.patch("/:id", async (c) => {
     resourceType: "monitor",
     resourceId: monitor.id,
     resourceName: monitor.name,
-    before: { name: existingMonitor.name, url: existingMonitor.url, type: existingMonitor.type, intervalSeconds: existingMonitor.intervalSeconds },
-    after: { name: monitor.name, url: monitor.url, type: monitor.type, intervalSeconds: monitor.intervalSeconds },
+    before: {
+      name: existingMonitor.name,
+      url: existingMonitor.url,
+      type: existingMonitor.type,
+      intervalSeconds: existingMonitor.intervalSeconds,
+    },
+    after: {
+      name: monitor.name,
+      url: monitor.url,
+      type: monitor.type,
+      intervalSeconds: monitor.intervalSeconds,
+    },
   });
 
   const depsResult = await replaceDependencies(organizationId, id, dependsOn);
   if (!depsResult.ok) {
     return c.json(
-      { success: false, error: depsResult.error ?? "Invalid monitor dependencies" },
-      depsResult.status ?? 400
+      {
+        success: false,
+        error: depsResult.error ?? "Invalid monitor dependencies",
+      },
+      depsResult.status ?? 400,
     );
   }
 
@@ -789,7 +1031,10 @@ monitorsRoutes.delete("/:id", async (c) => {
 
   // Get monitor info for audit before delete
   const existingMonitor = await db.query.monitors.findFirst({
-    where: and(eq(monitors.id, id), eq(monitors.organizationId, organizationId)),
+    where: and(
+      eq(monitors.id, id),
+      eq(monitors.organizationId, organizationId),
+    ),
   });
 
   if (!existingMonitor) {
@@ -799,7 +1044,7 @@ monitorsRoutes.delete("/:id", async (c) => {
   const result = await db
     .delete(monitors)
     .where(
-      and(eq(monitors.id, id), eq(monitors.organizationId, organizationId))
+      and(eq(monitors.id, id), eq(monitors.organizationId, organizationId)),
     )
     .returning();
 
@@ -818,7 +1063,13 @@ monitorsRoutes.delete("/:id", async (c) => {
     resourceType: "monitor",
     resourceId: id,
     resourceName: existingMonitor.name,
-    metadata: { before: { name: existingMonitor.name, url: existingMonitor.url, type: existingMonitor.type } },
+    metadata: {
+      before: {
+        name: existingMonitor.name,
+        url: existingMonitor.url,
+        type: existingMonitor.type,
+      },
+    },
   });
 
   return c.json({
@@ -843,7 +1094,7 @@ monitorsRoutes.post("/:id/pause", async (c) => {
       updatedAt: now,
     })
     .where(
-      and(eq(monitors.id, id), eq(monitors.organizationId, organizationId))
+      and(eq(monitors.id, id), eq(monitors.organizationId, organizationId)),
     )
     .returning();
 
@@ -854,7 +1105,12 @@ monitorsRoutes.post("/:id/pause", async (c) => {
   // Publish monitor paused event
   await publishEvent(`${SSE_CHANNELS.ORGANIZATION}${organizationId}`, {
     type: "monitor:status_changed",
-    data: { id: monitor.id, name: monitor.name, status: "paused", previousStatus: "up" },
+    data: {
+      id: monitor.id,
+      name: monitor.name,
+      status: "paused",
+      previousStatus: "up",
+    },
     timestamp: now.toISOString(),
   });
 
@@ -891,7 +1147,7 @@ monitorsRoutes.post("/:id/resume", async (c) => {
       updatedAt: now,
     })
     .where(
-      and(eq(monitors.id, id), eq(monitors.organizationId, organizationId))
+      and(eq(monitors.id, id), eq(monitors.organizationId, organizationId)),
     )
     .returning();
 
@@ -902,7 +1158,12 @@ monitorsRoutes.post("/:id/resume", async (c) => {
   // Publish monitor resumed event
   await publishEvent(`${SSE_CHANNELS.ORGANIZATION}${organizationId}`, {
     type: "monitor:status_changed",
-    data: { id: monitor.id, name: monitor.name, status: "pending", previousStatus: "paused" },
+    data: {
+      id: monitor.id,
+      name: monitor.name,
+      status: "pending",
+      previousStatus: "paused",
+    },
     timestamp: now.toISOString(),
   });
 
@@ -931,7 +1192,7 @@ monitorsRoutes.get("/:id/results", async (c) => {
   const monitor = await db.query.monitors.findFirst({
     where: and(
       eq(monitors.id, id),
-      eq(monitors.organizationId, organizationId)
+      eq(monitors.organizationId, organizationId),
     ),
   });
 
@@ -971,20 +1232,22 @@ monitorsRoutes.get("/:id/results", async (c) => {
       emailAuthDetails: checkResults.emailAuthDetails,
       securityHeaders: checkResults.securityHeaders,
       // Include incident info if linked
-      incident: includeIncident ? {
-        id: incidents.id,
-        title: incidents.title,
-        severity: incidents.severity,
-        status: incidents.status,
-      } : sql`NULL`,
+      incident: includeIncident
+        ? {
+            id: incidents.id,
+            title: incidents.title,
+            severity: incidents.severity,
+            status: incidents.status,
+          }
+        : sql`NULL`,
     })
     .from(checkResults)
     .leftJoin(incidents, eq(checkResults.incidentId, incidents.id))
     .where(
       and(
         eq(checkResults.monitorId, id),
-        sql`COALESCE(${checkResults.metadata} ->> 'checkType', '') <> 'certificate_transparency'`
-      )
+        sql`COALESCE(${checkResults.metadata} ->> 'checkType', '') <> 'certificate_transparency'`,
+      ),
     )
     .orderBy(desc(checkResults.createdAt))
     .limit(limit)
@@ -993,9 +1256,13 @@ monitorsRoutes.get("/:id/results", async (c) => {
   // Transform results to flatten incident data when not null
   const transformedResults = results.map((r) => ({
     ...r,
-    incident: r.incident && typeof r.incident === "object" && "id" in r.incident && r.incident.id
-      ? r.incident
-      : null,
+    incident:
+      r.incident &&
+      typeof r.incident === "object" &&
+      "id" in r.incident &&
+      r.incident.id
+        ? r.incident
+        : null,
   }));
 
   return c.json({
@@ -1018,7 +1285,7 @@ monitorsRoutes.post("/:id/check", async (c) => {
   const monitor = await db.query.monitors.findFirst({
     where: and(
       eq(monitors.id, id),
-      eq(monitors.organizationId, organizationId)
+      eq(monitors.organizationId, organizationId),
     ),
   });
 
@@ -1032,7 +1299,7 @@ monitorsRoutes.post("/:id/check", async (c) => {
         success: false,
         error: "Cannot check paused monitor",
       },
-      400
+      400,
     );
   }
 
@@ -1081,7 +1348,7 @@ monitorsRoutes.post("/:id/heartbeat", async (c) => {
   const monitor = await db.query.monitors.findFirst({
     where: and(
       eq(monitors.id, id),
-      eq(monitors.organizationId, organizationId)
+      eq(monitors.organizationId, organizationId),
     ),
   });
 
@@ -1095,14 +1362,19 @@ monitorsRoutes.post("/:id/heartbeat", async (c) => {
         success: false,
         error: "Monitor is not a heartbeat type",
       },
-      400
+      400,
     );
   }
 
   // Parse query params for ping details
-  const status = (c.req.query("status") as "start" | "complete" | "fail") || "complete";
-  const duration = c.req.query("duration") ? parseInt(c.req.query("duration")!) : undefined;
-  const exitCode = c.req.query("exit_code") ? parseInt(c.req.query("exit_code")!) : undefined;
+  const status =
+    (c.req.query("status") as "start" | "complete" | "fail") || "complete";
+  const duration = c.req.query("duration")
+    ? parseInt(c.req.query("duration")!)
+    : undefined;
+  const exitCode = c.req.query("exit_code")
+    ? parseInt(c.req.query("exit_code")!)
+    : undefined;
 
   // Get optional metadata from body
   let metadata: Record<string, unknown> | undefined;
@@ -1173,7 +1445,7 @@ monitorsRoutes.get("/:id/heartbeat", async (c) => {
   const monitor = await db.query.monitors.findFirst({
     where: and(
       eq(monitors.id, id),
-      eq(monitors.organizationId, organizationId)
+      eq(monitors.organizationId, organizationId),
     ),
   });
 
@@ -1187,7 +1459,7 @@ monitorsRoutes.get("/:id/heartbeat", async (c) => {
         success: false,
         error: "Monitor is not a heartbeat type",
       },
-      400
+      400,
     );
   }
 

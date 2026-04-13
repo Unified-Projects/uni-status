@@ -9,7 +9,7 @@ export function useEvents(params?: EventsListParams) {
   const organizationId = useDashboardStore((state) => state.currentOrganizationId);
 
   return useQuery({
-    queryKey: queryKeys.events.list(params),
+    queryKey: queryKeys.events.list(organizationId ?? undefined, params),
     queryFn: () => apiClient.events.list(params, organizationId ?? undefined),
     enabled: !!organizationId,
   });
@@ -19,7 +19,7 @@ export function useEvent(type: EventType, id: string) {
   const organizationId = useDashboardStore((state) => state.currentOrganizationId);
 
   return useQuery({
-    queryKey: queryKeys.events.detail(type, id),
+    queryKey: queryKeys.events.detail(type, id, organizationId ?? undefined),
     queryFn: () => apiClient.events.get(type, id, organizationId ?? undefined),
     enabled: !!type && !!id && !!organizationId,
   });
@@ -29,7 +29,7 @@ export function useEventSubscriptions() {
   const organizationId = useDashboardStore((state) => state.currentOrganizationId);
 
   return useQuery({
-    queryKey: queryKeys.events.subscriptions(),
+    queryKey: queryKeys.events.subscriptions(organizationId ?? undefined),
     queryFn: () => apiClient.events.subscriptions(organizationId ?? undefined),
     enabled: !!organizationId,
   });
@@ -43,9 +43,15 @@ export function useSubscribeToEvent() {
     mutationFn: ({ type, id }: { type: EventType; id: string }) =>
       apiClient.events.subscribe(type, id, organizationId ?? undefined),
     onSuccess: (_, { type, id }) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.events.detail(type, id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.events.subscriptions() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.events.lists() });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.events.detail(type, id, organizationId ?? undefined),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.events.subscriptions(organizationId ?? undefined),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.events.lists(organizationId ?? undefined),
+      });
     },
   });
 }
@@ -58,9 +64,15 @@ export function useUnsubscribeFromEvent() {
     mutationFn: ({ type, id }: { type: EventType; id: string }) =>
       apiClient.events.unsubscribe(type, id, organizationId ?? undefined),
     onSuccess: (_, { type, id }) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.events.detail(type, id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.events.subscriptions() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.events.lists() });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.events.detail(type, id, organizationId ?? undefined),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.events.subscriptions(organizationId ?? undefined),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.events.lists(organizationId ?? undefined),
+      });
     },
   });
 }

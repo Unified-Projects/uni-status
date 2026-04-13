@@ -263,7 +263,9 @@ export const statusPageThemes = pgTable(
       background: string;
       backgroundDark?: string;
       text: string;
+      mutedText?: string;
       textDark?: string;
+      mutedTextDark?: string;
       surface: string;
       surfaceDark?: string;
       border?: string;

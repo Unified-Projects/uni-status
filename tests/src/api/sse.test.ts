@@ -75,6 +75,31 @@ describe("SSE endpoints", () => {
     expect(event).toBe("connected");
   });
 
+  it("rejects monitor SSE without authentication", async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/sse/monitors/${monitorId}`, {
+        headers: {
+          Accept: "text/event-stream",
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+      expect([400, 401, 403]).toContain(res.status);
+      expect(res.status).not.toBe(200);
+
+      controller.abort();
+    } catch (error: unknown) {
+      clearTimeout(timeout);
+      if (error instanceof Error && error.name !== "AbortError") {
+        throw error;
+      }
+    }
+  });
+
   it("connects to status page SSE and receives connected event", async () => {
     // Status page slug can be arbitrary; SSE just connects
     const event = await readFirstEvent(`${API_BASE_URL}/api/v1/sse/status-pages/example-slug`);

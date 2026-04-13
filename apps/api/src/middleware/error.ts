@@ -5,6 +5,27 @@ import { createLogger } from "@uni-status/shared";
 
 const log = createLogger({ module: "error-handler" });
 
+function getHttpErrorCode(status: number): string {
+  switch (status) {
+    case 400:
+      return "BAD_REQUEST";
+    case 401:
+      return "UNAUTHORIZED";
+    case 403:
+      return "FORBIDDEN";
+    case 404:
+      return "NOT_FOUND";
+    case 409:
+      return "CONFLICT";
+    case 422:
+      return "UNPROCESSABLE_ENTITY";
+    case 429:
+      return "RATE_LIMIT_EXCEEDED";
+    default:
+      return status >= 500 ? "INTERNAL_ERROR" : "HTTP_ERROR";
+  }
+}
+
 export function errorHandler(err: Error, c: Context) {
   log.error({
     err,
@@ -18,10 +39,15 @@ export function errorHandler(err: Error, c: Context) {
 
   // Normalize HTTPExceptions (e.g., thrown by license/validation guards) to JSON
   if (err instanceof HTTPException) {
+    const response = err.getResponse();
+    const fallbackMessage = response.statusText || err.message || "Request failed";
     return c.json(
       {
         success: false,
-        error: err.message,
+        error: {
+          code: getHttpErrorCode(err.status),
+          message: err.message || fallbackMessage,
+        },
       },
       err.status
     );

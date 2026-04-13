@@ -138,6 +138,7 @@ pendingApprovalsRoutes.get("/", async (c) => {
     success: true,
     data: approvals.map((a) => ({
       id: a.id,
+      userId: a.user.id,
       user: a.user,
       status: a.status,
       requestedAt: a.requestedAt,

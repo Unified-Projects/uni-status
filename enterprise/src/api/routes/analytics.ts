@@ -1,8 +1,14 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
-import { monitors, checkResults, checkResultsHourly, checkResultsDaily, incidents } from "@uni-status/database/schema";
+import {
+  monitors,
+  checkResults,
+  checkResultsHourly,
+  checkResultsDaily,
+  incidents,
+} from "@uni-status/database/schema";
 import { enterpriseDb as db } from "../../database";
 import { requireOrganization } from "../middleware/auth";
-import { eq, and, gte, lte, desc, sql, inArray } from "drizzle-orm";
+import { eq, and, gte, lte, lt, desc, sql, inArray } from "drizzle-orm";
 
 export const analyticsRoutes = new OpenAPIHono();
 
@@ -11,7 +17,12 @@ analyticsRoutes.get("/uptime", async (c) => {
   const organizationId = await requireOrganization(c);
   const monitorId = c.req.query("monitorId");
   const days = parseInt(c.req.query("days") || "30");
-  const requestedGranularity = c.req.query("granularity") as "minute" | "hour" | "day" | "auto" | undefined;
+  const requestedGranularity = c.req.query("granularity") as
+    | "minute"
+    | "hour"
+    | "day"
+    | "auto"
+    | undefined;
 
   // Aggregates do not store organizationId, so scope by organization monitor ids.
   let scopedMonitorIds: string[] | null = null;
@@ -54,18 +65,21 @@ analyticsRoutes.get("/uptime", async (c) => {
   let granularity: "minute" | "hour" | "day" = "day";
 
   // If a specific granularity is requested (not "auto"), try to honor it
-  const forceGranularity = requestedGranularity && requestedGranularity !== "auto" ? requestedGranularity : null;
+  const forceGranularity =
+    requestedGranularity && requestedGranularity !== "auto"
+      ? requestedGranularity
+      : null;
 
   // Try daily aggregates first
   const dailyAggregates = await db.query.checkResultsDaily.findMany({
     where: monitorId
       ? and(
           eq(checkResultsDaily.monitorId, monitorId),
-          gte(checkResultsDaily.date, startDate)
+          gte(checkResultsDaily.date, startDate),
         )
       : and(
           inArray(checkResultsDaily.monitorId, scopedMonitorIds!),
-          gte(checkResultsDaily.date, startDate)
+          gte(checkResultsDaily.date, startDate),
         ),
     orderBy: [desc(checkResultsDaily.date)],
   });
@@ -74,7 +88,10 @@ analyticsRoutes.get("/uptime", async (c) => {
 
   // If force granularity is "day", use daily data
   // Else if adaptive: if we have less than 1/3 of requested days, try finer granularity
-  if (forceGranularity === "day" || (!forceGranularity && daysWithDailyData >= days / 3)) {
+  if (
+    forceGranularity === "day" ||
+    (!forceGranularity && daysWithDailyData >= days / 3)
+  ) {
     // Use daily data
     granularity = "day";
     intervals = dailyAggregates.map((day) => ({
@@ -91,18 +108,21 @@ analyticsRoutes.get("/uptime", async (c) => {
       where: monitorId
         ? and(
             eq(checkResultsHourly.monitorId, monitorId),
-            gte(checkResultsHourly.hour, startDate)
+            gte(checkResultsHourly.hour, startDate),
           )
         : and(
             inArray(checkResultsHourly.monitorId, scopedMonitorIds!),
-            gte(checkResultsHourly.hour, startDate)
+            gte(checkResultsHourly.hour, startDate),
           ),
       orderBy: [desc(checkResultsHourly.hour)],
     });
 
     // If force granularity is "hour", use hourly data
     // Else if adaptive: if we have enough hourly intervals, use hourly
-    if (forceGranularity === "hour" || (!forceGranularity && hourlyAggregates.length >= days)) {
+    if (
+      forceGranularity === "hour" ||
+      (!forceGranularity && hourlyAggregates.length >= days)
+    ) {
       // Use hourly data
       granularity = "hour";
       intervals = hourlyAggregates.map((hour) => ({
@@ -117,25 +137,39 @@ analyticsRoutes.get("/uptime", async (c) => {
       // Try minute-level data from raw check results
       const minuteResults = await db
         .select({
-          minute: sql<Date>`DATE_TRUNC('minute', ${checkResults.createdAt})`.as("minute"),
-          successCount: sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'success')`.as("success_count"),
-          failureCount: sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} IN ('failure', 'timeout', 'error'))`.as("failure_count"),
-          degradedCount: sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'degraded')`.as("degraded_count"),
+          minute: sql<Date>`DATE_TRUNC('minute', ${checkResults.createdAt})`.as(
+            "minute",
+          ),
+          successCount:
+            sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'success')`.as(
+              "success_count",
+            ),
+          failureCount:
+            sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} IN ('failure', 'timeout', 'error'))`.as(
+              "failure_count",
+            ),
+          degradedCount:
+            sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'degraded')`.as(
+              "degraded_count",
+            ),
           totalCount: sql<number>`COUNT(*)`.as("total_count"),
         })
         .from(checkResults)
         .where(
           and(
             eq(checkResults.monitorId, monitorId),
-            gte(checkResults.createdAt, startDate)
-          )
+            gte(checkResults.createdAt, startDate),
+          ),
         )
         .groupBy(sql`DATE_TRUNC('minute', ${checkResults.createdAt})`)
         .orderBy(sql`DATE_TRUNC('minute', ${checkResults.createdAt}) DESC`);
 
       // If force granularity is "minute", use minute data
       // Else if adaptive: if we have enough minute intervals, use minute
-      if (forceGranularity === "minute" || (!forceGranularity && minuteResults.length >= days)) {
+      if (
+        forceGranularity === "minute" ||
+        (!forceGranularity && minuteResults.length >= days)
+      ) {
         // Use minute data
         granularity = "minute";
         intervals = minuteResults.map((row) => {
@@ -149,7 +183,8 @@ analyticsRoutes.get("/uptime", async (c) => {
             degradedCount: degraded,
             failureCount: failure,
             totalCount: total,
-            uptimePercentage: total > 0 ? ((success + degraded) / total) * 100 : null,
+            uptimePercentage:
+              total > 0 ? ((success + degraded) / total) * 100 : null,
           };
         });
       } else if (hourlyAggregates.length > 0) {
@@ -177,7 +212,8 @@ analyticsRoutes.get("/uptime", async (c) => {
             degradedCount: degraded,
             failureCount: failure,
             totalCount: total,
-            uptimePercentage: total > 0 ? ((success + degraded) / total) * 100 : null,
+            uptimePercentage:
+              total > 0 ? ((success + degraded) / total) * 100 : null,
           };
         });
       } else {
@@ -197,11 +233,19 @@ analyticsRoutes.get("/uptime", async (c) => {
       granularity = "day";
       if (hourlyAggregates.length > 0) {
         // Group hourly data into daily buckets
-        const dailyMap = new Map<string, { success: number; failure: number; degraded: number; total: number }>();
+        const dailyMap = new Map<
+          string,
+          { success: number; failure: number; degraded: number; total: number }
+        >();
 
         for (const hour of hourlyAggregates) {
           const dateStr = hour.hour.toISOString().slice(0, 10);
-          const existing = dailyMap.get(dateStr) || { success: 0, failure: 0, degraded: 0, total: 0 };
+          const existing = dailyMap.get(dateStr) || {
+            success: 0,
+            failure: 0,
+            degraded: 0,
+            total: 0,
+          };
           existing.success += Number(hour.successCount || 0);
           existing.failure += Number(hour.failureCount || 0);
           existing.degraded += Number(hour.degradedCount || 0);
@@ -209,14 +253,19 @@ analyticsRoutes.get("/uptime", async (c) => {
           dailyMap.set(dateStr, existing);
         }
 
-        intervals = Array.from(dailyMap.entries()).map(([date, counts]) => ({
-          timestamp: new Date(date),
-          successCount: counts.success,
-          failureCount: counts.failure,
-          degradedCount: counts.degraded,
-          totalCount: counts.total,
-          uptimePercentage: counts.total > 0 ? ((counts.success + counts.degraded) / counts.total) * 100 : null,
-        })).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+        intervals = Array.from(dailyMap.entries())
+          .map(([date, counts]) => ({
+            timestamp: new Date(date),
+            successCount: counts.success,
+            failureCount: counts.failure,
+            degradedCount: counts.degraded,
+            totalCount: counts.total,
+            uptimePercentage:
+              counts.total > 0
+                ? ((counts.success + counts.degraded) / counts.total) * 100
+                : null,
+          }))
+          .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
       } else {
         intervals = dailyAggregates.map((day) => ({
           timestamp: day.date,
@@ -250,24 +299,33 @@ analyticsRoutes.get("/uptime", async (c) => {
     // Only supplement when aggregates do not yet include the current interval.
     const currentIntervalKey = currentIntervalStart.toISOString();
     const hasCurrentAggregateInterval = intervals.some(
-      (i) => i.timestamp.toISOString() === currentIntervalKey
+      (i) => i.timestamp.toISOString() === currentIntervalKey,
     );
 
     if (!hasCurrentAggregateInterval) {
       // Fetch raw check results for the current interval
       const recentResults = await db
         .select({
-          successCount: sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'success')`.as("success_count"),
-          failureCount: sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} IN ('failure', 'timeout', 'error'))`.as("failure_count"),
-          degradedCount: sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'degraded')`.as("degraded_count"),
+          successCount:
+            sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'success')`.as(
+              "success_count",
+            ),
+          failureCount:
+            sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} IN ('failure', 'timeout', 'error'))`.as(
+              "failure_count",
+            ),
+          degradedCount:
+            sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'degraded')`.as(
+              "degraded_count",
+            ),
           totalCount: sql<number>`COUNT(*)`.as("total_count"),
         })
         .from(checkResults)
         .where(
           and(
             eq(checkResults.monitorId, monitorId),
-            gte(checkResults.createdAt, currentIntervalStart)
-          )
+            gte(checkResults.createdAt, currentIntervalStart),
+          ),
         );
 
       const recentResult = recentResults[0];
@@ -299,7 +357,7 @@ analyticsRoutes.get("/uptime", async (c) => {
       failure: acc.failure + interval.failureCount,
       total: acc.total + interval.totalCount,
     }),
-    { success: 0, degraded: 0, failure: 0, total: 0 }
+    { success: 0, degraded: 0, failure: 0, total: 0 },
   );
 
   const uptimePercentage =
@@ -308,17 +366,20 @@ analyticsRoutes.get("/uptime", async (c) => {
       : null;
 
   // Fetch incidents for the monitor if monitorId is specified
-  const incidentsByTimestamp = new Map<string, Array<{
-    id: string;
-    title: string;
-    severity: "minor" | "major" | "critical";
-  }>>();
+  const incidentsByTimestamp = new Map<
+    string,
+    Array<{
+      id: string;
+      title: string;
+      severity: "minor" | "major" | "critical";
+    }>
+  >();
 
   if (monitorId) {
     const monitorIncidents = await db.query.incidents.findMany({
       where: and(
         eq(incidents.organizationId, organizationId),
-        gte(incidents.startedAt, startDate)
+        gte(incidents.startedAt, startDate),
       ),
       orderBy: [desc(incidents.startedAt)],
     });
@@ -329,7 +390,9 @@ analyticsRoutes.get("/uptime", async (c) => {
       if (!affectedMonitors.includes(monitorId)) continue;
 
       const incidentStart = new Date(incident.startedAt);
-      const incidentEnd = incident.resolvedAt ? new Date(incident.resolvedAt) : new Date();
+      const incidentEnd = incident.resolvedAt
+        ? new Date(incident.resolvedAt)
+        : new Date();
 
       // Add incident to each interval it was active
       const currentTime = new Date(incidentStart);
@@ -351,7 +414,7 @@ analyticsRoutes.get("/uptime", async (c) => {
         }
 
         const existing = incidentsByTimestamp.get(timestampKey) || [];
-        if (!existing.some(i => i.id === incident.id)) {
+        if (!existing.some((i) => i.id === incident.id)) {
           existing.push({
             id: incident.id,
             title: incident.title,
@@ -375,7 +438,8 @@ analyticsRoutes.get("/uptime", async (c) => {
   return c.json({
     success: true,
     data: {
-      uptimePercentage: uptimePercentage !== null ? parseFloat(uptimePercentage) : null,
+      uptimePercentage:
+        uptimePercentage !== null ? parseFloat(uptimePercentage) : null,
       days,
       granularity,
       totals,
@@ -388,9 +452,12 @@ analyticsRoutes.get("/uptime", async (c) => {
         }
 
         // Recalculate uptime to ensure it includes degraded
-        const recalculatedUptime = interval.totalCount > 0
-          ? ((interval.successCount + interval.degradedCount) / interval.totalCount) * 100
-          : null;
+        const recalculatedUptime =
+          interval.totalCount > 0
+            ? ((interval.successCount + interval.degradedCount) /
+                interval.totalCount) *
+              100
+            : null;
         return {
           timestamp: interval.timestamp,
           uptime: recalculatedUptime,
@@ -410,9 +477,12 @@ analyticsRoutes.get("/uptime", async (c) => {
           timestampKey = interval.timestamp.toISOString();
         }
 
-        const recalculatedUptime = interval.totalCount > 0
-          ? ((interval.successCount + interval.degradedCount) / interval.totalCount) * 100
-          : null;
+        const recalculatedUptime =
+          interval.totalCount > 0
+            ? ((interval.successCount + interval.degradedCount) /
+                interval.totalCount) *
+              100
+            : null;
         return {
           date: interval.timestamp,
           uptime: recalculatedUptime,
@@ -445,7 +515,7 @@ analyticsRoutes.get("/response-times", async (c) => {
           message: "monitorId query parameter is required",
         },
       },
-      400
+      400,
     );
   }
 
@@ -453,7 +523,7 @@ analyticsRoutes.get("/response-times", async (c) => {
   const monitor = await db.query.monitors.findFirst({
     where: and(
       eq(monitors.id, monitorId),
-      eq(monitors.organizationId, organizationId)
+      eq(monitors.organizationId, organizationId),
     ),
   });
 
@@ -470,21 +540,34 @@ analyticsRoutes.get("/response-times", async (c) => {
   // 72-168 hours (7d): 15-minute buckets (~672 points)
   // 168-1080 hours (45d): hourly buckets (~1080 points)
   // > 1080 hours: 2-hour buckets
-  type Granularity = "raw" | "2min" | "5min" | "10min" | "15min" | "hourly" | "2hour";
+  type Granularity =
+    | "raw"
+    | "2min"
+    | "5min"
+    | "10min"
+    | "15min"
+    | "hourly"
+    | "2hour";
   const granularity: Granularity =
-    hours <= 3 ? "raw" :
-    hours <= 12 ? "2min" :
-    hours <= 24 ? "5min" :
-    hours <= 72 ? "10min" :
-    hours <= 168 ? "15min" :
-    hours <= 1080 ? "hourly" :
-    "2hour";
+    hours <= 3
+      ? "raw"
+      : hours <= 12
+        ? "2min"
+        : hours <= 24
+          ? "5min"
+          : hours <= 72
+            ? "10min"
+            : hours <= 168
+              ? "15min"
+              : hours <= 1080
+                ? "hourly"
+                : "2hour";
 
   // Always fetch raw check results first
   const rawResults = await db.query.checkResults.findMany({
     where: and(
       eq(checkResults.monitorId, monitorId),
-      gte(checkResults.createdAt, startDate)
+      gte(checkResults.createdAt, startDate),
     ),
     orderBy: [checkResults.createdAt],
   });
@@ -547,14 +630,27 @@ analyticsRoutes.get("/response-times", async (c) => {
     // Aggregate into buckets based on granularity
     // Bucket sizes in minutes
     const bucketMinutes =
-      granularity === "2min" ? 2 :
-      granularity === "5min" ? 5 :
-      granularity === "10min" ? 10 :
-      granularity === "15min" ? 15 :
-      granularity === "hourly" ? 60 :
-      120; // 2hour
+      granularity === "2min"
+        ? 2
+        : granularity === "5min"
+          ? 5
+          : granularity === "10min"
+            ? 10
+            : granularity === "15min"
+              ? 15
+              : granularity === "hourly"
+                ? 60
+                : 120; // 2hour
 
-    const bucketMap = new Map<string, { responseTimes: number[]; successCount: number; failureCount: number; degradedCount: number }>();
+    const bucketMap = new Map<
+      string,
+      {
+        responseTimes: number[];
+        successCount: number;
+        failureCount: number;
+        degradedCount: number;
+      }
+    >();
 
     for (const result of rawResults) {
       const resultDate = new Date(result.createdAt);
@@ -564,20 +660,27 @@ analyticsRoutes.get("/response-times", async (c) => {
       if (bucketMinutes < 60) {
         // Sub-hour buckets - round to nearest bucket within the hour
         const minutes = resultDate.getUTCMinutes();
-        const bucketMinute = Math.floor(minutes / bucketMinutes) * bucketMinutes;
+        const bucketMinute =
+          Math.floor(minutes / bucketMinutes) * bucketMinutes;
         bucketDate = new Date(resultDate);
         bucketDate.setUTCMinutes(bucketMinute, 0, 0);
       } else {
         // Hour or multi-hour buckets
         const bucketHours = bucketMinutes / 60;
-        const bucketHour = Math.floor(resultDate.getUTCHours() / bucketHours) * bucketHours;
+        const bucketHour =
+          Math.floor(resultDate.getUTCHours() / bucketHours) * bucketHours;
         bucketDate = new Date(resultDate);
         bucketDate.setUTCHours(bucketHour, 0, 0, 0);
       }
 
       const bucketKey = bucketDate.toISOString();
 
-      const existing = bucketMap.get(bucketKey) || { responseTimes: [], successCount: 0, failureCount: 0, degradedCount: 0 };
+      const existing = bucketMap.get(bucketKey) || {
+        responseTimes: [],
+        successCount: 0,
+        failureCount: 0,
+        degradedCount: 0,
+      };
 
       if (result.responseTimeMs != null) {
         existing.responseTimes.push(result.responseTimeMs);
@@ -649,7 +752,7 @@ analyticsRoutes.get("/incidents", async (c) => {
   const incidentList = await db.query.incidents.findMany({
     where: and(
       eq(incidents.organizationId, organizationId),
-      gte(incidents.startedAt, startDate)
+      gte(incidents.startedAt, startDate),
     ),
     orderBy: [desc(incidents.startedAt)],
   });
@@ -660,7 +763,7 @@ analyticsRoutes.get("/incidents", async (c) => {
       acc[incident.status] = (acc[incident.status] || 0) + 1;
       return acc;
     },
-    {} as Record<string, number>
+    {} as Record<string, number>,
   );
 
   // Count by severity
@@ -669,12 +772,12 @@ analyticsRoutes.get("/incidents", async (c) => {
       acc[incident.severity] = (acc[incident.severity] || 0) + 1;
       return acc;
     },
-    {} as Record<string, number>
+    {} as Record<string, number>,
   );
 
   // Calculate MTTR (Mean Time to Resolution)
   const resolvedIncidents = incidentList.filter(
-    (i) => i.status === "resolved" && i.resolvedAt
+    (i) => i.status === "resolved" && i.resolvedAt,
   );
   const totalResolutionTime = resolvedIncidents.reduce((acc, incident) => {
     const duration =
@@ -722,7 +825,7 @@ analyticsRoutes.get("/pagespeed", async (c) => {
           message: "monitorId query parameter is required",
         },
       },
-      400
+      400,
     );
   }
 
@@ -730,7 +833,7 @@ analyticsRoutes.get("/pagespeed", async (c) => {
   const monitor = await db.query.monitors.findFirst({
     where: and(
       eq(monitors.id, monitorId),
-      eq(monitors.organizationId, organizationId)
+      eq(monitors.organizationId, organizationId),
     ),
   });
 
@@ -746,23 +849,30 @@ analyticsRoutes.get("/pagespeed", async (c) => {
     where: and(
       eq(checkResults.monitorId, monitorId),
       gte(checkResults.createdAt, startDate),
-      sql`${checkResults.pagespeedScores} IS NOT NULL`
+      sql`${checkResults.pagespeedScores} IS NOT NULL`,
     ),
     orderBy: [desc(checkResults.createdAt)],
     limit: 100,
   });
 
   // Calculate averages
-  const scores = results.map((r) => r.pagespeedScores as {
-    performance?: number;
-    accessibility?: number;
-    bestPractices?: number;
-    seo?: number;
-  } | null).filter(Boolean);
+  const scores = results
+    .map(
+      (r) =>
+        r.pagespeedScores as {
+          performance?: number;
+          accessibility?: number;
+          bestPractices?: number;
+          seo?: number;
+        } | null,
+    )
+    .filter(Boolean);
 
   const average = (arr: (number | undefined)[]): number | null => {
     const valid = arr.filter((v): v is number => v !== undefined);
-    return valid.length > 0 ? valid.reduce((a, b) => a + b, 0) / valid.length : null;
+    return valid.length > 0
+      ? valid.reduce((a, b) => a + b, 0) / valid.length
+      : null;
   };
 
   const avgPerformance = average(scores.map((s) => s?.performance));
@@ -781,9 +891,12 @@ analyticsRoutes.get("/pagespeed", async (c) => {
       totalChecks: results.length,
       latest: latestScore,
       averages: {
-        performance: avgPerformance !== null ? Math.round(avgPerformance) : null,
-        accessibility: avgAccessibility !== null ? Math.round(avgAccessibility) : null,
-        bestPractices: avgBestPractices !== null ? Math.round(avgBestPractices) : null,
+        performance:
+          avgPerformance !== null ? Math.round(avgPerformance) : null,
+        accessibility:
+          avgAccessibility !== null ? Math.round(avgAccessibility) : null,
+        bestPractices:
+          avgBestPractices !== null ? Math.round(avgBestPractices) : null,
         seo: avgSeo !== null ? Math.round(avgSeo) : null,
       },
       history: results.map((r) => ({
@@ -809,7 +922,7 @@ analyticsRoutes.get("/web-vitals", async (c) => {
           message: "monitorId query parameter is required",
         },
       },
-      400
+      400,
     );
   }
 
@@ -817,7 +930,7 @@ analyticsRoutes.get("/web-vitals", async (c) => {
   const monitor = await db.query.monitors.findFirst({
     where: and(
       eq(monitors.id, monitorId),
-      eq(monitors.organizationId, organizationId)
+      eq(monitors.organizationId, organizationId),
     ),
   });
 
@@ -833,27 +946,34 @@ analyticsRoutes.get("/web-vitals", async (c) => {
     where: and(
       eq(checkResults.monitorId, monitorId),
       gte(checkResults.createdAt, startDate),
-      sql`${checkResults.webVitals} IS NOT NULL`
+      sql`${checkResults.webVitals} IS NOT NULL`,
     ),
     orderBy: [desc(checkResults.createdAt)],
     limit: 100,
   });
 
   // Calculate averages and assess status
-  const vitals = results.map((r) => r.webVitals as {
-    lcp?: number;
-    fid?: number;
-    inp?: number;
-    cls?: number;
-    fcp?: number;
-    ttfb?: number;
-    si?: number;
-    tbt?: number;
-  } | null).filter(Boolean);
+  const vitals = results
+    .map(
+      (r) =>
+        r.webVitals as {
+          lcp?: number;
+          fid?: number;
+          inp?: number;
+          cls?: number;
+          fcp?: number;
+          ttfb?: number;
+          si?: number;
+          tbt?: number;
+        } | null,
+    )
+    .filter(Boolean);
 
   const average = (arr: (number | undefined)[]): number | null => {
     const valid = arr.filter((v): v is number => v !== undefined);
-    return valid.length > 0 ? valid.reduce((a, b) => a + b, 0) / valid.length : null;
+    return valid.length > 0
+      ? valid.reduce((a, b) => a + b, 0) / valid.length
+      : null;
   };
 
   const avgLcp = average(vitals.map((v) => v?.lcp));
@@ -866,7 +986,12 @@ analyticsRoutes.get("/web-vitals", async (c) => {
   const avgTbt = average(vitals.map((v) => v?.tbt));
 
   // Assess Core Web Vitals status based on Google's thresholds
-  const assessVital = (value: number | null, good: number, poor: number, lowerIsBetter = true): "good" | "needs-improvement" | "poor" | "unknown" => {
+  const assessVital = (
+    value: number | null,
+    good: number,
+    poor: number,
+    lowerIsBetter = true,
+  ): "good" | "needs-improvement" | "poor" | "unknown" => {
     if (value === null) return "unknown";
     if (lowerIsBetter) {
       if (value <= good) return "good";
@@ -900,12 +1025,12 @@ analyticsRoutes.get("/web-vitals", async (c) => {
         tbt: avgTbt !== null ? Math.round(avgTbt) : null,
       },
       assessment: {
-        lcp: assessVital(avgLcp, 2500, 4000),      // Good: <= 2.5s, Poor: > 4s
-        fid: assessVital(avgFid, 100, 300),        // Good: <= 100ms, Poor: > 300ms
-        inp: assessVital(avgInp, 200, 500),        // Good: <= 200ms, Poor: > 500ms
-        cls: assessVital(avgCls, 0.1, 0.25),       // Good: <= 0.1, Poor: > 0.25
-        fcp: assessVital(avgFcp, 1800, 3000),      // Good: <= 1.8s, Poor: > 3s
-        ttfb: assessVital(avgTtfb, 800, 1800),     // Good: <= 800ms, Poor: > 1.8s
+        lcp: assessVital(avgLcp, 2500, 4000), // Good: <= 2.5s, Poor: > 4s
+        fid: assessVital(avgFid, 100, 300), // Good: <= 100ms, Poor: > 300ms
+        inp: assessVital(avgInp, 200, 500), // Good: <= 200ms, Poor: > 500ms
+        cls: assessVital(avgCls, 0.1, 0.25), // Good: <= 0.1, Poor: > 0.25
+        fcp: assessVital(avgFcp, 1800, 3000), // Good: <= 1.8s, Poor: > 3s
+        ttfb: assessVital(avgTtfb, 800, 1800), // Good: <= 800ms, Poor: > 1.8s
       },
       history: results.map((r) => ({
         timestamp: r.createdAt,
@@ -918,40 +1043,43 @@ analyticsRoutes.get("/web-vitals", async (c) => {
 // Dashboard overview
 analyticsRoutes.get("/dashboard", async (c) => {
   const organizationId = await requireOrganization(c);
-  const includeTrend = c.req.query("includeTrend") === "1" || c.req.query("includeTrend") === "true";
+  const includeTrend =
+    c.req.query("includeTrend") === "1" ||
+    c.req.query("includeTrend") === "true";
 
-  const [allMonitors, monitorsWithIssues, activeIncidentCount] = await Promise.all([
-    db
-      .select({
-        id: monitors.id,
-        status: monitors.status,
-      })
-      .from(monitors)
-      .where(eq(monitors.organizationId, organizationId)),
-    db.query.monitors.findMany({
-      where: and(
-        eq(monitors.organizationId, organizationId),
-        inArray(monitors.status, ["degraded", "down"])
-      ),
-      columns: {
-        id: true,
-        name: true,
-        url: true,
-        status: true,
-      },
-      orderBy: [desc(monitors.updatedAt)],
-      limit: 5,
-    }),
-    db
-      .select({ count: sql<number>`count(*)` })
-      .from(incidents)
-      .where(
-        and(
-          eq(incidents.organizationId, organizationId),
-          sql`${incidents.status} != 'resolved'`
-        )
-      ),
-  ]);
+  const [allMonitors, monitorsWithIssues, activeIncidentCount] =
+    await Promise.all([
+      db
+        .select({
+          id: monitors.id,
+          status: monitors.status,
+        })
+        .from(monitors)
+        .where(eq(monitors.organizationId, organizationId)),
+      db.query.monitors.findMany({
+        where: and(
+          eq(monitors.organizationId, organizationId),
+          inArray(monitors.status, ["degraded", "down"]),
+        ),
+        columns: {
+          id: true,
+          name: true,
+          url: true,
+          status: true,
+        },
+        orderBy: [desc(monitors.updatedAt)],
+        limit: 5,
+      }),
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(incidents)
+        .where(
+          and(
+            eq(incidents.organizationId, organizationId),
+            sql`${incidents.status} != 'resolved'`,
+          ),
+        ),
+    ]);
 
   // Get recent incidents (last 7 days)
   const weekAgo = new Date();
@@ -960,7 +1088,7 @@ analyticsRoutes.get("/dashboard", async (c) => {
   const recentIncidents = await db.query.incidents.findMany({
     where: and(
       eq(incidents.organizationId, organizationId),
-      gte(incidents.startedAt, weekAgo)
+      gte(incidents.startedAt, weekAgo),
     ),
     orderBy: [desc(incidents.startedAt)],
     limit: 10,
@@ -969,13 +1097,22 @@ analyticsRoutes.get("/dashboard", async (c) => {
   // Calculate overall uptime from last 45 days
   const fortyFiveDaysAgo = new Date();
   fortyFiveDaysAgo.setDate(fortyFiveDaysAgo.getDate() - 45);
+  const historicalAggregateCutoff = new Date();
+  historicalAggregateCutoff.setUTCHours(0, 0, 0, 0);
+  historicalAggregateCutoff.setUTCDate(
+    historicalAggregateCutoff.getUTCDate() - 1,
+  );
+  const recentUptimeWindowStart =
+    historicalAggregateCutoff > fortyFiveDaysAgo
+      ? historicalAggregateCutoff
+      : fortyFiveDaysAgo;
 
   const monitorsByStatus = allMonitors.reduce(
     (acc, monitor) => {
       acc[monitor.status] = (acc[monitor.status] || 0) + 1;
       return acc;
     },
-    {} as Record<string, number>
+    {} as Record<string, number>,
   );
 
   let overallUptime: number | null = null;
@@ -984,56 +1121,156 @@ analyticsRoutes.get("/dashboard", async (c) => {
   if (allMonitors.length > 0) {
     const monitorIds = allMonitors.map((m) => m.id);
 
-    // Get uptime from check results
-    const uptimeStats = await db
-      .select({
-        successCount: sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'success')`.as("success_count"),
-        degradedCount: sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'degraded')`.as("degraded_count"),
-        totalCount: sql<number>`COUNT(*)`.as("total_count"),
-      })
-      .from(checkResults)
-      .where(
-        and(
-          inArray(checkResults.monitorId, monitorIds),
-          gte(checkResults.createdAt, fortyFiveDaysAgo)
-        )
-      );
-
-    const totalCount = Number(uptimeStats[0]?.totalCount || 0);
-    const successCount = Number(uptimeStats[0]?.successCount || 0);
-    const degradedCount = Number(uptimeStats[0]?.degradedCount || 0);
-    if (totalCount > 0) {
-      overallUptime = ((successCount + degradedCount) / totalCount) * 100;
-    }
-
-    if (includeTrend) {
-      // Optional: daily trend is expensive, so only compute when explicitly requested.
-      const dailyUptimeData = await db
+    const [historicalUptimeStats, recentUptimeStats] = await Promise.all([
+      historicalAggregateCutoff > fortyFiveDaysAgo
+        ? db
+            .select({
+              successCount:
+                sql<number>`SUM(${checkResultsDaily.successCount})`.as(
+                  "success_count",
+                ),
+              degradedCount:
+                sql<number>`SUM(${checkResultsDaily.degradedCount})`.as(
+                  "degraded_count",
+                ),
+              totalCount: sql<number>`SUM(${checkResultsDaily.totalCount})`.as(
+                "total_count",
+              ),
+            })
+            .from(checkResultsDaily)
+            .where(
+              and(
+                inArray(checkResultsDaily.monitorId, monitorIds),
+                gte(checkResultsDaily.date, fortyFiveDaysAgo),
+                lt(checkResultsDaily.date, historicalAggregateCutoff),
+              ),
+            )
+        : Promise.resolve([]),
+      db
         .select({
-          date: sql<string>`DATE(${checkResults.createdAt})`.as("date"),
-          successCount: sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'success')`.as("success_count"),
-          degradedCount: sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'degraded')`.as("degraded_count"),
+          successCount:
+            sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'success')`.as(
+              "success_count",
+            ),
+          degradedCount:
+            sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'degraded')`.as(
+              "degraded_count",
+            ),
           totalCount: sql<number>`COUNT(*)`.as("total_count"),
         })
         .from(checkResults)
         .where(
           and(
             inArray(checkResults.monitorId, monitorIds),
-            gte(checkResults.createdAt, fortyFiveDaysAgo)
-          )
-        )
-        .groupBy(sql`DATE(${checkResults.createdAt})`)
-        .orderBy(sql`DATE(${checkResults.createdAt})`);
+            gte(checkResults.createdAt, recentUptimeWindowStart),
+            sql`COALESCE(${checkResults.metadata} ->> 'checkType', '') <> 'certificate_transparency'`,
+          ),
+        ),
+    ]);
 
-      uptimeTrend = dailyUptimeData.map((d) => {
-        const total = Number(d.totalCount || 0);
-        const success = Number(d.successCount || 0);
-        const degraded = Number(d.degradedCount || 0);
-        return {
-          date: d.date,
-          uptime: total > 0 ? ((success + degraded) / total) * 100 : 0,
+    const historicalTotalCount = Number(
+      historicalUptimeStats[0]?.totalCount || 0,
+    );
+    const historicalSuccessCount = Number(
+      historicalUptimeStats[0]?.successCount || 0,
+    );
+    const historicalDegradedCount = Number(
+      historicalUptimeStats[0]?.degradedCount || 0,
+    );
+    const recentTotalCount = Number(recentUptimeStats[0]?.totalCount || 0);
+    const recentSuccessCount = Number(recentUptimeStats[0]?.successCount || 0);
+    const recentDegradedCount = Number(
+      recentUptimeStats[0]?.degradedCount || 0,
+    );
+    const totalCount = historicalTotalCount + recentTotalCount;
+    const successCount = historicalSuccessCount + recentSuccessCount;
+    const degradedCount = historicalDegradedCount + recentDegradedCount;
+
+    if (totalCount > 0) {
+      overallUptime = ((successCount + degradedCount) / totalCount) * 100;
+    }
+
+    if (includeTrend) {
+      const [historicalTrendData, recentTrendData] = await Promise.all([
+        historicalAggregateCutoff > fortyFiveDaysAgo
+          ? db
+              .select({
+                date: sql<string>`DATE(${checkResultsDaily.date})`.as("date"),
+                successCount:
+                  sql<number>`SUM(${checkResultsDaily.successCount})`.as(
+                    "success_count",
+                  ),
+                degradedCount:
+                  sql<number>`SUM(${checkResultsDaily.degradedCount})`.as(
+                    "degraded_count",
+                  ),
+                totalCount:
+                  sql<number>`SUM(${checkResultsDaily.totalCount})`.as(
+                    "total_count",
+                  ),
+              })
+              .from(checkResultsDaily)
+              .where(
+                and(
+                  inArray(checkResultsDaily.monitorId, monitorIds),
+                  gte(checkResultsDaily.date, fortyFiveDaysAgo),
+                  lt(checkResultsDaily.date, historicalAggregateCutoff),
+                ),
+              )
+              .groupBy(sql`DATE(${checkResultsDaily.date})`)
+              .orderBy(sql`DATE(${checkResultsDaily.date})`)
+          : Promise.resolve([]),
+        db
+          .select({
+            date: sql<string>`DATE(${checkResults.createdAt})`.as("date"),
+            successCount:
+              sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'success')`.as(
+                "success_count",
+              ),
+            degradedCount:
+              sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'degraded')`.as(
+                "degraded_count",
+              ),
+            totalCount: sql<number>`COUNT(*)`.as("total_count"),
+          })
+          .from(checkResults)
+          .where(
+            and(
+              inArray(checkResults.monitorId, monitorIds),
+              gte(checkResults.createdAt, recentUptimeWindowStart),
+              sql`COALESCE(${checkResults.metadata} ->> 'checkType', '') <> 'certificate_transparency'`,
+            ),
+          )
+          .groupBy(sql`DATE(${checkResults.createdAt})`)
+          .orderBy(sql`DATE(${checkResults.createdAt})`),
+      ]);
+
+      const trendCounts = new Map<
+        string,
+        { success: number; degraded: number; total: number }
+      >();
+
+      for (const row of [...historicalTrendData, ...recentTrendData]) {
+        const existing = trendCounts.get(row.date) ?? {
+          success: 0,
+          degraded: 0,
+          total: 0,
         };
-      });
+        existing.success += Number(row.successCount || 0);
+        existing.degraded += Number(row.degradedCount || 0);
+        existing.total += Number(row.totalCount || 0);
+        trendCounts.set(row.date, existing);
+      }
+
+      uptimeTrend = Array.from(trendCounts.entries())
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([date, counts]) => ({
+          date,
+          uptime:
+            counts.total > 0
+              ? ((counts.success + counts.degraded) / counts.total) * 100
+              : 0,
+        }));
     }
   }
 

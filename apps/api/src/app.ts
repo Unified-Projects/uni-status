@@ -12,11 +12,10 @@ import { rateLimiter } from "./middleware/rate-limit";
 import { errorHandler } from "./middleware/error";
 import { versioningMiddleware } from "./middleware/versioning";
 import { createLicenseMiddleware } from "@uni-status/enterprise/api/middleware/license";
-import { getUploadDir, ensureUploadDir, isS3Enabled } from "./lib/uploads";
+import { getUploadDir, ensureUploadDir } from "./lib/uploads";
 import {
   getApiUrl,
   getCorsConfig,
-  getStorageConfig,
 } from "@uni-status/shared/config";
 import { db, statusPages } from "@uni-status/database";
 import { isNotNull } from "drizzle-orm";
@@ -197,11 +196,6 @@ app.use(
     rewriteRequestPath: (path) => path.replace(/^\/api\/uploads/, ""),
   })
 );
-// Serve generated reports (local filesystem storage)
-// Note: When S3 is enabled, reports are served directly from S3 via absolute URLs
-const reportsDir = getStorageConfig().reportsDir;
-app.use("/reports/*", serveStatic({ root: reportsDir, rewriteRequestPath: (path) => path.replace(/^\/reports/, "") }));
-
 // Public routes (no auth required)
 app.route("/health", healthRoutes);
 app.route("/api/health", healthRoutes);
@@ -232,6 +226,9 @@ app.route("/api/v1/assets", s3ProxyRoutes);
 app.route("/api/v1/deployments", deploymentsRoutes);
 // Probe agent endpoints (token-based auth handled internally)
 app.route("/api/v1/probes", probesRoutes);
+
+// Public auth verification endpoints still need brute-force protection
+app.use("/api/public/status-pages/:slug/verify-password", rateLimiter);
 
 // Rate limiting for API routes
 app.use("/api/v1/*", rateLimiter);

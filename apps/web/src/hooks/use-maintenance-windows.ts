@@ -1,9 +1,33 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  type QueryClient,
+  type QueryKey,
+} from "@tanstack/react-query";
 import { apiClient, queryKeys } from "@/lib/api-client";
 import type { CreateMaintenanceWindowInput, UpdateMaintenanceWindowInput } from "@uni-status/shared/validators";
 import { useDashboardStore } from "@/stores/dashboard-store";
+
+type QuerySnapshot = {
+  queryKey: QueryKey;
+  data: unknown;
+};
+
+function captureQuerySnapshots(queryClient: QueryClient, queryKey: QueryKey): QuerySnapshot[] {
+  return queryClient.getQueriesData({ queryKey }).map(([snapshotKey, data]) => ({
+    queryKey: snapshotKey,
+    data,
+  }));
+}
+
+function restoreQuerySnapshots(queryClient: QueryClient, snapshots?: QuerySnapshot[]) {
+  snapshots?.forEach(({ queryKey, data }) => {
+    queryClient.setQueryData(queryKey, data);
+  });
+}
 
 export function useMaintenanceWindows(status?: string) {
   const organizationId = useDashboardStore((state) => state.currentOrganizationId);
@@ -46,25 +70,30 @@ export function useUpdateMaintenanceWindow() {
     mutationFn: ({ id, data }: { id: string; data: UpdateMaintenanceWindowInput }) =>
       apiClient.maintenanceWindows.update(id, data, organizationId ?? undefined),
     onMutate: async ({ id, data }) => {
-      await queryClient.cancelQueries({ queryKey: queryKeys.maintenanceWindows.detail(id) });
-      await queryClient.cancelQueries({ queryKey: queryKeys.maintenanceWindows.lists() });
-      const previousDetail = queryClient.getQueryData(queryKeys.maintenanceWindows.detail(id));
+      const detailQueryKey = queryKeys.maintenanceWindows.detail(id);
+      const listQueryKey = queryKeys.maintenanceWindows.lists();
+
+      await queryClient.cancelQueries({ queryKey: detailQueryKey });
+      await queryClient.cancelQueries({ queryKey: listQueryKey });
+      const previousDetail = queryClient.getQueryData(detailQueryKey);
+      const previousLists = captureQuerySnapshots(queryClient, listQueryKey);
       if (previousDetail) {
-        queryClient.setQueryData(queryKeys.maintenanceWindows.detail(id), { ...previousDetail, ...data });
+        queryClient.setQueryData(detailQueryKey, { ...previousDetail, ...data });
       }
       queryClient.setQueriesData(
-        { queryKey: queryKeys.maintenanceWindows.lists() },
+        { queryKey: listQueryKey },
         (old: unknown) => {
           if (!old || !Array.isArray(old)) return old;
           return old.map((w: { id: string }) => (w.id === id ? { ...w, ...data } : w));
         }
       );
-      return { previousDetail };
+      return { previousDetail, previousLists };
     },
     onError: (_, { id }, context) => {
       if (context?.previousDetail) {
         queryClient.setQueryData(queryKeys.maintenanceWindows.detail(id), context.previousDetail);
       }
+      restoreQuerySnapshots(queryClient, context?.previousLists);
     },
     onSettled: (updatedWindow) => {
       if (updatedWindow) {
@@ -83,24 +112,21 @@ export function useDeleteMaintenanceWindow() {
     mutationFn: (id: string) =>
       apiClient.maintenanceWindows.delete(id, organizationId ?? undefined),
     onMutate: async (id) => {
-      await queryClient.cancelQueries({ queryKey: queryKeys.maintenanceWindows.lists() });
-      const previousLists: unknown[] = [];
+      const listQueryKey = queryKeys.maintenanceWindows.lists();
+
+      await queryClient.cancelQueries({ queryKey: listQueryKey });
+      const previousLists = captureQuerySnapshots(queryClient, listQueryKey);
       queryClient.setQueriesData(
-        { queryKey: queryKeys.maintenanceWindows.lists() },
+        { queryKey: listQueryKey },
         (old: unknown) => {
           if (!old || !Array.isArray(old)) return old;
-          previousLists.push(old);
           return old.filter((w: { id: string }) => w.id !== id);
         }
       );
       return { previousLists };
     },
     onError: (_, __, context) => {
-      if (context?.previousLists) {
-        context.previousLists.forEach((prev) => {
-          queryClient.setQueriesData({ queryKey: queryKeys.maintenanceWindows.lists() }, () => prev);
-        });
-      }
+      restoreQuerySnapshots(queryClient, context?.previousLists);
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.maintenanceWindows.all });

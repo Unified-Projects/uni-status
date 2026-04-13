@@ -95,14 +95,23 @@ function extractFingerprint(result?: { metadata?: unknown; headers?: unknown }):
 
 export const certificatesRoutes = new OpenAPIHono();
 
+function parsePaginationParam(value: string | undefined, defaultValue: number, min = 0, max = Number.MAX_SAFE_INTEGER): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return defaultValue;
+  }
+
+  return Math.min(Math.max(Math.trunc(parsed), min), max);
+}
+
 // List all certificates sorted by expiry
 // GET /api/v1/certificates
 certificatesRoutes.get("/", async (c) => {
   const organizationId = await requireOrganization(c);
 
   // Parse pagination parameters
-  const limit = Math.min(Math.max(parseInt(c.req.query("limit") || "100"), 1), 100);
-  const offset = Math.max(parseInt(c.req.query("offset") || "0"), 0);
+  const limit = parsePaginationParam(c.req.query("limit"), 100, 1, 100);
+  const offset = parsePaginationParam(c.req.query("offset"), 0, 0);
 
   // Get total count of SSL/HTTPS monitors
   const countResult = await db
@@ -141,74 +150,137 @@ certificatesRoutes.get("/", async (c) => {
     });
   }
 
-  // Get latest check result with certificate info for each monitor
-  const certificateData = await Promise.all(
-    sslMonitors.map(async (monitor) => {
-      const latestResult = await db.query.checkResults.findFirst({
-        where: and(
-          eq(checkResults.monitorId, monitor.id),
-          isNotNull(checkResults.certificateInfo)
-        ),
-        orderBy: [desc(checkResults.createdAt)],
-      });
+  const monitorIds = sslMonitors.map((monitor) => monitor.id);
 
-      const latestCtCheck = await db.query.checkResults.findFirst({
-        where: and(
-          eq(checkResults.monitorId, monitor.id),
-          sql`${checkResults.metadata} ->> 'checkType' = 'certificate_transparency'`
-        ),
-        orderBy: [desc(checkResults.createdAt)],
-      });
-
-      const ctMetadata = latestCtCheck?.metadata as
-        | {
-            newCertificates?: Array<Record<string, unknown>>;
-            unexpectedCertificates?: Array<Record<string, unknown>>;
-          }
-        | undefined;
-
-      const ctNewCount = Array.isArray(ctMetadata?.newCertificates)
-        ? ctMetadata?.newCertificates.length
-        : 0;
-      const ctUnexpectedCount = Array.isArray(ctMetadata?.unexpectedCertificates)
-        ? ctMetadata?.unexpectedCertificates.length
-        : 0;
-
-      const ctDisabled = monitor.config?.certificateTransparency?.enabled === false;
-      const ctState = ctDisabled
-        ? "disabled"
-        : latestCtCheck
-        ? latestCtCheck.status === "error"
-          ? "error"
-          : ctUnexpectedCount > 0
-          ? "unexpected"
-          : ctNewCount > 0
-          ? "new"
-          : "healthy"
-        : "unknown";
-
-      const additionalDetails = extractAdditionalDetails(latestResult);
-
-      return {
-        monitorId: monitor.id,
-        monitorName: monitor.name,
-        url: monitor.url,
-        monitorType: monitor.type,
-        monitorStatus: monitor.status,
-        certificateInfo: latestResult?.certificateInfo ?? null,
-        additionalCertDetails: additionalDetails,
-        lastChecked: latestResult?.createdAt ?? null,
-        sslConfig: monitor.config?.ssl ?? null,
-        ctStatus: {
-          state: ctState,
-          newCount: ctNewCount,
-          unexpectedCount: ctUnexpectedCount,
-          lastChecked: latestCtCheck?.createdAt ?? null,
-          checkedAt: latestCtCheck?.createdAt ?? null,
-        },
-      };
+  const latestCertificateTimestamps = db
+    .select({
+      monitorId: checkResults.monitorId,
+      latestCreatedAt: sql<Date>`MAX(${checkResults.createdAt})`.as("latest_created_at"),
     })
-  );
+    .from(checkResults)
+    .where(
+      and(
+        inArray(checkResults.monitorId, monitorIds),
+        isNotNull(checkResults.certificateInfo)
+      )
+    )
+    .groupBy(checkResults.monitorId)
+    .as("latest_certificate_timestamps");
+
+  const latestCertificateRows = await db
+    .select({
+      monitorId: checkResults.monitorId,
+      createdAt: checkResults.createdAt,
+      certificateInfo: checkResults.certificateInfo,
+      metadata: checkResults.metadata,
+      headers: checkResults.headers,
+    })
+    .from(checkResults)
+    .innerJoin(
+      latestCertificateTimestamps,
+      and(
+        eq(checkResults.monitorId, latestCertificateTimestamps.monitorId),
+        eq(checkResults.createdAt, latestCertificateTimestamps.latestCreatedAt)
+      )
+    );
+
+  const latestCertificateByMonitor = new Map<string, (typeof latestCertificateRows)[number]>();
+  for (const row of latestCertificateRows) {
+    if (!latestCertificateByMonitor.has(row.monitorId)) {
+      latestCertificateByMonitor.set(row.monitorId, row);
+    }
+  }
+
+  const latestCtTimestamps = db
+    .select({
+      monitorId: checkResults.monitorId,
+      latestCreatedAt: sql<Date>`MAX(${checkResults.createdAt})`.as("latest_created_at"),
+    })
+    .from(checkResults)
+    .where(
+      and(
+        inArray(checkResults.monitorId, monitorIds),
+        sql`${checkResults.metadata} ->> 'checkType' = 'certificate_transparency'`
+      )
+    )
+    .groupBy(checkResults.monitorId)
+    .as("latest_ct_timestamps");
+
+  const latestCtRows = await db
+    .select({
+      monitorId: checkResults.monitorId,
+      createdAt: checkResults.createdAt,
+      status: checkResults.status,
+      metadata: checkResults.metadata,
+    })
+    .from(checkResults)
+    .innerJoin(
+      latestCtTimestamps,
+      and(
+        eq(checkResults.monitorId, latestCtTimestamps.monitorId),
+        eq(checkResults.createdAt, latestCtTimestamps.latestCreatedAt)
+      )
+    );
+
+  const latestCtByMonitor = new Map<string, (typeof latestCtRows)[number]>();
+  for (const row of latestCtRows) {
+    if (!latestCtByMonitor.has(row.monitorId)) {
+      latestCtByMonitor.set(row.monitorId, row);
+    }
+  }
+
+  const certificateData = sslMonitors.map((monitor) => {
+    const latestResult = latestCertificateByMonitor.get(monitor.id);
+    const latestCtCheck = latestCtByMonitor.get(monitor.id);
+
+    const ctMetadata = latestCtCheck?.metadata as
+      | {
+          newCertificates?: Array<Record<string, unknown>>;
+          unexpectedCertificates?: Array<Record<string, unknown>>;
+        }
+      | undefined;
+
+    const ctNewCount = Array.isArray(ctMetadata?.newCertificates)
+      ? ctMetadata?.newCertificates.length
+      : 0;
+    const ctUnexpectedCount = Array.isArray(ctMetadata?.unexpectedCertificates)
+      ? ctMetadata?.unexpectedCertificates.length
+      : 0;
+
+    const ctDisabled = monitor.config?.certificateTransparency?.enabled === false;
+    const ctState = ctDisabled
+      ? "disabled"
+      : latestCtCheck
+      ? latestCtCheck.status === "error"
+        ? "error"
+        : ctUnexpectedCount > 0
+        ? "unexpected"
+        : ctNewCount > 0
+        ? "new"
+        : "healthy"
+      : "unknown";
+
+    const additionalDetails = extractAdditionalDetails(latestResult);
+
+    return {
+      monitorId: monitor.id,
+      monitorName: monitor.name,
+      url: monitor.url,
+      monitorType: monitor.type,
+      monitorStatus: monitor.status,
+      certificateInfo: latestResult?.certificateInfo ?? null,
+      additionalCertDetails: additionalDetails,
+      lastChecked: latestResult?.createdAt ?? null,
+      sslConfig: monitor.config?.ssl ?? null,
+      ctStatus: {
+        state: ctState,
+        newCount: ctNewCount,
+        unexpectedCount: ctUnexpectedCount,
+        lastChecked: latestCtCheck?.createdAt ?? null,
+        checkedAt: latestCtCheck?.createdAt ?? null,
+      },
+    };
+  });
 
   // Sort by days until expiry (ascending - expiring soonest first)
   // Put certificates without expiry info at the end

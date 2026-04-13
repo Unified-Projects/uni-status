@@ -56,14 +56,13 @@ export function useUpdateStatusPage() {
     mutationFn: ({ id, data }: { id: string; data: UpdateStatusPageInput }) =>
       apiClient.statusPages.update(id, data, organizationId ?? undefined),
     onMutate: async ({ id, data }) => {
-      await queryClient.cancelQueries({ queryKey: queryKeys.statusPages.detail(id) });
-      await queryClient.cancelQueries({ queryKey: queryKeys.statusPages.list() });
+      await queryClient.cancelQueries({ queryKey: queryKeys.statusPages.all });
       const previousDetail = queryClient.getQueryData(queryKeys.statusPages.detail(id));
       if (previousDetail) {
         queryClient.setQueryData(queryKeys.statusPages.detail(id), { ...previousDetail, ...data });
       }
       queryClient.setQueriesData(
-        { queryKey: queryKeys.statusPages.list() },
+        { queryKey: queryKeys.statusPages.lists() },
         (old: unknown) => {
           if (!old || typeof old !== "object") return old;
           const oldData = old as { data?: Array<{ id: string }> };
@@ -85,7 +84,7 @@ export function useUpdateStatusPage() {
       if (updatedPage) {
         queryClient.setQueryData(queryKeys.statusPages.detail(updatedPage.id), updatedPage);
       }
-      queryClient.invalidateQueries({ queryKey: queryKeys.statusPages.list() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.statusPages.all });
     },
   });
 }

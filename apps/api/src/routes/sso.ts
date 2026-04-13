@@ -1,4 +1,5 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
+import { isIP } from "node:net";
 import { nanoid } from "nanoid";
 import { db } from "@uni-status/database";
 import {
@@ -44,6 +45,92 @@ const encryptOidcConfig = async (
 
   return config;
 };
+
+function isPrivateIpv4Address(hostname: string) {
+  const octets = hostname.split(".").map((segment) => Number.parseInt(segment, 10));
+  if (octets.length !== 4 || octets.some((segment) => Number.isNaN(segment) || segment < 0 || segment > 255)) {
+    return false;
+  }
+
+  const first = octets[0] ?? -1;
+  const second = octets[1] ?? -1;
+  return (
+    first === 0 ||
+    first === 10 ||
+    first === 127 ||
+    (first === 169 && second === 254) ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168) ||
+    (first === 100 && second >= 64 && second <= 127)
+  );
+}
+
+function isPrivateIpv6Address(hostname: string) {
+  const normalized = hostname.toLowerCase();
+  if (normalized === "::" || normalized === "::1") {
+    return true;
+  }
+
+  if (normalized.startsWith("::ffff:")) {
+    const mappedIpv4 = normalized.slice("::ffff:".length);
+    return isIP(mappedIpv4) === 4 && isPrivateIpv4Address(mappedIpv4);
+  }
+
+  const firstSegment = normalized.split(":")[0] || "0";
+  const firstSegmentValue = Number.parseInt(firstSegment, 16);
+  if (Number.isNaN(firstSegmentValue)) {
+    return false;
+  }
+
+  return (
+    (firstSegmentValue >= 0xfc00 && firstSegmentValue <= 0xfdff) ||
+    (firstSegmentValue >= 0xfe80 && firstSegmentValue <= 0xfebf)
+  );
+}
+
+function validateOidcDiscoveryUrl(rawUrl: string) {
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(rawUrl);
+  } catch {
+    throw new Error("Discovery URL is invalid");
+  }
+
+  if (parsedUrl.protocol !== "https:") {
+    throw new Error("Discovery URL must use HTTPS");
+  }
+
+  const hostname = parsedUrl.hostname.trim().toLowerCase().replace(/\.$/, "");
+  if (!hostname) {
+    throw new Error("Discovery URL hostname is required");
+  }
+
+  if (
+    hostname === "localhost" ||
+    hostname.endsWith(".localhost") ||
+    hostname.endsWith(".local") ||
+    hostname.endsWith(".internal") ||
+    hostname.endsWith(".lan") ||
+    hostname.endsWith(".home") ||
+    hostname.endsWith(".home.arpa") ||
+    hostname.endsWith(".localdomain") ||
+    hostname === "loopback" ||
+    hostname.endsWith(".loopback") ||
+    !hostname.includes(".")
+  ) {
+    throw new Error("Discovery URL hostname must be a public address");
+  }
+
+  const ipVersion = isIP(hostname);
+  if (
+    (ipVersion === 4 && isPrivateIpv4Address(hostname)) ||
+    (ipVersion === 6 && isPrivateIpv6Address(hostname))
+  ) {
+    throw new Error("Discovery URL hostname must not be private, loopback, or link-local");
+  }
+
+  return parsedUrl.toString();
+}
 
 // ===== Global Auth Providers (Public) =====
 
@@ -572,8 +659,9 @@ ssoRoutes.post("/organizations/:id/providers/:providerId/test", async (c) => {
       const discoveryUrl =
         oidcConfig.discoveryEndpoint || oidcConfig.discoveryUrl ||
         `${provider.issuer}/.well-known/openid-configuration`;
+      const safeDiscoveryUrl = validateOidcDiscoveryUrl(String(discoveryUrl));
 
-      const response = await fetch(discoveryUrl);
+      const response = await fetch(safeDiscoveryUrl);
       if (!response.ok) {
         throw new Error(`Discovery endpoint returned ${response.status}`);
       }

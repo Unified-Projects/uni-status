@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -179,7 +179,9 @@ interface ThemeColors {
   background?: string;
   backgroundDark?: string;
   text?: string;
+  mutedText?: string;
   textDark?: string;
+  mutedTextDark?: string;
   surface?: string;
   surfaceDark?: string;
   border?: string;
@@ -198,6 +200,8 @@ function generateThemeCustomCss(themeName: string, colors: ThemeColors): string 
   const backgroundDark = colors.backgroundDark || "#0a0a0a";
   const textLight = colors.text || "#0a0a0a";
   const textDark = colors.textDark || "#fafafa";
+  const mutedTextLight = colors.mutedText;
+  const mutedTextDark = colors.mutedTextDark;
   const surfaceLight = colors.surface || "#ffffff";
   const surfaceDark = colors.surfaceDark || "#0a0a0a";
   const borderLight = colors.border || "#e5e5e5";
@@ -220,8 +224,12 @@ function generateThemeCustomCss(themeName: string, colors: ThemeColors): string 
 
   const mutedLightHsl = generateMutedColor(surfaceLight, false);
   const mutedDarkHsl = generateMutedColor(surfaceDark, true);
-  const mutedForegroundLightHsl = generateMutedForeground(false);
-  const mutedForegroundDarkHsl = generateMutedForeground(true);
+  const mutedForegroundLightHsl = mutedTextLight
+    ? hexToHslString(mutedTextLight)
+    : generateMutedForeground(false);
+  const mutedForegroundDarkHsl = mutedTextDark
+    ? hexToHslString(mutedTextDark)
+    : generateMutedForeground(true);
 
   const accentLightHsl = generateMutedColor(surfaceLight, false);
   const accentDarkHsl = generateMutedColor(surfaceDark, true);
@@ -413,6 +421,61 @@ interface StatusPageFormProps {
   mode: "create" | "edit";
 }
 
+function getStatusPageFormDefaults(
+  statusPage: StatusPage | undefined,
+  defaultTemplate: ReturnType<typeof getDefaultTemplateConfig>
+): StatusPageFormData {
+  return {
+    name: statusPage?.name ?? "",
+    slug: statusPage?.slug ?? "",
+    customDomain: statusPage?.customDomain ?? "",
+    published: statusPage?.published ?? false,
+    logo: statusPage?.logoUrl ? getAssetUrl(statusPage.logoUrl) : "",
+    favicon: statusPage?.faviconUrl ? getAssetUrl(statusPage.faviconUrl) : "",
+    password: "",
+    authConfig: {
+      protectionMode: statusPage?.authConfig?.protectionMode ?? "none",
+      oauthMode: statusPage?.authConfig?.oauthMode ?? "org_members",
+      allowedEmails: statusPage?.authConfig?.allowedEmails ?? [],
+      allowedDomains: statusPage?.authConfig?.allowedDomains ?? [],
+      allowedRoles: statusPage?.authConfig?.allowedRoles ?? ["owner", "admin", "member"],
+    },
+    theme: {
+      name: statusPage?.theme?.name ?? "default",
+      primaryColor: statusPage?.theme?.primaryColor ?? "",
+      customCss: statusPage?.theme?.customCss ?? "",
+      colorMode: statusPage?.theme?.colorMode ?? "system",
+    },
+    settings: {
+      showUptimePercentage: statusPage?.settings?.showUptimePercentage ?? true,
+      showResponseTime: statusPage?.settings?.showResponseTime ?? true,
+      showIncidentHistory: statusPage?.settings?.showIncidentHistory ?? true,
+      showServicesPage: statusPage?.settings?.showServicesPage ?? false,
+      showGeoMap: statusPage?.settings?.showGeoMap ?? true,
+      uptimeDays: statusPage?.settings?.uptimeDays ?? 45,
+      headerText: statusPage?.settings?.headerText ?? "",
+      footerText: statusPage?.settings?.footerText ?? "",
+      supportUrl: statusPage?.settings?.supportUrl ?? "",
+      hideBranding: statusPage?.settings?.hideBranding ?? false,
+      displayMode: statusPage?.settings?.displayMode ?? "bars",
+      graphTooltipMetrics: statusPage?.settings?.graphTooltipMetrics ?? {
+        avg: true,
+        min: false,
+        max: false,
+        p50: false,
+        p90: false,
+        p99: false,
+      },
+    },
+    template: statusPage?.template ?? defaultTemplate,
+    seoTitle: statusPage?.seo?.title ?? "",
+    seoDescription: statusPage?.seo?.description ?? "",
+    ogImageUrl: statusPage?.seo?.ogImage ? getAssetUrl(statusPage.seo.ogImage) : "",
+    ogTemplate: statusPage?.seo?.ogTemplate ?? "classic",
+    useOgTemplate: !statusPage?.seo?.ogImage,
+  };
+}
+
 function generateSlug(name: string): string {
   return name
     .toLowerCase()
@@ -435,65 +498,18 @@ export function StatusPageForm({ statusPage, mode }: StatusPageFormProps) {
   const createStatusPage = useCreateStatusPage();
   const updateStatusPage = useUpdateStatusPage();
 
-  const defaultTemplate = getDefaultTemplateConfig();
+  const defaultTemplate = useMemo(() => getDefaultTemplateConfig(), []);
 
   const {
     register,
     handleSubmit,
+    reset,
     watch,
     setValue,
     formState: { errors, isSubmitting },
   } = useForm<StatusPageFormData>({
     resolver: zodResolver(statusPageFormSchema) as any,
-    defaultValues: {
-      name: statusPage?.name ?? "",
-      slug: statusPage?.slug ?? "",
-      customDomain: statusPage?.customDomain ?? "",
-      published: statusPage?.published ?? false,
-      logo: statusPage?.logoUrl ? getAssetUrl(statusPage.logoUrl) : "",
-      favicon: statusPage?.faviconUrl ? getAssetUrl(statusPage.faviconUrl) : "",
-      password: "",
-      authConfig: {
-        protectionMode: statusPage?.authConfig?.protectionMode ?? "none",
-        oauthMode: statusPage?.authConfig?.oauthMode ?? "org_members",
-        allowedEmails: statusPage?.authConfig?.allowedEmails ?? [],
-        allowedDomains: statusPage?.authConfig?.allowedDomains ?? [],
-        allowedRoles: statusPage?.authConfig?.allowedRoles ?? ["owner", "admin", "member"],
-      },
-      theme: {
-        name: statusPage?.theme?.name ?? "default",
-        primaryColor: statusPage?.theme?.primaryColor ?? "",
-        customCss: statusPage?.theme?.customCss ?? "",
-        colorMode: statusPage?.theme?.colorMode ?? "system",
-      },
-      settings: {
-        showUptimePercentage: statusPage?.settings?.showUptimePercentage ?? true,
-        showResponseTime: statusPage?.settings?.showResponseTime ?? true,
-        showIncidentHistory: statusPage?.settings?.showIncidentHistory ?? true,
-        showServicesPage: statusPage?.settings?.showServicesPage ?? false,
-        showGeoMap: statusPage?.settings?.showGeoMap ?? true,
-        uptimeDays: statusPage?.settings?.uptimeDays ?? 45,
-        headerText: statusPage?.settings?.headerText ?? "",
-        footerText: statusPage?.settings?.footerText ?? "",
-        supportUrl: statusPage?.settings?.supportUrl ?? "",
-        hideBranding: statusPage?.settings?.hideBranding ?? false,
-        displayMode: statusPage?.settings?.displayMode ?? "bars",
-        graphTooltipMetrics: statusPage?.settings?.graphTooltipMetrics ?? {
-          avg: true,
-          min: false,
-          max: false,
-          p50: false,
-          p90: false,
-          p99: false,
-        },
-      },
-      template: statusPage?.template ?? defaultTemplate,
-      seoTitle: statusPage?.seo?.title ?? "",
-      seoDescription: statusPage?.seo?.description ?? "",
-      ogImageUrl: statusPage?.seo?.ogImage ? getAssetUrl(statusPage.seo.ogImage) : "",
-      ogTemplate: statusPage?.seo?.ogTemplate ?? "classic",
-      useOgTemplate: !statusPage?.seo?.ogImage,
-    },
+    defaultValues: getStatusPageFormDefaults(statusPage, defaultTemplate),
   });
 
   const watchedName = watch("name");
@@ -514,6 +530,14 @@ export function StatusPageForm({ statusPage, mode }: StatusPageFormProps) {
       setValue("slug", generateSlug(watchedName));
     }
   }, [watchedName, mode, slugManuallyEdited, setValue]);
+
+  useEffect(() => {
+    if (mode !== "edit" || !statusPage) return;
+
+    reset(getStatusPageFormDefaults(statusPage, defaultTemplate));
+    setAllowedEmailsText(statusPage.authConfig?.allowedEmails?.join("\n") ?? "");
+    setAllowedDomainsText(statusPage.authConfig?.allowedDomains?.join("\n") ?? "");
+  }, [defaultTemplate, mode, reset, statusPage]);
 
   const handleTemplateSelect = (template: StatusPageTemplate) => {
     setValue("template", template.config);
@@ -1545,7 +1569,9 @@ function AppearanceSection({
         background: theme.colors.background,
         backgroundDark: theme.colors.backgroundDark,
         text: theme.colors.text,
+        mutedText: theme.colors.mutedText,
         textDark: theme.colors.textDark,
+        mutedTextDark: theme.colors.mutedTextDark,
         surface: theme.colors.surface,
         surfaceDark: theme.colors.surfaceDark,
         border: theme.colors.border,

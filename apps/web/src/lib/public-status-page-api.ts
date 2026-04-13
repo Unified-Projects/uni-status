@@ -429,7 +429,7 @@ export const getStatusPageShellData = cache(async (
   slug: string,
   cookies?: string
 ): Promise<ApiResponse> => {
-  return fetchPublicStatusPageEndpoint<ApiResponse>(slug, "/shell", cookies, 300);
+  return fetchPublicStatusPageEndpoint<ApiResponse>(slug, "/shell", cookies, 1);
 });
 
 const getStatusPageLiveData = cache(async (

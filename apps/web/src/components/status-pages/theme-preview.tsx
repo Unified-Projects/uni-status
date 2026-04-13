@@ -17,6 +17,9 @@ export function ThemePreview({ colors, mode, className }: ThemePreviewProps) {
     return {
       background: isDark ? colors.backgroundDark || colors.background : colors.background,
       text: isDark ? colors.textDark || colors.text : colors.text,
+      mutedText: isDark
+        ? colors.mutedTextDark || colors.textDark || colors.mutedText || colors.text
+        : colors.mutedText || colors.text,
       surface: isDark ? colors.surfaceDark || colors.surface : colors.surface,
       border: isDark ? colors.borderDark || colors.border || "#374151" : colors.border || "#e5e7eb",
       primary: colors.primary,
@@ -105,7 +108,7 @@ export function ThemePreview({ colors, mode, className }: ThemePreviewProps) {
         </h3>
         <p
           className="text-xs mt-0.5 opacity-60"
-          style={{ color: resolvedColors.text }}
+          style={{ color: resolvedColors.mutedText }}
         >
           Current status of all services
         </p>

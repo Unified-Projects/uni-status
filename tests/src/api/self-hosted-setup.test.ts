@@ -74,16 +74,17 @@ describe("Self-hosted setup API", () => {
     it("creates admin, organization, and marks setup complete", async () => {
       // Start with no settings
       await clearSystemSettings();
+      const suffix = Date.now().toString();
 
       const response = await fetch(`${API_BASE_URL}/api/v1/system/setup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           adminName: "Setup Admin",
-          adminEmail: "setup-admin@example.com",
+          adminEmail: `setup-admin-${suffix}@example.com`,
           adminPassword: "SecureP@ss123",
           organizationName: "Setup Test Org",
-          organizationSlug: "setup-test-org",
+          organizationSlug: `setup-test-org-${suffix}`,
           signupMode: "invite_only",
         }),
       });

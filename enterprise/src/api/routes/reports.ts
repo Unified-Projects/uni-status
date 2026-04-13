@@ -113,6 +113,18 @@ function getReportSha256FromSummary(summary: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+function buildReportDownloadUrl(reportId: string): string {
+  return `/api/v1/reports/${reportId}/download`;
+}
+
+function sanitizeReportResponse<T extends { id: string; fileUrl?: string | null }>(report: T) {
+  return {
+    ...report,
+    fileUrl: null,
+    downloadUrl: buildReportDownloadUrl(report.id),
+  };
+}
+
 async function bodyToBuffer(body: unknown): Promise<Buffer> {
   if (!body) {
     throw new Error("S3 object has no body");
@@ -965,7 +977,7 @@ reportsRoutes.get("/", async (c) => {
 
   return c.json({
     success: true,
-    data: reports,
+    data: reports.map((report) => sanitizeReportResponse(report)),
     meta: {
       total,
       limit,
@@ -1375,7 +1387,11 @@ reportsRoutes.get("/:id", async (c) => {
 
     return c.json({
       success: true,
-      data: { ...report, settings, deliveries },
+      data: {
+        ...sanitizeReportResponse(report),
+        settings,
+        deliveries,
+      },
     });
   } catch (error) {
     log.error("[reports] GET /:id error:", error);

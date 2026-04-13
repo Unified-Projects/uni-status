@@ -2,13 +2,14 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { createSchema, createYoga } from "graphql-yoga";
 import { GraphQLScalarType, Kind, type ValueNode } from "graphql";
 import { db } from "@uni-status/database";
-import { monitors, statusPages, subscribers } from "@uni-status/database/schema";
+import { monitors, organizationMembers, statusPages, subscribers } from "@uni-status/database/schema";
 import { eq, and } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { API_CHANGELOG, API_DEPRECATIONS, API_VERSIONS } from "../lib/api-metadata";
-import { buildPublicStatusPagePayload, findStatusPageBySlug } from "../lib/status-page-data";
+import { buildPublicStatusPagePayload } from "../lib/status-page-data";
 import { authMiddleware, type AuthContext } from "../middleware/auth";
 import { sendSubscriberVerificationEmail } from "../lib/email";
+import { resolvePublicStatusPageAccessFromHeaders } from "./public";
 
 export const graphqlRoutes = new OpenAPIHono();
 
@@ -195,18 +196,58 @@ const JSONScalar = new GraphQLScalarType({
 
 const MAX_STATUS_PAGE_SLUGS_PER_QUERY = 25;
 
+async function ensureGraphqlOrganizationAccess(
+  auth: AuthContext | undefined,
+  organizationId: string
+) {
+  if (!auth?.apiKey && !auth?.user) {
+    throw new Error("Authentication required for monitors query");
+  }
+
+  if (auth.apiKey) {
+    if (auth.organizationId !== organizationId) {
+      throw new Error("Organization mismatch for monitors query");
+    }
+    return;
+  }
+
+  const membership = await db.query.organizationMembers.findFirst({
+    where: and(
+      eq(organizationMembers.organizationId, organizationId),
+      eq(organizationMembers.userId, auth.user!.id)
+    ),
+    columns: {
+      organizationId: true,
+    },
+  });
+
+  if (!membership) {
+    throw new Error("Not authorized for this organization");
+  }
+}
+
 const resolvers = {
   JSON: JSONScalar,
   Query: {
-    statusPage: async (_: unknown, args: { slug: string }) => {
-      const found = await findStatusPageBySlug(args.slug);
-      if (!found || !found.page.published) return null;
-      if (found.page.passwordHash) {
-        throw new Error("Status page is protected by a password");
+    statusPage: async (
+      _: unknown,
+      args: { slug: string },
+      ctx: { auth?: AuthContext; headers?: Headers }
+    ) => {
+      const access = await resolvePublicStatusPageAccessFromHeaders(ctx.headers ?? new Headers(), args.slug);
+      if ("denied" in access) {
+        throw new Error(access.denied.body.error.message);
       }
-      return buildPublicStatusPagePayload(found);
+      return buildPublicStatusPagePayload({
+        page: access.page,
+        organization: access.organization,
+      });
     },
-    statusPages: async (_: unknown, args: { slugs: string[] }) => {
+    statusPages: async (
+      _: unknown,
+      args: { slugs: string[] },
+      ctx: { auth?: AuthContext; headers?: Headers }
+    ) => {
       const uniqueSlugs = Array.from(new Set(args.slugs.map((slug) => slug.trim()).filter(Boolean)));
       if (uniqueSlugs.length > MAX_STATUS_PAGE_SLUGS_PER_QUERY) {
         throw new Error(`Too many slugs requested. Maximum is ${MAX_STATUS_PAGE_SLUGS_PER_QUERY}.`);
@@ -219,9 +260,15 @@ const resolvers = {
         const batch = uniqueSlugs.slice(i, i + batchSize);
         const batchResults = await Promise.all(
           batch.map(async (slug) => {
-            const found = await findStatusPageBySlug(slug);
-            if (!found || !found.page.published || found.page.passwordHash) return null;
-            return buildPublicStatusPagePayload(found);
+            const access = await resolvePublicStatusPageAccessFromHeaders(ctx.headers ?? new Headers(), slug);
+            if ("denied" in access) {
+              return null;
+            }
+
+            return buildPublicStatusPagePayload({
+              page: access.page,
+              organization: access.organization,
+            });
           })
         );
         results.push(...batchResults);
@@ -233,12 +280,7 @@ const resolvers = {
       args: { organizationId: string; status?: string },
       ctx: { auth?: AuthContext }
     ) => {
-      if (!ctx.auth?.apiKey && !ctx.auth?.user) {
-        throw new Error("Authentication required for monitors query");
-      }
-      if (ctx.auth.organizationId && ctx.auth.organizationId !== args.organizationId) {
-        throw new Error("Organization mismatch for monitors query");
-      }
+      await ensureGraphqlOrganizationAccess(ctx.auth, args.organizationId);
 
       const validStatuses = ["active", "degraded", "down", "paused", "pending"] as const;
       const statusFilter =
@@ -348,18 +390,18 @@ const resolvers = {
   },
 };
 
-const schema = createSchema<{ auth?: AuthContext }>({
+const schema = createSchema<{ auth?: AuthContext; headers?: Headers }>({
   typeDefs,
   resolvers,
 });
 
-const yoga = createYoga<{ auth?: AuthContext }>({
+const yoga = createYoga<{ auth?: AuthContext; headers?: Headers }>({
   graphqlEndpoint: "/api/graphql",
   schema,
   maskedErrors: false,
   context: async ({ request }) => {
     const auth = (request as any).authContext as AuthContext | undefined;
-    return { auth };
+    return { auth, headers: request.headers };
   },
 });
 

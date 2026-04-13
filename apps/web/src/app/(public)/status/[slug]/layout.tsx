@@ -1,5 +1,10 @@
 import type { ReactNode } from "react";
-import { getStatusPageShellData, buildThemeStyles } from "@/lib/public-status-page-api";
+import { headers } from "next/headers";
+import {
+  getStatusPageShellData,
+  buildThemeStyles,
+  isCustomDomain,
+} from "@/lib/public-status-page-api";
 import { StatusPageProvider } from "./status-page-context";
 import { StatusPageThemeProvider } from "./status-page-theme-provider";
 
@@ -21,6 +26,9 @@ export default async function StatusPageLayout({
 
   const { data } = result;
   const themeStyles = buildThemeStyles(data.theme);
+  const headersList = await headers();
+  const hostname = headersList.get("x-forwarded-host") || headersList.get("host") || "localhost";
+  const basePath = isCustomDomain(hostname) ? "" : `/status/${slug}`;
 
   // Run before hydration so dark/light class is set immediately — prevents flash
   const colorModeScript =
@@ -38,7 +46,18 @@ export default async function StatusPageLayout({
 
   return (
     <StatusPageThemeProvider colorMode={data.theme.colorMode}>
-      <StatusPageProvider value={{ name: data.name, slug, monitors }}>
+      <StatusPageProvider
+        value={{
+          name: data.name,
+          slug,
+          monitors,
+          basePath,
+          footerText: data.settings.footerText,
+          supportUrl: data.settings.supportUrl,
+          hideBranding: data.settings.hideBranding,
+          localization: data.settings.localization,
+        }}
+      >
         {colorModeScript && (
           <script dangerouslySetInnerHTML={{ __html: colorModeScript }} />
         )}

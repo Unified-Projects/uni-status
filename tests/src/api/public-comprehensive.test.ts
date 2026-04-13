@@ -12,6 +12,7 @@ import {
   insertCheckResults,
   setMonitorStatus,
 } from "../helpers/data";
+import { createWebSession, getAuthHeaders } from "../helpers/web-auth";
 
 const API_BASE_URL = process.env.API_BASE_URL ?? "http://api:3001";
 
@@ -31,6 +32,22 @@ describe("Public API Comprehensive Tests", () => {
   afterAll(async () => {
     await ctx.cleanup();
   });
+
+  async function getOAuthVerificationHeaders(email?: string) {
+    if (email) {
+      await ctx.dbClient`
+        UPDATE "user"
+        SET email = ${email}, "updatedAt" = NOW()
+        WHERE id = ${ctx.userId}
+      `;
+    }
+
+    const sessionToken = await createWebSession(ctx);
+    return {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(sessionToken),
+    };
+  }
 
   // ==========================================
   // Status Page Access
@@ -323,7 +340,7 @@ describe("Public API Comprehensive Tests", () => {
   // ==========================================
 
   describe("POST /public/status-pages/:slug/verify-oauth", () => {
-    it("returns 400 if email not provided", async () => {
+    it("returns 401 when no authenticated session is present", async () => {
       const slug = `verify-oauth-${validSlugId()}`;
 
       await ctx.dbClient`
@@ -346,10 +363,43 @@ describe("Public API Comprehensive Tests", () => {
         body: JSON.stringify({}),
       });
 
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(401);
 
       const json = await response.json();
-      expect(json.error.code).toBe("INVALID_REQUEST");
+      expect(json.error.code).toBe("UNAUTHORIZED");
+      expect(json.error.message).toContain("authenticated session");
+    });
+
+    it("rejects forged identity payload without a real session", async () => {
+      const slug = `verify-oauth-forged-${validSlugId()}`;
+
+      await ctx.dbClient`
+        INSERT INTO status_pages (id, organization_id, name, slug, published, auth_config, created_at, updated_at)
+        VALUES (
+          ${nanoid()},
+          ${ctx.organizationId},
+          'OAuth Protected Page',
+          ${slug},
+          true,
+          ${JSON.stringify({ protectionMode: "oauth", oauthMode: "any_authenticated" })}::jsonb,
+          NOW(),
+          NOW()
+        )
+      `;
+
+      const response = await fetch(`${apiUrl}/public/status-pages/${slug}/verify-oauth`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: "attacker@evil.example.com",
+          userId: `user-${validSlugId()}`,
+        }),
+      });
+
+      expect(response.status).toBe(401);
+      const json = await response.json();
+      expect(json.success).toBe(false);
+      expect(json.error.code).toBe("UNAUTHORIZED");
     });
 
     it("returns 400 for page without OAuth protection", async () => {
@@ -387,8 +437,8 @@ describe("Public API Comprehensive Tests", () => {
 
       const response = await fetch(`${apiUrl}/public/status-pages/${slug}/verify-oauth`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: "test@example.com" }),
+        headers: await getOAuthVerificationHeaders(),
+        body: JSON.stringify({}),
       });
 
       expect(response.status).toBe(200);
@@ -396,10 +446,13 @@ describe("Public API Comprehensive Tests", () => {
       const json = await response.json();
       expect(json.success).toBe(true);
       expect(json.data.token).toBeDefined();
+      expect(response.headers.get("set-cookie")).toContain(`sp_oauth_${slug}=`);
     });
 
     it("denies access for allowlist mode when email not in list", async () => {
       const slug = `oauth-allowlist-${validSlugId()}`;
+      const allowedEmail = `${validSlugId()}@allowed-example.com`;
+      const deniedEmail = `${validSlugId()}@not-allowed-example.com`;
 
       await ctx.dbClient`
         INSERT INTO status_pages (id, organization_id, name, slug, published, auth_config, created_at, updated_at)
@@ -409,7 +462,7 @@ describe("Public API Comprehensive Tests", () => {
           'OAuth Allowlist Page',
           ${slug},
           true,
-          ${JSON.stringify({ protectionMode: "oauth", oauthMode: "allowlist", allowedEmails: ["allowed@example.com"], allowedDomains: [] })}::jsonb,
+          ${JSON.stringify({ protectionMode: "oauth", oauthMode: "allowlist", allowedEmails: [allowedEmail], allowedDomains: [] })}::jsonb,
           NOW(),
           NOW()
         )
@@ -417,8 +470,8 @@ describe("Public API Comprehensive Tests", () => {
 
       const response = await fetch(`${apiUrl}/public/status-pages/${slug}/verify-oauth`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: "notallowed@example.com" }),
+        headers: await getOAuthVerificationHeaders(deniedEmail),
+        body: JSON.stringify({}),
       });
 
       expect(response.status).toBe(403);
@@ -429,6 +482,7 @@ describe("Public API Comprehensive Tests", () => {
 
     it("grants access for allowlist mode when email is in list", async () => {
       const slug = `oauth-allowlist-ok-${validSlugId()}`;
+      const allowedEmail = `${validSlugId()}@allowed-example.com`;
 
       await ctx.dbClient`
         INSERT INTO status_pages (id, organization_id, name, slug, published, auth_config, created_at, updated_at)
@@ -438,7 +492,7 @@ describe("Public API Comprehensive Tests", () => {
           'OAuth Allowlist Page',
           ${slug},
           true,
-          ${JSON.stringify({ protectionMode: "oauth", oauthMode: "allowlist", allowedEmails: ["allowed@example.com"], allowedDomains: [] })}::jsonb,
+          ${JSON.stringify({ protectionMode: "oauth", oauthMode: "allowlist", allowedEmails: [allowedEmail], allowedDomains: [] })}::jsonb,
           NOW(),
           NOW()
         )
@@ -446,15 +500,20 @@ describe("Public API Comprehensive Tests", () => {
 
       const response = await fetch(`${apiUrl}/public/status-pages/${slug}/verify-oauth`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: "allowed@example.com" }),
+        headers: await getOAuthVerificationHeaders(allowedEmail),
+        body: JSON.stringify({}),
       });
 
       expect(response.status).toBe(200);
+
+      const json = await response.json();
+      expect(json.success).toBe(true);
+      expect(json.data.token).toBeDefined();
     });
 
     it("grants access for allowlist mode when domain is in list", async () => {
       const slug = `oauth-domain-ok-${validSlugId()}`;
+      const allowedEmail = `${validSlugId()}@allowed-domain.com`;
 
       await ctx.dbClient`
         INSERT INTO status_pages (id, organization_id, name, slug, published, auth_config, created_at, updated_at)
@@ -472,11 +531,15 @@ describe("Public API Comprehensive Tests", () => {
 
       const response = await fetch(`${apiUrl}/public/status-pages/${slug}/verify-oauth`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: "anyone@allowed-domain.com" }),
+        headers: await getOAuthVerificationHeaders(allowedEmail),
+        body: JSON.stringify({}),
       });
 
       expect(response.status).toBe(200);
+
+      const json = await response.json();
+      expect(json.success).toBe(true);
+      expect(json.data.token).toBeDefined();
     });
   });
 

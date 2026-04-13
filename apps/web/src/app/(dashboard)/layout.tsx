@@ -27,20 +27,26 @@ export default async function DashboardLayout({
     }
 
     // Check if user has any organisations and redirect to setup if none
+    let organizationsFetchFailed = false;
+
     const orgsResponse = await auth.api
         .listOrganizations({
             headers: requestHeaders,
         })
         .catch((error) => {
             console.error("[dashboard-layout] Failed to fetch organizations", error);
+            organizationsFetchFailed = true;
             return null;
         });
 
+    const orgsData = (orgsResponse as { data?: unknown[] } | null)?.data;
     const organizations = Array.isArray(orgsResponse)
         ? orgsResponse
-        : (orgsResponse as any)?.data ?? [];
+        : Array.isArray(orgsData)
+          ? orgsData
+          : [];
 
-    if (!organizations || organizations.length === 0) {
+    if (!organizationsFetchFailed && organizations.length === 0) {
         // In self-hosted mode, check if user is pending approval before redirecting
         // to org setup (which they shouldn't be able to access)
         if (isSelfHosted()) {

@@ -1,5 +1,10 @@
 import { bootstrapTestContext, TestContext } from "../helpers/context";
-import { insertCheckResults, setMonitorStatus, insertCheckResultFull } from "../helpers/data";
+import {
+  insertCheckResults,
+  setMonitorStatus,
+  insertCheckResultFull,
+  insertDailyAggregate,
+} from "../helpers/data";
 import { nanoid } from "nanoid";
 
 const API_BASE_URL = process.env.API_BASE_URL ?? "http://api:3001";
@@ -55,10 +60,53 @@ describe("Monitor ingestion & analytics", () => {
     expect(monitor.status).toBe("active");
   });
 
+  it("uses historical daily aggregates for list uptime without rescanning raw history", async () => {
+    const aggregateMonitorRes = await fetch(`${API_BASE_URL}/api/v1/monitors`, {
+      method: "POST",
+      headers: ctx.headers,
+      body: JSON.stringify({
+        name: "Aggregate-backed Monitor",
+        url: "https://aggregate.example.com",
+        type: "https",
+        method: "GET",
+        intervalSeconds: 60,
+      }),
+    });
+
+    const aggregateMonitorBody = await aggregateMonitorRes.json();
+    const aggregateMonitorId = aggregateMonitorBody.data.id;
+    await setMonitorStatus(ctx, aggregateMonitorId, "active");
+
+    const aggregateDate = new Date();
+    aggregateDate.setUTCDate(aggregateDate.getUTCDate() - 3);
+    aggregateDate.setUTCHours(0, 0, 0, 0);
+
+    await insertDailyAggregate(ctx, {
+      monitorId: aggregateMonitorId,
+      date: aggregateDate,
+      successCount: 70,
+      degradedCount: 20,
+      failureCount: 10,
+      totalCount: 100,
+      uptimePercentage: 90,
+    });
+
+    const response = await fetch(`${API_BASE_URL}/api/v1/monitors`, {
+      headers: ctx.headers,
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.success).toBe(true);
+    const monitor = body.data.find((m: any) => m.id === aggregateMonitorId);
+    expect(monitor).toBeDefined();
+    expect(monitor.uptimePercentage).toBeCloseTo(90, 2);
+  });
+
   it("returns seeded check results for monitor details", async () => {
     const response = await fetch(
       `${API_BASE_URL}/api/v1/monitors/${monitorId}/results?limit=10`,
-      { headers: ctx.headers }
+      { headers: ctx.headers },
     );
 
     expect(response.status).toBe(200);
@@ -66,7 +114,7 @@ describe("Monitor ingestion & analytics", () => {
     expect(body.success).toBe(true);
     const statuses = body.data.map((r: any) => r.status);
     expect(statuses).toEqual(
-      expect.arrayContaining(["success", "degraded", "failure"])
+      expect.arrayContaining(["success", "degraded", "failure"]),
     );
     expect(body.data.length).toBeGreaterThanOrEqual(4);
   });
@@ -74,7 +122,7 @@ describe("Monitor ingestion & analytics", () => {
   it("reports accurate uptime via analytics endpoint", async () => {
     const response = await fetch(
       `${API_BASE_URL}/api/v1/analytics/uptime?monitorId=${monitorId}&days=7`,
-      { headers: ctx.headers }
+      { headers: ctx.headers },
     );
 
     expect(response.status).toBe(200);
@@ -82,7 +130,10 @@ describe("Monitor ingestion & analytics", () => {
     expect(body.success).toBe(true);
     expect(body.data.uptimePercentage).toBeCloseTo(75, 2);
     const firstDay = body.data.daily?.[0];
-    if (firstDay?.uptimePercentage !== null && firstDay?.uptimePercentage !== undefined) {
+    if (
+      firstDay?.uptimePercentage !== null &&
+      firstDay?.uptimePercentage !== undefined
+    ) {
       expect(firstDay.uptimePercentage).toBeCloseTo(75, 2);
     }
   });
@@ -126,7 +177,7 @@ describe("Monitor ingestion & analytics", () => {
 
       const response = await fetch(
         `${API_BASE_URL}/api/v1/monitors/${timingMonitorId}/results?limit=1`,
-        { headers: ctx.headers }
+        { headers: ctx.headers },
       );
 
       expect(response.status).toBe(200);
@@ -155,7 +206,7 @@ describe("Monitor ingestion & analytics", () => {
 
       const response = await fetch(
         `${API_BASE_URL}/api/v1/monitors/${timingMonitorId}/results?limit=1`,
-        { headers: ctx.headers }
+        { headers: ctx.headers },
       );
 
       expect(response.status).toBe(200);
@@ -179,7 +230,7 @@ describe("Monitor ingestion & analytics", () => {
 
       const response = await fetch(
         `${API_BASE_URL}/api/v1/monitors/${timingMonitorId}/results?limit=1`,
-        { headers: ctx.headers }
+        { headers: ctx.headers },
       );
 
       expect(response.status).toBe(200);
@@ -237,7 +288,7 @@ describe("Monitor ingestion & analytics", () => {
 
       const response = await fetch(
         `${API_BASE_URL}/api/v1/monitors/${sslMonitorId}/results?limit=1`,
-        { headers: ctx.headers }
+        { headers: ctx.headers },
       );
 
       expect(response.status).toBe(200);
@@ -246,7 +297,9 @@ describe("Monitor ingestion & analytics", () => {
 
       const result = body.data[0];
       if (result.certificateInfo) {
-        expect(result.certificateInfo.issuer).toBe("Let's Encrypt Authority X3");
+        expect(result.certificateInfo.issuer).toBe(
+          "Let's Encrypt Authority X3",
+        );
         expect(result.certificateInfo.subject).toBe("ssl.example.com");
         expect(result.certificateInfo.daysUntilExpiry).toBe(180);
       }
@@ -269,7 +322,7 @@ describe("Monitor ingestion & analytics", () => {
 
       const response = await fetch(
         `${API_BASE_URL}/api/v1/monitors/${sslMonitorId}/results?limit=1`,
-        { headers: ctx.headers }
+        { headers: ctx.headers },
       );
 
       expect(response.status).toBe(200);
@@ -294,7 +347,7 @@ describe("Monitor ingestion & analytics", () => {
 
       const response = await fetch(
         `${API_BASE_URL}/api/v1/monitors/${sslMonitorId}/results?limit=1`,
-        { headers: ctx.headers }
+        { headers: ctx.headers },
       );
 
       expect(response.status).toBe(200);
@@ -346,7 +399,7 @@ describe("Monitor ingestion & analytics", () => {
 
       const response = await fetch(
         `${API_BASE_URL}/api/v1/monitors/${emailAuthMonitorId}/results?limit=1`,
-        { headers: ctx.headers }
+        { headers: ctx.headers },
       );
 
       expect(response.status).toBe(200);
@@ -376,7 +429,7 @@ describe("Monitor ingestion & analytics", () => {
 
       const response = await fetch(
         `${API_BASE_URL}/api/v1/monitors/${emailAuthMonitorId}/results?limit=1`,
-        { headers: ctx.headers }
+        { headers: ctx.headers },
       );
 
       expect(response.status).toBe(200);
@@ -426,7 +479,7 @@ describe("Monitor ingestion & analytics", () => {
 
       const response = await fetch(
         `${API_BASE_URL}/api/v1/monitors/${metadataMonitorId}/results?limit=1`,
-        { headers: ctx.headers }
+        { headers: ctx.headers },
       );
 
       expect(response.status).toBe(200);
@@ -436,7 +489,9 @@ describe("Monitor ingestion & analytics", () => {
       const result = body.data[0];
       if (result.metadata) {
         expect(result.metadata.redirectCount).toBe(2);
-        expect(result.metadata.finalUrl).toBe("https://www.metadata.example.com/");
+        expect(result.metadata.finalUrl).toBe(
+          "https://www.metadata.example.com/",
+        );
       }
     });
 
@@ -472,7 +527,7 @@ describe("Monitor ingestion & analytics", () => {
 
       const response = await fetch(
         `${API_BASE_URL}/api/v1/monitors/${dnsMonitorId}/results?limit=1`,
-        { headers: ctx.headers }
+        { headers: ctx.headers },
       );
 
       expect(response.status).toBe(200);

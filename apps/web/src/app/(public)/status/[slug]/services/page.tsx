@@ -29,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@uni-status/ui";
+import { StatusPageRouteShell } from "@/components/public-status";
 import { ServiceCard } from "@/components/public-status/services/service-card";
 import { formatDistanceToNow } from "date-fns";
 import { showsUptime, type MonitorType, type CertificateInfo, type EmailAuthInfo, type HeartbeatInfo } from "@/components/public-status/monitors/types";
@@ -289,8 +290,7 @@ export default function PublicServicesPage() {
 
   if (isError) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="mx-auto max-w-5xl px-4 py-8">
+      <StatusPageRouteShell containerClassName="max-w-5xl">
           <div className="text-center py-12">
             <AlertTriangle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <h2 className="text-lg font-medium">Unable to load services</h2>
@@ -298,14 +298,12 @@ export default function PublicServicesPage() {
               Please try again later
             </p>
           </div>
-        </div>
-      </div>
+      </StatusPageRouteShell>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-5xl px-4 py-8">
+    <StatusPageRouteShell containerClassName="max-w-5xl">
         {/* Header */}
         <div className="mb-8">
           <Link
@@ -502,7 +500,6 @@ export default function PublicServicesPage() {
             })}
           </div>
         )}
-      </div>
-    </div>
+    </StatusPageRouteShell>
   );
 }

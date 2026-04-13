@@ -43,6 +43,7 @@ import {
   eventStatusConfig as centralEventStatusConfig,
   severityConfig as centralSeverityConfig,
 } from "@/lib/status-colors";
+import { StatusPageRouteShell } from "@/components/public-status";
 
 // Always use relative URL for public status page API calls to avoid CORS issues on custom domains
 const API_URL = "/api";
@@ -187,8 +188,7 @@ export default function PublicEventDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
+      <StatusPageRouteShell containerClassName="max-w-4xl">
           <div className="mb-8">
             <Link
               href={`/status/${slug}/events`}
@@ -202,15 +202,13 @@ export default function PublicEventDetailPage() {
             <div className="h-32 animate-pulse rounded-lg bg-muted" />
             <div className="h-64 animate-pulse rounded-lg bg-muted" />
           </div>
-        </div>
-      </div>
+      </StatusPageRouteShell>
     );
   }
 
   if (error || !event) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
+      <StatusPageRouteShell containerClassName="max-w-4xl">
           <div className="mb-8">
             <Link
               href={`/status/${slug}/events`}
@@ -230,8 +228,7 @@ export default function PublicEventDetailPage() {
               Try Again
             </Button>
           </div>
-        </div>
-      </div>
+      </StatusPageRouteShell>
     );
   }
 
@@ -243,8 +240,7 @@ export default function PublicEventDetailPage() {
 
   return (
     <TooltipProvider>
-      <div className="min-h-screen bg-background">
-        <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
+      <StatusPageRouteShell containerClassName="max-w-4xl">
           {/* Header */}
           <div className="mb-8">
             <Link
@@ -557,8 +553,7 @@ export default function PublicEventDetailPage() {
               )}
             </div>
           </div>
-        </div>
-      </div>
+      </StatusPageRouteShell>
 
       <PublicEventSubscribeDialog
         open={subscribeDialogOpen}

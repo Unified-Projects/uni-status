@@ -1,7 +1,13 @@
 "use client";
 
 import { cn } from "@uni-status/ui";
-import { UptimeBar } from "@/components/monitors/uptime-bar";
+import {
+  UptimeBar,
+  formatUptimeAgoLabel,
+  formatUptimeRangeLabel,
+  getUptimeCurrentLabel,
+  getUptimeRangeMetadata,
+} from "@/components/monitors/uptime-bar";
 import { ResponseTimeChart, type TooltipMetricsConfig } from "@/components/monitors/response-time-chart";
 import { StatusIndicatorWrapper } from "../indicators";
 import { ReportDownButton } from "../report-down-button";
@@ -42,8 +48,11 @@ export function DetailedMonitor({
   displayMode = "bars",
   graphTooltipMetrics = { avg: true },
 }: DetailedMonitorProps) {
-  const granularity = monitor.uptimeGranularity || "day";
-  const unitLabel = granularity === "day" ? "days" : granularity === "hour" ? "hours" : "minutes";
+  const rangeMetadata = getUptimeRangeMetadata(
+    monitor.uptimeData,
+    uptimeDays,
+    monitor.uptimeGranularity
+  );
 
   return (
     <div
@@ -104,7 +113,11 @@ export function DetailedMonitor({
             <div className={cn("text-xl font-bold", getUptimeColorClass(monitor.uptimePercentage))}>
               {formatUptime(monitor.uptimePercentage)}
             </div>
-            <div className="text-xs text-[var(--status-muted-text)]">Last {uptimeDays} {unitLabel}</div>
+            <div className="text-xs text-[var(--status-muted-text)]">
+              {rangeMetadata.visibleRange > 0
+                ? `Last ${formatUptimeRangeLabel(rangeMetadata.visibleRange, rangeMetadata.granularity)}`
+                : "No history yet"}
+            </div>
           </div>
         )}
         {/* Response/Connection Time - for most types */}
@@ -156,14 +169,18 @@ export function DetailedMonitor({
           <UptimeBar
             data={monitor.uptimeData}
             days={uptimeDays}
-            granularity={granularity}
+            granularity={rangeMetadata.granularity}
             height={32}
             showTooltip
             showLegend={false}
           />
           <div className="mt-1 flex items-center justify-between text-xs text-[var(--status-muted-text)]">
-            <span>{uptimeDays} {unitLabel} ago</span>
-            <span>Now</span>
+            <span>
+              {rangeMetadata.visibleRange > 0
+                ? formatUptimeAgoLabel(rangeMetadata.visibleRange, rangeMetadata.granularity)
+                : "No data"}
+            </span>
+            <span>{getUptimeCurrentLabel(rangeMetadata.granularity)}</span>
           </div>
         </div>
       )}

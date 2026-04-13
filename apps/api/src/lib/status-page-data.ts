@@ -1009,18 +1009,6 @@ export async function buildPublicStatusPagePayload(params: {
   >();
 
   if ((displayMode === "graph" || displayMode === "both") && monitorIds.length > 0) {
-    // Helper functions for percentile calculation
-    const percentile = (arr: number[], p: number) => {
-      if (arr.length === 0) return null;
-      const sorted = [...arr].sort((a, b) => a - b);
-      const index = Math.ceil((p / 100) * sorted.length) - 1;
-      const boundedIndex = Math.max(0, Math.min(index, sorted.length - 1));
-      return sorted[boundedIndex] ?? null;
-    };
-
-    const average = (arr: number[]): number | null =>
-      arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
-
     // Fetch response time data for charts (last uptimeDays in hours)
     const hoursToFetch = Math.min(uptimeDays * 24, 1080); // Max 45 days of data
     const chartStartDate = new Date();
@@ -1087,46 +1075,65 @@ export async function buildPublicStatusPagePayload(params: {
     }
 
     if (!builtFromHourlyAggregates) {
-      const allChartResults = await db.query.checkResults.findMany({
-        where: and(
-          inArray(checkResults.monitorId, monitorIds),
-          gte(checkResults.createdAt, chartStartDate)
-        ),
-        columns: {
-          monitorId: true,
-          createdAt: true,
-          responseTimeMs: true,
-          status: true,
-        },
-        orderBy: [checkResults.createdAt],
-      });
+      const expectedBuckets = Math.max(1, Math.ceil((hoursToFetch * 60) / bucketMinutes));
+      const resultCounts = await db
+        .select({
+          monitorId: checkResults.monitorId,
+          resultCount: sql<number>`COUNT(*)::int`.as("result_count"),
+        })
+        .from(checkResults)
+        .where(
+          and(
+            inArray(checkResults.monitorId, monitorIds),
+            gte(checkResults.createdAt, chartStartDate)
+          )
+        )
+        .groupBy(checkResults.monitorId);
 
-      const rawResultsByMonitor = new Map<
-        string,
-        Array<{
-          monitorId: string;
-          createdAt: Date;
-          responseTimeMs: number | null;
-          status: typeof checkResults.$inferSelect.status;
-        }>
-      >();
+      const sparseMonitorIds = resultCounts
+        .filter((row) => Number(row.resultCount) <= expectedBuckets * 0.8)
+        .map((row) => row.monitorId);
+      const denseMonitorIds = resultCounts
+        .filter((row) => Number(row.resultCount) > expectedBuckets * 0.8)
+        .map((row) => row.monitorId);
 
-      for (const result of allChartResults) {
-        const monitorResults = rawResultsByMonitor.get(result.monitorId) || [];
-        monitorResults.push(result);
-        rawResultsByMonitor.set(result.monitorId, monitorResults);
-      }
+      if (sparseMonitorIds.length > 0) {
+        const rawChartResults = await db.query.checkResults.findMany({
+          where: and(
+            inArray(checkResults.monitorId, sparseMonitorIds),
+            gte(checkResults.createdAt, chartStartDate)
+          ),
+          columns: {
+            monitorId: true,
+            createdAt: true,
+            responseTimeMs: true,
+            status: true,
+          },
+          orderBy: [checkResults.createdAt],
+        });
 
-      for (const monitorId of monitorIds) {
-        const rawResults = rawResultsByMonitor.get(monitorId) || [];
-        if (rawResults.length === 0) {
-          continue;
+        const rawResultsByMonitor = new Map<
+          string,
+          Array<{
+            monitorId: string;
+            createdAt: Date;
+            responseTimeMs: number | null;
+            status: typeof checkResults.$inferSelect.status;
+          }>
+        >();
+
+        for (const result of rawChartResults) {
+          const monitorResults = rawResultsByMonitor.get(result.monitorId) || [];
+          monitorResults.push(result);
+          rawResultsByMonitor.set(result.monitorId, monitorResults);
         }
 
-        // If we have fewer data points than typical bucket count, use raw data
-        const expectedBuckets = (hoursToFetch * 60) / bucketMinutes;
-        if (rawResults.length <= expectedBuckets * 0.8) {
-          // Use raw data points for sparse data
+        for (const monitorId of sparseMonitorIds) {
+          const rawResults = rawResultsByMonitor.get(monitorId) || [];
+          if (rawResults.length === 0) {
+            continue;
+          }
+
           const chartData = rawResults
             .filter((r) => r.responseTimeMs != null)
             .map((r) => {
@@ -1145,62 +1152,63 @@ export async function buildPublicStatusPagePayload(params: {
             });
 
           responseTimeChartDataByMonitor.set(monitorId, chartData);
-          continue;
         }
+      }
 
-        // Aggregate into time buckets based on calculated bucket size
-        const bucketMap = new Map<string, { responseTimes: number[]; status: "success" | "degraded" | "down" }>();
+      if (denseMonitorIds.length > 0) {
+        const bucketSizeSeconds = bucketMinutes * 60;
+        const bucketExpression = sql<Date>`TO_TIMESTAMP(FLOOR(EXTRACT(EPOCH FROM ${checkResults.createdAt}) / ${bucketSizeSeconds}) * ${bucketSizeSeconds})`;
 
-        for (const result of rawResults) {
-          const resultDate = new Date(result.createdAt);
+        const bucketedChartRows = await db
+          .select({
+            monitorId: checkResults.monitorId,
+            bucket: bucketExpression.as("bucket"),
+            sampleCount: sql<number>`COUNT(${checkResults.responseTimeMs})::int`.as("sample_count"),
+            avgResponseTimeMs: sql<number | null>`AVG(${checkResults.responseTimeMs})`.as("avg_response_time_ms"),
+            minResponseTimeMs: sql<number | null>`MIN(${checkResults.responseTimeMs})`.as("min_response_time_ms"),
+            maxResponseTimeMs: sql<number | null>`MAX(${checkResults.responseTimeMs})`.as("max_response_time_ms"),
+            p50ResponseTimeMs:
+              sql<number | null>`PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ${checkResults.responseTimeMs}) FILTER (WHERE ${checkResults.responseTimeMs} IS NOT NULL)`.as("p50_response_time_ms"),
+            p90ResponseTimeMs:
+              sql<number | null>`PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY ${checkResults.responseTimeMs}) FILTER (WHERE ${checkResults.responseTimeMs} IS NOT NULL)`.as("p90_response_time_ms"),
+            p99ResponseTimeMs:
+              sql<number | null>`PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY ${checkResults.responseTimeMs}) FILTER (WHERE ${checkResults.responseTimeMs} IS NOT NULL)`.as("p99_response_time_ms"),
+            downCount:
+              sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} IN ('failure', 'timeout', 'error'))::int`.as("down_count"),
+            degradedCount:
+              sql<number>`COUNT(*) FILTER (WHERE ${checkResults.status} = 'degraded')::int`.as("degraded_count"),
+          })
+          .from(checkResults)
+          .where(
+            and(
+              inArray(checkResults.monitorId, denseMonitorIds),
+              gte(checkResults.createdAt, chartStartDate)
+            )
+          )
+          .groupBy(checkResults.monitorId, bucketExpression)
+          .orderBy(bucketExpression);
 
-          // Calculate bucket boundary
-          let bucketDate: Date;
-          if (bucketMinutes < 60) {
-            // Sub-hour buckets - round to nearest bucket within the hour
-            const minutes = resultDate.getUTCMinutes();
-            const bucketMinute = Math.floor(minutes / bucketMinutes) * bucketMinutes;
-            bucketDate = new Date(resultDate);
-            bucketDate.setUTCMinutes(bucketMinute, 0, 0);
-          } else {
-            // Hour or multi-hour buckets
-            const bucketHours = bucketMinutes / 60;
-            const bucketHour = Math.floor(resultDate.getUTCHours() / bucketHours) * bucketHours;
-            bucketDate = new Date(resultDate);
-            bucketDate.setUTCHours(bucketHour, 0, 0, 0);
+        for (const row of bucketedChartRows) {
+          if (!row.sampleCount || row.avgResponseTimeMs == null) {
+            continue;
           }
 
-          const bucketKey = bucketDate.toISOString();
-          const existing = bucketMap.get(bucketKey) || { responseTimes: [], status: "success" };
+          const status: "success" | "degraded" | "down" =
+            row.downCount > 0 ? "down" : row.degradedCount > 0 ? "degraded" : "success";
 
-          if (result.responseTimeMs != null) {
-            existing.responseTimes.push(result.responseTimeMs);
-          }
-          // Track worst status in bucket
-          if (result.status === "failure" || result.status === "timeout" || result.status === "error") {
-            existing.status = "down";
-          } else if (result.status === "degraded" && existing.status !== "down") {
-            existing.status = "degraded";
-          }
-
-          bucketMap.set(bucketKey, existing);
+          const existing = responseTimeChartDataByMonitor.get(row.monitorId) || [];
+          existing.push({
+            timestamp: new Date(row.bucket).toISOString(),
+            avg: Number(row.avgResponseTimeMs),
+            min: row.minResponseTimeMs == null ? null : Number(row.minResponseTimeMs),
+            max: row.maxResponseTimeMs == null ? null : Number(row.maxResponseTimeMs),
+            p50: row.p50ResponseTimeMs == null ? null : Number(row.p50ResponseTimeMs),
+            p90: row.p90ResponseTimeMs == null ? null : Number(row.p90ResponseTimeMs),
+            p99: row.p99ResponseTimeMs == null ? null : Number(row.p99ResponseTimeMs),
+            status,
+          });
+          responseTimeChartDataByMonitor.set(row.monitorId, existing);
         }
-
-        const chartData = Array.from(bucketMap.entries())
-          .filter(([, data]) => data.responseTimes.length > 0)
-          .map(([bucketKey, data]) => ({
-            timestamp: bucketKey,
-            avg: average(data.responseTimes),
-            min: Math.min(...data.responseTimes),
-            max: Math.max(...data.responseTimes),
-            p50: percentile(data.responseTimes, 50),
-            p90: percentile(data.responseTimes, 90),
-            p99: percentile(data.responseTimes, 99),
-            status: data.status as "success" | "degraded" | "down",
-          }))
-          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-
-        responseTimeChartDataByMonitor.set(monitorId, chartData);
       }
     }
   }

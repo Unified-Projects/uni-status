@@ -42,6 +42,10 @@ interface HttpCheckJob {
   regions: string[];
   degradedThresholdMs?: number | null;
   config?: {
+    ssl?: {
+      checkChain?: boolean;
+      checkHostname?: boolean;
+    };
     pagespeed?: {
       enabled?: boolean;
       strategy?: "mobile" | "desktop" | "both";
@@ -183,6 +187,35 @@ export async function processHttpCheck(job: Job<HttpCheckJob>) {
   let contractIssues: string[] = [];
   let visualRegressionDetected = false;
   let browserScreenshotHash: string | undefined;
+  const sslConfig = config?.ssl;
+  const fetchWithMonitorTls = (
+    input: string,
+    init?: RequestInit & {
+      tls?: {
+        rejectUnauthorized?: boolean;
+        checkServerIdentity?: NonNullable<import("node:tls").ConnectionOptions["checkServerIdentity"]>;
+      };
+    }
+  ) => {
+    if (!input.startsWith("https://")) {
+      return fetch(input, init);
+    }
+
+    if (sslConfig?.checkChain !== false && sslConfig?.checkHostname !== false) {
+      return fetch(input, init);
+    }
+
+    return fetch(input, {
+      ...init,
+      tls: {
+        ...(init?.tls || {}),
+        rejectUnauthorized: sslConfig?.checkChain !== false,
+        checkServerIdentity: sslConfig?.checkHostname === false
+          ? () => undefined
+          : init?.tls?.checkServerIdentity,
+      },
+    });
+  };
 
   const applyIssue = (message: string, severity: "failure" | "degraded", code?: string) => {
     if (severity === "failure") {
@@ -202,7 +235,7 @@ export async function processHttpCheck(job: Job<HttpCheckJob>) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), abortTimeoutMs);
 
-    const response = await fetch(url, {
+    const response = await fetchWithMonitorTls(url, {
       method,
       headers,
       body: body || undefined,
@@ -380,7 +413,7 @@ export async function processHttpCheck(job: Job<HttpCheckJob>) {
     for (const op of config.http.graphql.operations) {
       try {
         const targetUrl = op.urlOverride || url;
-        const gqlResponse = await fetch(targetUrl, {
+        const gqlResponse = await fetchWithMonitorTls(targetUrl, {
           method: "POST",
           headers: {
             "content-type": "application/json",
@@ -442,7 +475,7 @@ export async function processHttpCheck(job: Job<HttpCheckJob>) {
       const stepName = step.name || stepUrl;
 
       try {
-        const stepResp = await fetch(stepUrl, {
+        const stepResp = await fetchWithMonitorTls(stepUrl, {
           method: stepMethod,
           headers: stepHeaders,
           body: stepBody,
@@ -725,7 +758,7 @@ export async function processHttpCheck(job: Job<HttpCheckJob>) {
       const timeout = setTimeout(() => controller.abort(), timeoutMs);
       const start = performance.now();
       try {
-        const resp = await fetch(targetUrl, {
+        const resp = await fetchWithMonitorTls(targetUrl, {
           method,
           headers: headerOverride ? buildHeaders(headerOverride) : headers,
           body: body || undefined,

@@ -17,6 +17,15 @@ const log = createLogger({ module: "status-pages" });
 
 export const statusPagesRoutes = new OpenAPIHono();
 
+function parsePaginationParam(value: string | undefined, defaultValue: number, min = 0, max = Number.MAX_SAFE_INTEGER): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return defaultValue;
+  }
+
+  return Math.min(Math.max(Math.trunc(parsed), min), max);
+}
+
 // Helper to map database fields to API response fields
 function mapStatusPageResponse<T extends { logo?: string | null; favicon?: string | null }>(page: T) {
   return {
@@ -31,8 +40,8 @@ statusPagesRoutes.get("/", async (c) => {
   const organizationId = await requireOrganization(c);
 
   // Parse pagination parameters
-  const limit = Math.min(Math.max(parseInt(c.req.query("limit") || "100"), 1), 100);
-  const offset = Math.max(parseInt(c.req.query("offset") || "0"), 0);
+  const limit = parsePaginationParam(c.req.query("limit"), 100, 1, 100);
+  const offset = parsePaginationParam(c.req.query("offset"), 0, 0);
 
   // Get total count
   const countResult = await db

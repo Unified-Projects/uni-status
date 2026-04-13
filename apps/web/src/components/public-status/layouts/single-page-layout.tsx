@@ -92,7 +92,7 @@ export function SinglePageLayout({
   );
 
   return (
-    <div className={cn("min-h-screen bg-[var(--status-bg)] text-[var(--status-text)]", className)}>
+    <div className={cn("min-h-screen bg-[var(--status-bg)] text-[var(--status-text)] flex flex-col", className)}>
       <div className="relative overflow-hidden border-b bg-gradient-to-br from-primary/10 via-background to-background">
         <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_15%_20%,hsl(var(--foreground)/0.08),transparent_35%),radial-gradient(circle_at_85%_10%,hsl(var(--primary)/0.18),transparent_45%)]" />
         <div className="relative mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8 space-y-6">
@@ -175,7 +175,7 @@ export function SinglePageLayout({
         </div>
       </div>
 
-      <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8 space-y-16">
+      <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8 space-y-16 flex-1 w-full">
         <section id="systems" className="scroll-mt-28 space-y-4">
           <div className="space-y-1">
             <h2 className="text-2xl font-bold">Systems Status</h2>
@@ -353,7 +353,7 @@ export function SinglePageLayout({
         </div>
       </div>
 
-      <div className="border-t bg-[var(--status-card)]/60">
+      <div className="border-t bg-[var(--status-card)]/60 mt-auto">
         <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
           <StatusPageFooter
             footerText={pageData.footerText}

@@ -7,18 +7,11 @@ export default defineConfig({
       "enterprise-tests/**/*.test.ts",
       "../enterprise/tests/**/*.test.ts",
     ],
-    // Exclude tests that require access to source code not available in test container
-    // These should be run via `pnpm test` in the development environment
+    // Exclude only unit/integration fixtures that are not test suites
     exclude: [
       "**/node_modules/**",
       "enterprise-tests/unit/**",
       "../enterprise/tests/unit/**",
-      // certificate-scheduling.test.ts imports from apps/workers/src which isn't
-      // mounted in the test container. Run via `pnpm test` in dev environment.
-      "src/workers/certificate-scheduling.test.ts",
-      // alert-maintenance-suppression.test.ts imports worker alert evaluator from
-      // apps/workers/src which isn't mounted in the test container.
-      "src/integration/alert-maintenance-suppression.test.ts",
     ],
     globals: true,
     environment: "node",

@@ -30,14 +30,26 @@ import {
   DialogTitle,
   cn,
 } from "@uni-status/ui";
-import { useMonitors, useDeleteMonitor, usePauseMonitor, useResumeMonitor, useCheckMonitorNow, useDuplicateMonitor } from "@/hooks/use-monitors";
-import { useDashboardStore, filterMonitors, sortMonitors, type MonitorStatus, type MonitorType } from "@/stores/dashboard-store";
+import {
+  useMonitors,
+  useDeleteMonitor,
+  usePauseMonitor,
+  useResumeMonitor,
+  useCheckMonitorNow,
+  useDuplicateMonitor,
+} from "@/hooks/use-monitors";
+import {
+  useDashboardStore,
+  sortMonitors,
+  type MonitorStatus,
+  type MonitorType,
+} from "@/stores/dashboard-store";
 import { MonitorCard } from "@/components/monitors";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { usePagination } from "@/hooks/use-pagination";
-import { Pagination, DEFAULT_PAGE_SIZE, getPaginationProps } from "@/components/ui/pagination";
+import { Pagination, getPaginationProps } from "@/components/ui/pagination";
 
 const STATUS_OPTIONS: { value: MonitorStatus; label: string }[] = [
   { value: "active", label: "Operational" },
@@ -60,14 +72,10 @@ export default function MonitorsPage() {
   const router = useRouter();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [monitorToDelete, setMonitorToDelete] = useState<string | null>(null);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
   // Pagination
-  const { page, setPage, resetPage, paginationParams } = usePagination();
-
-  // Data fetching
-  const { data: monitorsResponse, isLoading, error, refetch } = useMonitors(paginationParams);
-  const monitors = monitorsResponse?.data;
-  const meta = monitorsResponse?.meta;
+  const { setPage, resetPage, paginationParams } = usePagination();
 
   // Mutations
   const deleteMonitor = useDeleteMonitor();
@@ -82,17 +90,51 @@ export default function MonitorsPage() {
     setMonitorFilters,
     resetMonitorFilters,
     monitorSort,
-    setMonitorSort,
     monitorView,
     setMonitorView,
   } = useDashboardStore();
 
-  // Filter and sort monitors
-  const filteredMonitors = useMemo(() => {
-    if (!monitors) return [];
-    const filtered = filterMonitors(monitors, monitorFilters);
-    return sortMonitors(filtered, monitorSort);
-  }, [monitors, monitorFilters, monitorSort]);
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedSearch(monitorFilters.search.trim());
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [monitorFilters.search]);
+
+  const queryParams = useMemo(
+    () => ({
+      ...paginationParams,
+      status:
+        monitorFilters.status.length > 0 ? monitorFilters.status : undefined,
+      type: monitorFilters.type.length > 0 ? monitorFilters.type : undefined,
+      search: debouncedSearch || undefined,
+    }),
+    [
+      paginationParams,
+      monitorFilters.status,
+      monitorFilters.type,
+      debouncedSearch,
+    ],
+  );
+
+  // Data fetching
+  const {
+    data: monitorsResponse,
+    isLoading,
+    error,
+    refetch,
+  } = useMonitors(queryParams);
+  const monitors = monitorsResponse?.data;
+  const meta = monitorsResponse?.meta;
+
+  // Sort the current server-filtered slice for presentation.
+  const filteredMonitors = useMemo(
+    () => sortMonitors(monitors ?? [], monitorSort),
+    [monitors, monitorSort],
+  );
 
   // Active filter count
   const activeFilterCount = useMemo(() => {
@@ -151,7 +193,12 @@ export default function MonitorsPage() {
   // Reset pagination when filters change
   useEffect(() => {
     resetPage();
-  }, [monitorFilters.status, monitorFilters.type, monitorFilters.search, resetPage]);
+  }, [
+    monitorFilters.status,
+    monitorFilters.type,
+    monitorFilters.search,
+    resetPage,
+  ]);
 
   if (isLoading) {
     return (
@@ -166,10 +213,7 @@ export default function MonitorsPage() {
     return (
       <div className="space-y-6">
         <PageHeader />
-        <ErrorState
-          error={error}
-          onRetry={() => refetch()}
-        />
+        <ErrorState error={error} onRetry={() => refetch()} />
       </div>
     );
   }
@@ -304,7 +348,7 @@ export default function MonitorsPage() {
 
       {/* Monitors List/Grid */}
       {filteredMonitors.length === 0 ? (
-        monitors && monitors.length > 0 ? (
+        activeFilterCount > 0 ? (
           <EmptyState
             icon={Search}
             title="No monitors match your filters"
@@ -332,7 +376,7 @@ export default function MonitorsPage() {
             className={cn(
               monitorView === "grid"
                 ? "grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
-                : "space-y-2"
+                : "space-y-2",
             )}
           >
             {filteredMonitors.map((monitor) => (
@@ -355,7 +399,12 @@ export default function MonitorsPage() {
           {/* Pagination */}
           {meta && (
             <Pagination
-              {...getPaginationProps(meta, filteredMonitors.length, setPage, "monitors")}
+              {...getPaginationProps(
+                meta,
+                filteredMonitors.length,
+                setPage,
+                "monitors",
+              )}
             />
           )}
         </>
@@ -367,8 +416,9 @@ export default function MonitorsPage() {
           <DialogHeader>
             <DialogTitle>Delete Monitor</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete this monitor? This action cannot be
-              undone and all associated check results will be permanently deleted.
+              Are you sure you want to delete this monitor? This action cannot
+              be undone and all associated check results will be permanently
+              deleted.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

@@ -101,10 +101,11 @@ services:
       - |
         apk add --no-cache openssl >/dev/null 2>&1
         mkdir -p /tmp/certs
-        openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
+        openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
           -keyout /tmp/certs/server.key \
           -out /tmp/certs/server.crt \
-          -subj "/CN=localhost" 2>/dev/null
+          -subj "/CN=uni-status-nginx-ssl-test" \
+          -addext "subjectAltName=DNS:localhost,DNS:uni-status-nginx-ssl-test" 2>/dev/null
         cat > /tmp/nginx.conf << 'NGINX_CFG'
         events { worker_connections 1024; }
         http {

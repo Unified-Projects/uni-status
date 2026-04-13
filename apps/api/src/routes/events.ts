@@ -18,6 +18,15 @@ import type { UnifiedEvent, EventUpdate, EventType } from "@uni-status/shared";
 
 export const eventsRoutes = new OpenAPIHono();
 
+function parsePaginationParam(value: string | undefined, defaultValue: number, min = 0, max = Number.MAX_SAFE_INTEGER): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return defaultValue;
+  }
+
+  return Math.min(Math.max(Math.trunc(parsed), min), max);
+}
+
 // Helper to determine maintenance window status
 function getMaintenanceStatus(startsAt: Date, endsAt: Date): "scheduled" | "active" | "completed" {
   const now = new Date();
@@ -117,8 +126,8 @@ eventsRoutes.get("/", async (c) => {
   const search = c.req.query("search");
   const startDate = c.req.query("startDate");
   const endDate = c.req.query("endDate");
-  const limit = Math.min(parseInt(c.req.query("limit") || "50"), 100);
-  const offset = parseInt(c.req.query("offset") || "0");
+  const limit = parsePaginationParam(c.req.query("limit"), 50, 1, 100);
+  const offset = parsePaginationParam(c.req.query("offset"), 0, 0);
 
   // Determine what to include based on types and severity filters
   // If severity=maintenance only is passed, don't include incidents

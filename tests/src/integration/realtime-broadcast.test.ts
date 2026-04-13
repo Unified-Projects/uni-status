@@ -150,6 +150,7 @@ describe("Real-time Event Broadcast Integration", () => {
 
         // Should reject unauthenticated requests (or require organization ID)
         expect([400, 401, 403]).toContain(res.status);
+        expect(res.status).not.toBe(404);
 
         controller.abort();
       } catch (error: unknown) {
@@ -272,18 +273,28 @@ describe("Real-time Event Broadcast Integration", () => {
   // WEBSOCKET ENDPOINT (if available)
   // ==========================================
   describe("WebSocket Endpoint", () => {
-    it("WebSocket endpoint exists", async () => {
-      // Check if WebSocket endpoint is documented/available
+    it("requires authentication", async () => {
       const res = await fetch(`${API_BASE_URL}/api/v1/ws`, {
-        headers: ctx.headers,
-        // Note: This is just checking if the endpoint exists
-        // Actual WebSocket testing requires a WebSocket client
+        headers: {
+          Accept: "text/event-stream",
+          // No auth header intentionally
+        },
       });
 
-      // WebSocket upgrade endpoints typically return 426 or 400
-      // for non-WebSocket requests, or 101 for successful upgrade
-      // Accept various responses as the endpoint may or may not exist
-      expect([101, 200, 400, 404, 426]).toContain(res.status);
+      expect([400, 401, 403]).toContain(res.status);
+      expect(res.status).not.toBe(200);
+      expect(res.status).not.toBe(404);
+    });
+
+    it("authenticated requests return expected transport-level status (no silent 404)", async () => {
+      // This verifies route-level shape; full WebSocket frame tests require a WS client.
+      const res = await fetch(`${API_BASE_URL}/api/v1/ws`, {
+        headers: ctx.headers,
+      });
+
+      expect([400, 426]).toContain(res.status);
+      expect(res.status).not.toBe(200);
+      expect(res.status).not.toBe(404);
     });
   });
 
@@ -353,6 +364,33 @@ describe("Real-time Event Broadcast Integration", () => {
         if (error instanceof Error && error.name !== "AbortError") {
           throw error;
         }
+      }
+    });
+
+    it("monitor SSE endpoint requires authentication", async () => {
+      const monitor = await insertMonitor(ctx.organizationId, {
+        name: "Auth Guard Monitor",
+        url: "https://auth-guard.example.com",
+      });
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/v1/sse/monitors/${monitor.id}`, {
+          headers: {
+            Accept: "text/event-stream",
+          },
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeout);
+        expect([400, 401, 403]).toContain(res.status);
+        expect(res.status).not.toBe(200);
+        expect(res.status).not.toBe(404);
+      } finally {
+        clearTimeout(timeout);
+        controller.abort();
       }
     });
   });

@@ -217,7 +217,9 @@ export interface StatusPageThemeColors {
   background: string;
   backgroundDark?: string;
   text: string;
+  mutedText?: string;
   textDark?: string;
+  mutedTextDark?: string;
   surface: string;
   surfaceDark?: string;
   border?: string;
@@ -2617,6 +2619,26 @@ export interface CertificateDetail {
   }>;
 }
 
+const getOrgScope = (organizationId?: string) =>
+  organizationId ? (["organization", organizationId] as const) : ([] as const);
+
+function resolveOrgScopedParams<TParams extends object | undefined>(
+  organizationIdOrParams?: string | TParams,
+  params?: TParams
+) {
+  if (typeof organizationIdOrParams === "string") {
+    return {
+      organizationId: organizationIdOrParams,
+      params,
+    };
+  }
+
+  return {
+    organizationId: undefined,
+    params: organizationIdOrParams,
+  };
+}
+
 export const queryKeys = {
   certificates: {
     all: ["certificates"] as const,
@@ -2625,18 +2647,37 @@ export const queryKeys = {
   },
   monitors: {
     all: ["monitors"] as const,
-    lists: () => [...queryKeys.monitors.all, "list"] as const,
-    list: (filters?: Record<string, unknown>) => [...queryKeys.monitors.lists(), filters] as const,
-    details: () => [...queryKeys.monitors.all, "detail"] as const,
-    detail: (id: string) => [...queryKeys.monitors.details(), id] as const,
-    results: (id: string) => [...queryKeys.monitors.detail(id), "results"] as const,
+    lists: (organizationId?: string) =>
+      [...queryKeys.monitors.all, ...getOrgScope(organizationId), "list"] as const,
+    list: (
+      organizationIdOrFilters?: string | Record<string, unknown>,
+      filters?: Record<string, unknown>
+    ) => {
+      const resolved = resolveOrgScopedParams(organizationIdOrFilters, filters);
+      return [...queryKeys.monitors.lists(resolved.organizationId), resolved.params] as const;
+    },
+    details: (organizationId?: string) =>
+      [...queryKeys.monitors.all, ...getOrgScope(organizationId), "detail"] as const,
+    detail: (id: string, organizationId?: string) =>
+      [...queryKeys.monitors.details(organizationId), id] as const,
+    results: (id: string, organizationId?: string) =>
+      [...queryKeys.monitors.detail(id, organizationId), "results"] as const,
   },
   incidents: {
     all: ["incidents"] as const,
-    lists: () => [...queryKeys.incidents.all, "list"] as const,
-    list: (params?: Record<string, unknown>) => [...queryKeys.incidents.lists(), params] as const,
-    details: () => [...queryKeys.incidents.all, "detail"] as const,
-    detail: (id: string) => [...queryKeys.incidents.details(), id] as const,
+    lists: (organizationId?: string) =>
+      [...queryKeys.incidents.all, ...getOrgScope(organizationId), "list"] as const,
+    list: (
+      organizationIdOrParams?: string | Record<string, unknown>,
+      params?: Record<string, unknown>
+    ) => {
+      const resolved = resolveOrgScopedParams(organizationIdOrParams, params);
+      return [...queryKeys.incidents.lists(resolved.organizationId), resolved.params] as const;
+    },
+    details: (organizationId?: string) =>
+      [...queryKeys.incidents.all, ...getOrgScope(organizationId), "detail"] as const,
+    detail: (id: string, organizationId?: string) =>
+      [...queryKeys.incidents.details(organizationId), id] as const,
   },
   statusPages: {
     all: ["statusPages"] as const,
@@ -2715,11 +2756,18 @@ export const queryKeys = {
   },
   events: {
     all: ["events"] as const,
-    lists: () => [...queryKeys.events.all, "list"] as const,
-    list: (params?: EventsListParams) => [...queryKeys.events.lists(), params] as const,
-    details: () => [...queryKeys.events.all, "detail"] as const,
-    detail: (type: EventType, id: string) => [...queryKeys.events.details(), type, id] as const,
-    subscriptions: () => [...queryKeys.events.all, "subscriptions"] as const,
+    lists: (organizationId?: string) =>
+      [...queryKeys.events.all, ...getOrgScope(organizationId), "list"] as const,
+    list: (organizationIdOrParams?: string | EventsListParams, params?: EventsListParams) => {
+      const resolved = resolveOrgScopedParams(organizationIdOrParams, params);
+      return [...queryKeys.events.lists(resolved.organizationId), resolved.params] as const;
+    },
+    details: (organizationId?: string) =>
+      [...queryKeys.events.all, ...getOrgScope(organizationId), "detail"] as const,
+    detail: (type: EventType, id: string, organizationId?: string) =>
+      [...queryKeys.events.details(organizationId), type, id] as const,
+    subscriptions: (organizationId?: string) =>
+      [...queryKeys.events.all, ...getOrgScope(organizationId), "subscriptions"] as const,
   },
   monitorDependencies: {
     all: ["monitorDependencies"] as const,

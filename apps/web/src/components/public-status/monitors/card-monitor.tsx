@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@uni-status/ui";
-import { UptimeBar } from "@/components/monitors/uptime-bar";
+import { UptimeBar, getUptimeRangeMetadata } from "@/components/monitors/uptime-bar";
 import { ResponseTimeChart, type TooltipMetricsConfig } from "@/components/monitors/response-time-chart";
 import { StatusIndicatorWrapper } from "../indicators";
 import { ReportDownButton } from "../report-down-button";
@@ -42,9 +42,13 @@ export function CardMonitor({
   displayMode = "bars",
   graphTooltipMetrics = { avg: true },
 }: CardMonitorProps) {
-  const granularity = monitor.uptimeGranularity || "day";
   // For card view, cap at 30 segments for visual reasons
   const displaySegments = Math.min(30, uptimeDays);
+  const rangeMetadata = getUptimeRangeMetadata(
+    monitor.uptimeData,
+    displaySegments,
+    monitor.uptimeGranularity
+  );
 
   return (
     <div
@@ -154,7 +158,7 @@ export function CardMonitor({
         <UptimeBar
           data={monitor.uptimeData}
           days={displaySegments}
-          granularity={granularity}
+          granularity={rangeMetadata.granularity}
           height={20}
           showTooltip
           showLegend={false}
