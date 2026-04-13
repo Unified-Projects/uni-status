@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { cn } from "@uni-status/ui";
 import { History } from "lucide-react";
@@ -70,6 +70,7 @@ const GRANULARITY_MS: Record<UptimeGranularity, number> = {
   hour: 60 * 60 * 1000,
   day: 24 * 60 * 60 * 1000,
 };
+const TOOLTIP_EDGE_PADDING = 8;
 
 function getPointTime(dataPoint: UptimeDataPoint): number {
   return new Date(dataPoint.timestamp || dataPoint.date).getTime();
@@ -251,9 +252,12 @@ export function UptimeBar({
   const resolvedGranularity = rangeMetadata.granularity;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const segmentRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const tooltipRef = useRef<HTMLDivElement | null>(null);
   const activePointerIdRef = useRef<number | null>(null);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [tooltipX, setTooltipX] = useState<number | null>(null);
+  const [tooltipWidth, setTooltipWidth] = useState(0);
+  const [containerWidth, setContainerWidth] = useState(0);
 
   // Calculate overall uptime - weighted by check counts for consistency with API
   const overallUptime = useMemo(() => {
@@ -377,6 +381,46 @@ export function UptimeBar({
     [clearActiveSegment]
   );
 
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const updateMeasurements = () => {
+      setContainerWidth(container.clientWidth);
+      setTooltipWidth(tooltipRef.current?.offsetWidth ?? 0);
+    };
+
+    updateMeasurements();
+
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const observer = new ResizeObserver(updateMeasurements);
+    observer.observe(container);
+
+    if (tooltipRef.current) {
+      observer.observe(tooltipRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, [activeIndex]);
+
+  const clampedTooltipX = useMemo(() => {
+    if (tooltipX === null) return null;
+    if (containerWidth <= 0 || tooltipWidth <= 0) return tooltipX;
+
+    const availableWidth = Math.max(containerWidth - TOOLTIP_EDGE_PADDING * 2, 0);
+    if (tooltipWidth >= availableWidth) {
+      return containerWidth / 2;
+    }
+
+    const minX = tooltipWidth / 2 + TOOLTIP_EDGE_PADDING;
+    const maxX = containerWidth - tooltipWidth / 2 - TOOLTIP_EDGE_PADDING;
+
+    return Math.min(Math.max(tooltipX, minX), maxX);
+  }, [containerWidth, tooltipWidth, tooltipX]);
+
   return (
     <div className={cn("space-y-2", className)}>
       <div className="relative">
@@ -406,10 +450,11 @@ export function UptimeBar({
             />
           ))}
         </div>
-        {showTooltip && activeIndex !== null && tooltipX !== null && normalizedData[activeIndex] && (
+        {showTooltip && activeIndex !== null && clampedTooltipX !== null && normalizedData[activeIndex] && (
           <div
-            className="pointer-events-none absolute bottom-full z-20 mb-2 -translate-x-1/2"
-            style={{ left: tooltipX }}
+            ref={tooltipRef}
+            className="pointer-events-none absolute bottom-full z-20 mb-2 w-max max-w-[calc(100vw-1rem)] -translate-x-1/2"
+            style={{ left: clampedTooltipX }}
           >
             <UptimeBarTooltipContent
               data={normalizedData[activeIndex]}

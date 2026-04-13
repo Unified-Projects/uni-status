@@ -11,6 +11,7 @@ import {
   LayoutGrid,
   List,
   X,
+  RefreshCw,
 } from "lucide-react";
 import {
   Button,
@@ -36,6 +37,7 @@ import {
   usePauseMonitor,
   useResumeMonitor,
   useCheckMonitorNow,
+  useCheckAllMonitors,
   useDuplicateMonitor,
 } from "@/hooks/use-monitors";
 import {
@@ -82,6 +84,7 @@ export default function MonitorsPage() {
   const pauseMonitor = usePauseMonitor();
   const resumeMonitor = useResumeMonitor();
   const checkNow = useCheckMonitorNow();
+  const checkAllMonitors = useCheckAllMonitors();
   const duplicateMonitor = useDuplicateMonitor();
 
   // Store state
@@ -170,6 +173,10 @@ export default function MonitorsPage() {
     await checkNow.mutateAsync(id);
   };
 
+  const handleCheckAll = async () => {
+    await checkAllMonitors.mutateAsync();
+  };
+
   const handleDuplicate = async (id: string) => {
     await duplicateMonitor.mutateAsync({ id });
   };
@@ -220,7 +227,11 @@ export default function MonitorsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader />
+      <PageHeader
+        onCheckAll={handleCheckAll}
+        isCheckingAll={checkAllMonitors.isPending}
+        hasMonitors={(meta?.total ?? filteredMonitors.length) > 0}
+      />
 
       {/* Filters Bar */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -442,21 +453,43 @@ export default function MonitorsPage() {
   );
 }
 
-function PageHeader() {
+function PageHeader({
+  onCheckAll,
+  isCheckingAll = false,
+  hasMonitors = false,
+}: {
+  onCheckAll?: () => void;
+  isCheckingAll?: boolean;
+  hasMonitors?: boolean;
+}) {
   return (
-    <div className="flex items-center justify-between">
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h1 className="text-3xl font-bold">Monitors</h1>
         <p className="text-muted-foreground">
           Manage your uptime monitors and track performance
         </p>
       </div>
-      <Link href="/monitors/new">
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          Create Monitor
-        </Button>
-      </Link>
+      <div className="flex items-center gap-2">
+        {onCheckAll && (
+          <Button
+            variant="outline"
+            onClick={onCheckAll}
+            disabled={!hasMonitors || isCheckingAll}
+          >
+            <RefreshCw
+              className={cn("mr-2 h-4 w-4", isCheckingAll && "animate-spin")}
+            />
+            {isCheckingAll ? "Checking..." : "Check All"}
+          </Button>
+        )}
+        <Link href="/monitors/new">
+          <Button>
+            <Plus className="mr-2 h-4 w-4" />
+            Create Monitor
+          </Button>
+        </Link>
+      </div>
     </div>
   );
 }

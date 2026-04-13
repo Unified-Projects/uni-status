@@ -9,12 +9,17 @@ import {
   CardHeader,
   CardTitle,
   Button,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
 } from "@uni-status/ui";
 import { useDashboardAnalytics } from "@/hooks/use-analytics";
 import { useSSE } from "@/hooks/use-sse";
 import { StatusIndicator, type MonitorStatus } from "@/components/monitors";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
+import { OrganizationUptimeTab } from "@/components/dashboard/organization-uptime-tab";
 
 export default function DashboardPage() {
   // Real-time connection for live updates
@@ -46,11 +51,7 @@ export default function DashboardPage() {
     return (
       <div className="space-y-6">
         <DashboardHeader />
-        <LoadingState variant="stats" />
-        <div className="grid gap-6 md:grid-cols-2">
-          <LoadingState variant="card" count={1} />
-          <LoadingState variant="card" count={1} />
-        </div>
+        <DashboardTabsSkeleton />
       </div>
     );
   }
@@ -58,8 +59,78 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <DashboardHeader />
+      <Tabs defaultValue="overview" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="uptime">Uptime</TabsTrigger>
+        </TabsList>
 
-      {/* Stats Grid */}
+        <TabsContent value="overview" className="space-y-6">
+          <DashboardOverview
+            totalMonitors={totalMonitors}
+            operationalCount={operationalCount}
+            degradedCount={degradedCount}
+            downCount={downCount}
+            activeIncidents={activeIncidents}
+            uptimeAverage={analytics?.uptime?.average ?? null}
+            recentIncidents={recentIncidents}
+            monitorsWithIssues={monitorsWithIssues}
+          />
+        </TabsContent>
+
+        <TabsContent value="uptime">
+          <OrganizationUptimeTab />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+function DashboardHeader() {
+  return (
+    <div>
+      <h1 className="text-3xl font-bold">Dashboard</h1>
+      <p className="text-muted-foreground">
+        Overview of your monitors and incidents
+      </p>
+    </div>
+  );
+}
+
+interface DashboardOverviewProps {
+  totalMonitors: number;
+  operationalCount: number;
+  degradedCount: number;
+  downCount: number;
+  activeIncidents: number;
+  uptimeAverage: number | null;
+  recentIncidents: Array<{
+    id: string;
+    title: string;
+    status: string;
+    severity: "minor" | "major" | "critical";
+    createdAt: string;
+  }>;
+  monitorsWithIssues: Array<{
+    id: string;
+    name: string;
+    url: string;
+    status: string;
+  }>;
+}
+
+function DashboardOverview({
+  totalMonitors,
+  operationalCount,
+  degradedCount,
+  downCount,
+  activeIncidents,
+  uptimeAverage,
+  recentIncidents,
+  monitorsWithIssues,
+}: DashboardOverviewProps) {
+  return (
+    <>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Total Monitors"
@@ -84,20 +155,14 @@ export default function DashboardPage() {
         />
         <StatCard
           title="Uptime (45d)"
-          value={
-            analytics?.uptime?.average != null
-              ? `${analytics.uptime.average.toFixed(2)}%`
-              : "--%"
-          }
+          value={uptimeAverage != null ? `${uptimeAverage.toFixed(2)}%` : "--%"}
           description="Average uptime (last 45 days)"
           icon={Clock}
           iconColor="text-muted-foreground"
         />
       </div>
 
-      {/* Recent Activity */}
       <div className="grid gap-6 md:grid-cols-2">
-        {/* Recent Incidents */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
@@ -151,7 +216,6 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Monitor Status */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
@@ -223,17 +287,24 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </>
   );
 }
 
-function DashboardHeader() {
+function DashboardTabsSkeleton() {
   return (
-    <div>
-      <h1 className="text-3xl font-bold">Dashboard</h1>
-      <p className="text-muted-foreground">
-        Overview of your monitors and incidents
-      </p>
+    <div className="space-y-6">
+      <Tabs defaultValue="overview" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="uptime">Uptime</TabsTrigger>
+        </TabsList>
+      </Tabs>
+      <LoadingState variant="stats" />
+      <div className="grid gap-6 md:grid-cols-2">
+        <LoadingState variant="card" count={1} />
+        <LoadingState variant="card" count={1} />
+      </div>
     </div>
   );
 }

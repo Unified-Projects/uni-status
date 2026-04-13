@@ -424,6 +424,59 @@ async function processInBatches<T>(
   }
 }
 
+async function queueImmediateChecks(
+  organizationId: string,
+  rows: Array<typeof monitors.$inferSelect>,
+) {
+  const activeMonitors = rows.filter((monitor) => !monitor.paused);
+  const skippedPaused = rows.length - activeMonitors.length;
+  const jobs: string[] = [];
+
+  await processInBatches(activeMonitors, 25, async (monitor) => {
+    const jobId = await queueMonitorCheck({
+      monitor: {
+        id: monitor.id,
+        type: monitor.type,
+        url: monitor.url,
+        method: monitor.method,
+        headers: monitor.headers as Record<string, string> | null,
+        body: monitor.body,
+        timeoutMs: monitor.timeoutMs,
+        assertions: monitor.assertions as Record<string, unknown> | null,
+        regions: monitor.regions as string[],
+        degradedThresholdMs: monitor.degradedThresholdMs,
+        config: monitor.config as Record<string, unknown> | null,
+      },
+    });
+    jobs.push(jobId);
+  });
+
+  const now = new Date();
+  if (activeMonitors.length > 0) {
+    await db
+      .update(monitors)
+      .set({
+        lastCheckedAt: now,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(monitors.organizationId, organizationId),
+          inArray(
+            monitors.id,
+            activeMonitors.map((monitor) => monitor.id),
+          ),
+        ),
+      );
+  }
+
+  return {
+    queued: jobs.length,
+    skippedPaused,
+    jobIds: jobs,
+  };
+}
+
 // Bulk pause monitors
 monitorsRoutes.post("/bulk/pause", async (c) => {
   const organizationId = await requireOrganization(c);
@@ -550,55 +603,37 @@ monitorsRoutes.post("/bulk/check", async (c) => {
     ),
   });
 
-  const activeMonitors = rows.filter((monitor) => !monitor.paused);
-  const skippedPaused = rows.length - activeMonitors.length;
-  const jobs: string[] = [];
-
-  await processInBatches(activeMonitors, 25, async (monitor) => {
-    const jobId = await queueMonitorCheck({
-      monitor: {
-        id: monitor.id,
-        type: monitor.type,
-        url: monitor.url,
-        method: monitor.method,
-        headers: monitor.headers as Record<string, string> | null,
-        body: monitor.body,
-        timeoutMs: monitor.timeoutMs,
-        assertions: monitor.assertions as Record<string, unknown> | null,
-        regions: monitor.regions as string[],
-        degradedThresholdMs: monitor.degradedThresholdMs,
-        config: monitor.config as Record<string, unknown> | null,
-      },
-    });
-    jobs.push(jobId);
-  });
-
-  const now = new Date();
-  if (activeMonitors.length > 0) {
-    await db
-      .update(monitors)
-      .set({
-        lastCheckedAt: now,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(monitors.organizationId, organizationId),
-          inArray(
-            monitors.id,
-            activeMonitors.map((m) => m.id),
-          ),
-        ),
-      );
-  }
+  const result = await queueImmediateChecks(organizationId, rows);
 
   return c.json({
     success: true,
     data: {
-      queued: jobs.length,
-      skippedPaused,
+      queued: result.queued,
+      skippedPaused: result.skippedPaused,
       notFound: Math.max(0, ids.length - rows.length),
-      jobIds: jobs,
+      jobIds: result.jobIds,
+    },
+  });
+});
+
+// Check all active monitors
+monitorsRoutes.post("/check-all", async (c) => {
+  const organizationId = await requireOrganization(c);
+  requireScope(c, "write");
+
+  const rows = await db.query.monitors.findMany({
+    where: eq(monitors.organizationId, organizationId),
+  });
+
+  const result = await queueImmediateChecks(organizationId, rows);
+
+  return c.json({
+    success: true,
+    data: {
+      queued: result.queued,
+      skippedPaused: result.skippedPaused,
+      total: rows.length,
+      jobIds: result.jobIds,
     },
   });
 });

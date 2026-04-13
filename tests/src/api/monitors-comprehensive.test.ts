@@ -804,6 +804,69 @@ describe("Monitors API - Comprehensive", () => {
     });
   });
 
+  describe("POST /api/v1/monitors/check-all", () => {
+    let activeMonitorId: string;
+    let pausedMonitorId: string;
+
+    beforeAll(async () => {
+      const activeResponse = await fetch(`${API_BASE_URL}/api/v1/monitors`, {
+        method: "POST",
+        headers: ctx.headers,
+        body: JSON.stringify({
+          name: `Check All Active ${randomUUID().slice(0, 8)}`,
+          url: `${TEST_SERVICES.HTTPBIN_URL}/status/200`,
+          type: "http",
+          intervalSeconds: 3600,
+          timeoutMs: 30000,
+        }),
+      });
+      const activeBody = await activeResponse.json();
+      activeMonitorId = activeBody.data.id;
+      createdMonitors.push(activeMonitorId);
+
+      const pausedResponse = await fetch(`${API_BASE_URL}/api/v1/monitors`, {
+        method: "POST",
+        headers: ctx.headers,
+        body: JSON.stringify({
+          name: `Check All Paused ${randomUUID().slice(0, 8)}`,
+          url: `${TEST_SERVICES.HTTPBIN_URL}/status/200`,
+          type: "http",
+          intervalSeconds: 3600,
+          timeoutMs: 30000,
+        }),
+      });
+      const pausedBody = await pausedResponse.json();
+      pausedMonitorId = pausedBody.data.id;
+      createdMonitors.push(pausedMonitorId);
+
+      const pauseResponse = await fetch(
+        `${API_BASE_URL}/api/v1/monitors/${pausedMonitorId}/pause`,
+        {
+          method: "POST",
+          headers: ctx.headers,
+        }
+      );
+
+      expect(pauseResponse.status).toBe(200);
+    });
+
+    it("queues checks for all non-paused monitors", async () => {
+      const response = await fetch(`${API_BASE_URL}/api/v1/monitors/check-all`, {
+        method: "POST",
+        headers: ctx.headers,
+      });
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.success).toBe(true);
+      expect(body.data.total).toBeGreaterThanOrEqual(2);
+      expect(body.data.queued).toBeGreaterThanOrEqual(1);
+      expect(body.data.skippedPaused).toBeGreaterThanOrEqual(1);
+      expect(Array.isArray(body.data.jobIds)).toBe(true);
+      expect(body.data.jobIds.length).toBe(body.data.queued);
+    });
+  });
+
   describe("POST /api/v1/monitors/:id/heartbeat", () => {
     let heartbeatMonitorId: string;
 

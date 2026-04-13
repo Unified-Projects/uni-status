@@ -888,6 +888,13 @@ export const apiClient = {
         { organizationId }
       )),
 
+    checkAll: (organizationId?: string) =>
+      unwrap(apiPost<{ queued: number; skippedPaused: number; total: number; jobIds: string[] }>(
+        `/api/v1/monitors/check-all`,
+        {},
+        { organizationId }
+      )),
+
     deleteBulk: (ids: string[], organizationId?: string) =>
       unwrap(apiPost<{ deleted: number; ids: string[] }>(`/api/v1/monitors/bulk/delete`, { ids }, { organizationId })),
 

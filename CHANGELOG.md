@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-04-14
+
+### Added
+- Added a dashboard `Uptime` tab with a full-width combined uptime history view, shared hover details, and `45`/`90` day range switching across all organization monitors
+- Added a monitor list `Check All` action plus a dedicated `POST /api/v1/monitors/check-all` endpoint to queue checks for every non-paused monitor in an organization
+
+### Changed
+- Improved uptime-bar tooltip positioning so hover popups keep a stable readable width and clamp cleanly near the right edge instead of collapsing
+- Bumped workspace package/runtime version references from `0.2.4` to `0.2.5`
+
+### Tests
+- Added API coverage for the new monitor `check-all` endpoint and its paused-monitor skip behavior
+
 ## [0.2.4] - 2026-04-14
 
 ### Changed

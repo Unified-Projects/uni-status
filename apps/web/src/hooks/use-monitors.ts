@@ -522,6 +522,24 @@ export function useBulkCheckMonitors() {
   });
 }
 
+export function useCheckAllMonitors() {
+  const queryClient = useQueryClient();
+  const organizationId = useDashboardStore(
+    (state) => state.currentOrganizationId,
+  );
+
+  return useMutation({
+    mutationFn: () => apiClient.monitors.checkAll(organizationId ?? undefined),
+    onSuccess: (data) => {
+      toast({
+        title: "Checks queued",
+        description: `${data.queued} monitor check(s) queued${data.skippedPaused ? `, ${data.skippedPaused} skipped (paused)` : ""}.`,
+      });
+      queryClient.invalidateQueries({ queryKey: queryKeys.monitors.all });
+    },
+  });
+}
+
 export function useBulkDeleteMonitors() {
   const queryClient = useQueryClient();
   const organizationId = useDashboardStore(
