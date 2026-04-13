@@ -1,6 +1,6 @@
 {
   "name": "@uni-status/licensing",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "private": true,
   "type": "module",
   "description": "Keygen.sh license validation configuration for Uni-Status - DO NOT MODIFY",

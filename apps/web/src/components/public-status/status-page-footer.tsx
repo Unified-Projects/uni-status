@@ -98,7 +98,7 @@ export function StatusPageFooter({
   return (
     <footer
       className={cn(
-        "border-t pt-6 pb-4 text-center text-sm text-[var(--status-muted-text)]",
+        "border-t px-2 pt-6 pb-6 text-center text-sm text-[var(--status-muted-text)] sm:px-4 sm:pb-8",
         className
       )}
     >

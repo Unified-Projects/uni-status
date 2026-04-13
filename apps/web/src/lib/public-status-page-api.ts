@@ -282,45 +282,9 @@ export function buildThemeStyles(theme?: PublicStatusPageData["theme"]): CSSProp
   return styles;
 }
 
-interface PublicStatusPageLiveResponse {
-  success: boolean;
-  data?: {
-    monitors: Array<{
-      id: string;
-      status: PublicStatusPageData["monitors"][number]["status"];
-      uptimePercentage: number | null;
-      responseTimeMs: number | null;
-      uptimeData: PublicStatusPageData["monitors"][number]["uptimeData"];
-      uptimeGranularity?: "minute" | "hour" | "day";
-      responseTimeData?: Array<{
-        timestamp: string;
-        avg: number | null;
-        min: number | null;
-        max: number | null;
-        p50: number | null;
-        p90: number | null;
-        p99: number | null;
-        status?: "success" | "degraded" | "down" | "incident";
-      }>;
-      certificateInfo?: PublicStatusPageData["monitors"][number]["certificateInfo"];
-      emailAuthInfo?: PublicStatusPageData["monitors"][number]["emailAuthInfo"];
-      heartbeatInfo?: PublicStatusPageData["monitors"][number]["heartbeatInfo"];
-    }>;
-    activeIncidents: PublicStatusPageData["activeIncidents"];
-    recentIncidents: PublicStatusPageData["recentIncidents"];
-    crowdsourced: PublicStatusPageData["crowdsourced"];
-    lastUpdatedAt: string;
-  };
-  error?: {
-    code: string;
-    message: string;
-  };
-  meta?: ApiResponse["meta"];
-}
-
 async function fetchPublicStatusPageEndpoint<TResponse extends { success: boolean; data?: unknown; error?: { code: string; message: string } }>(
   slug: string,
-  endpointSuffix: "" | "/shell" | "/live",
+  endpointSuffix: "" | "/shell",
   cookies?: string,
   revalidateSeconds = 15
 ): Promise<TResponse> {
@@ -429,58 +393,12 @@ export const getStatusPageShellData = cache(async (
   slug: string,
   cookies?: string
 ): Promise<ApiResponse> => {
-  return fetchPublicStatusPageEndpoint<ApiResponse>(slug, "/shell", cookies, 1);
-});
-
-const getStatusPageLiveData = cache(async (
-  slug: string,
-  cookies?: string
-): Promise<PublicStatusPageLiveResponse> => {
-  return fetchPublicStatusPageEndpoint<PublicStatusPageLiveResponse>(slug, "/live", cookies, 5);
+  return fetchPublicStatusPageEndpoint<ApiResponse>(slug, "/shell", cookies, 300);
 });
 
 export const getStatusPageData = cache(async (
   slug: string,
   cookies?: string
 ): Promise<ApiResponse> => {
-  const [shellResult, liveResult] = await Promise.all([
-    getStatusPageShellData(slug, cookies),
-    getStatusPageLiveData(slug, cookies),
-  ]);
-
-  if (!shellResult.success || !shellResult.data) {
-    return shellResult;
-  }
-
-  if (!liveResult.success || !liveResult.data) {
-    return shellResult;
-  }
-
-  const liveMonitorById = new Map(liveResult.data.monitors.map((m) => [m.id, m]));
-  const mergedData: PublicStatusPageData = {
-    ...shellResult.data,
-    monitors: shellResult.data.monitors.map((monitor) => {
-      const liveMonitor = liveMonitorById.get(monitor.id);
-      if (!liveMonitor) return monitor;
-      return {
-        ...monitor,
-        status: liveMonitor.status,
-        uptimePercentage: liveMonitor.uptimePercentage,
-        responseTimeMs: liveMonitor.responseTimeMs,
-        uptimeData: liveMonitor.uptimeData,
-        certificateInfo: liveMonitor.certificateInfo,
-        emailAuthInfo: liveMonitor.emailAuthInfo,
-        heartbeatInfo: liveMonitor.heartbeatInfo,
-      };
-    }),
-    activeIncidents: liveResult.data.activeIncidents,
-    recentIncidents: liveResult.data.recentIncidents,
-    crowdsourced: liveResult.data.crowdsourced,
-    lastUpdatedAt: liveResult.data.lastUpdatedAt,
-  };
-
-  return {
-    success: true,
-    data: mergedData,
-  };
+  return fetchPublicStatusPageEndpoint<ApiResponse>(slug, "", cookies, 5);
 });

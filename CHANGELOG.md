@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-04-14
+
+### Changed
+- Updated public status-page loading to use the cached full payload on first render and relaxed shell-data revalidation to reduce redundant server fetches
+- Added extra footer padding on public status pages so the footer no longer sits flush against the viewport edge
+- Bumped workspace package/runtime version references from `0.2.3` to `0.2.4`
+
 ## [0.2.3] - 2026-04-13
 
 ### Added
