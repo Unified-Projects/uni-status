@@ -139,4 +139,34 @@ describe("Public status page data", () => {
     expect(activeIncident).toBeDefined();
     expect(activeIncident.affectedMonitors).toContain(monitorId);
   });
+
+  it("splits shell and live public status page payloads", async () => {
+    const shellResponse = await fetch(`${API_BASE_URL}/api/public/status-pages/${slug}/shell`);
+    expect(shellResponse.status).toBe(200);
+    const shellBody = await shellResponse.json();
+    expect(shellBody.success).toBe(true);
+
+    const shellMonitor = shellBody.data.monitors.find((m: any) => m.id === monitorId);
+    expect(shellMonitor).toBeDefined();
+    expect(shellMonitor.name).toBe("Public Monitor");
+    expect(shellMonitor.uptimePercentage).toBeNull();
+    expect(shellMonitor.responseTimeMs).toBeNull();
+    expect(shellMonitor.uptimeData).toEqual([]);
+    expect(shellBody.data.activeIncidents).toEqual([]);
+    expect(shellBody.data.recentIncidents).toEqual([]);
+
+    const liveResponse = await fetch(`${API_BASE_URL}/api/public/status-pages/${slug}/live`);
+    expect(liveResponse.status).toBe(200);
+    const liveBody = await liveResponse.json();
+    expect(liveBody.success).toBe(true);
+
+    const liveMonitor = liveBody.data.monitors.find((m: any) => m.id === monitorId);
+    expect(liveMonitor).toBeDefined();
+    expect(liveMonitor.uptimePercentage).not.toBeNull();
+    expect(liveMonitor.uptimeData?.length).toBeGreaterThanOrEqual(1);
+
+    const liveIncident = liveBody.data.activeIncidents.find((i: any) => i.id === incidentId);
+    expect(liveIncident).toBeDefined();
+    expect(liveIncident.affectedMonitors).toContain(monitorId);
+  });
 });

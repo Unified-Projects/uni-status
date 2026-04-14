@@ -62,12 +62,13 @@ describe("Public status page rendering", () => {
     expect(linkRes.status).toBe(201);
   });
 
-  it("renders the public status page with the linked monitor", async () => {
+  it("renders the public status shell with linked monitors and static chrome", async () => {
     const response = await fetch(`${WEB_BASE_URL}/status/${slug}`, { redirect: "manual" });
     expect(response.status).toBe(200);
     const html = await response.text();
+    expect(html).toContain("Public Page");
     expect(html).toContain(monitorName);
-    // Should surface some status indicator text
+    expect(html).toContain("Subscribe to Updates");
     expect(html.toLowerCase()).toMatch(/status|uptime|operational/);
   });
 });

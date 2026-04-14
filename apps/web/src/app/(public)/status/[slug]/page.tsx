@@ -2,22 +2,14 @@ import { notFound } from "next/navigation";
 import { headers } from "next/headers";
 import { Metadata } from "next";
 import {
-  StatusPageHeader,
-  OverallStatusBanner,
-  StatusPageFooter,
-  SubscribeForm,
-  LayoutWrapper,
-  isFullPageLayout,
-  StatusPageContainer,
   PasswordProtectedPage,
 } from "@/components/public-status";
-import { getDefaultTemplateConfig } from "@uni-status/shared";
 import {
-  getStatusPageData,
   getStatusPageShellData,
   normalizeAssetUrl,
   isCustomDomain,
 } from "@/lib/public-status-page-api";
+import { PublicStatusPageContent } from "./public-status-page-content";
 
 export async function generateMetadata({
   params,
@@ -107,7 +99,7 @@ export default async function PublicStatusPage({
 }) {
   const { slug } = await params;
   const query = await searchParams;
-  const result = await getStatusPageData(slug);
+  const result = await getStatusPageShellData(slug);
 
   const headersList = await headers();
   const hostname = headersList.get("x-forwarded-host") || headersList.get("host") || "localhost";
@@ -164,39 +156,8 @@ export default async function PublicStatusPage({
   }
 
   const { data } = result;
-
-  const template = data.template || getDefaultTemplateConfig();
-  const logoUrl = normalizeAssetUrl(data.logo, assetBaseUrl) || data.logo;
-  const orgLogoUrl = normalizeAssetUrl(data.orgLogo, assetBaseUrl) || data.orgLogo;
-
   const message = query.message as string | undefined;
   const error = query.error as string | undefined;
-
-  const monitorGroups = new Map<string, typeof data.monitors>();
-  const ungroupedMonitors: typeof data.monitors = [];
-
-  for (const monitor of data.monitors) {
-    if (monitor.group) {
-      const group = monitorGroups.get(monitor.group) || [];
-      group.push(monitor);
-      monitorGroups.set(monitor.group, group);
-    } else {
-      ungroupedMonitors.push(monitor);
-    }
-  }
-
-  const pageData = {
-    name: data.name,
-    logo: logoUrl,
-    orgLogo: orgLogoUrl,
-    headerText: data.settings.headerText,
-    footerText: data.settings.footerText,
-    supportUrl: data.settings.supportUrl,
-    hideBranding: data.settings.hideBranding,
-    lastUpdatedAt: data.lastUpdatedAt,
-    slug: slug,
-    basePath: basePath,
-  };
 
   const initialLocale =
     typeof query.lang === "string"
@@ -204,109 +165,19 @@ export default async function PublicStatusPage({
       : Array.isArray(query.lang)
         ? query.lang[0]
         : undefined;
-  const localization = data.settings.localization;
-  const defaultTimezone = data.settings.defaultTimezone || "local";
-
-  // Theme (CSS vars, color mode script, custom CSS) is applied by layout.tsx
-  // which wraps this page and all sub-pages under [slug]/
-
-  if (isFullPageLayout(template.layout)) {
-    return (
-      <StatusPageContainer
-        localization={localization}
-        defaultTimezone={defaultTimezone}
-        initialLocale={initialLocale}
-      >
-        <div className="min-h-screen bg-background text-foreground">
-          <LayoutWrapper
-            layout={template.layout}
-            monitors={data.monitors}
-            monitorGroups={monitorGroups}
-            ungroupedMonitors={ungroupedMonitors}
-            activeIncidents={data.activeIncidents}
-            recentIncidents={data.recentIncidents}
-            settings={data.settings}
-            template={template}
-            crowdsourced={data.crowdsourced}
-            statusPageSlug={slug}
-            fullPageProps={pageData}
-            notificationMessage={message}
-            notificationError={error}
-          />
-        </div>
-      </StatusPageContainer>
-    );
-  }
 
   return (
-    <StatusPageContainer
-      localization={localization}
-      defaultTimezone={defaultTimezone}
+    <PublicStatusPageContent
+      slug={slug}
+      basePath={basePath}
+      initialData={{
+        ...data,
+        logo: normalizeAssetUrl(data.logo, assetBaseUrl) || data.logo,
+        orgLogo: normalizeAssetUrl(data.orgLogo, assetBaseUrl) || data.orgLogo,
+      }}
       initialLocale={initialLocale}
-    >
-      <div className="min-h-screen bg-background text-foreground flex flex-col">
-        <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8 flex-1 w-full">
-          {message && (
-            <div className="mb-6 rounded-lg border p-4 text-[var(--status-success-text)] bg-[var(--status-success-bg)] border-[var(--status-success-text)]/20">
-              {message === "subscribed" && "You have been subscribed to status updates."}
-              {message === "unsubscribed" && "You have been unsubscribed from status updates."}
-              {message === "already_verified" && "Your email is already verified."}
-            </div>
-          )}
-          {error && (
-            <div className="mb-6 rounded-lg border p-4 text-[var(--status-error-text)] bg-[var(--status-error-bg)] border-[var(--status-error-text)]/20">
-              {error === "invalid_token" && "Invalid or expired link."}
-            </div>
-          )}
-
-          <StatusPageHeader
-            name={data.name}
-            logo={logoUrl}
-            orgLogo={orgLogoUrl}
-            headerText={data.settings.headerText}
-            slug={data.slug}
-            basePath={basePath}
-            showServicesPage={data.settings.showServicesPage}
-          />
-
-          <OverallStatusBanner
-            monitors={data.monitors}
-            incidents={data.activeIncidents}
-            lastUpdatedAt={data.lastUpdatedAt}
-            className="mt-6"
-          />
-
-          <div className="mt-8">
-            <LayoutWrapper
-              layout={template.layout}
-              monitors={data.monitors}
-              monitorGroups={monitorGroups}
-              ungroupedMonitors={ungroupedMonitors}
-              activeIncidents={data.activeIncidents}
-              recentIncidents={data.recentIncidents}
-              settings={data.settings}
-              template={template}
-              crowdsourced={data.crowdsourced}
-              statusPageSlug={slug}
-              basePath={basePath}
-            />
-          </div>
-
-          <div className="mt-12 border-t pt-8">
-            <SubscribeForm slug={slug} />
-          </div>
-
-          <StatusPageFooter
-            footerText={data.settings.footerText}
-            supportUrl={data.settings.supportUrl}
-            hideBranding={data.settings.hideBranding}
-            slug={slug}
-            basePath={basePath}
-            localization={localization}
-            className="mt-auto pt-8"
-          />
-        </div>
-      </div>
-    </StatusPageContainer>
+      notificationMessage={message}
+      notificationError={error}
+    />
   );
 }

@@ -115,6 +115,8 @@ describe("Status page subpages", () => {
       expect(response.status).toBeLessThan(500);
       const html = await response.text();
       expect(html.toLowerCase()).toContain("<!doctype html");
+      expect(html).toContain("Subpage Test Page");
+      expect(html).toContain("Events");
     });
   });
 

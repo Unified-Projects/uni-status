@@ -12,6 +12,58 @@ import { eq, and, gte, lte, lt, desc, sql, inArray } from "drizzle-orm";
 
 export const analyticsRoutes = new OpenAPIHono();
 
+type IntervalData = {
+  timestamp: Date;
+  successCount: number;
+  degradedCount: number;
+  failureCount: number;
+  totalCount: number;
+  uptimePercentage: number | null;
+};
+
+function aggregateIntervalsByTimestamp(intervals: IntervalData[]): IntervalData[] {
+  const grouped = new Map<string, IntervalData>();
+
+  for (const interval of intervals) {
+    const key = interval.timestamp.toISOString();
+    const existing = grouped.get(key);
+
+    if (!existing) {
+      grouped.set(key, {
+        timestamp: interval.timestamp,
+        successCount: interval.successCount,
+        degradedCount: interval.degradedCount,
+        failureCount: interval.failureCount,
+        totalCount: interval.totalCount,
+        uptimePercentage:
+          interval.totalCount > 0
+            ? ((interval.successCount + interval.degradedCount) / interval.totalCount) * 100
+            : null,
+      });
+      continue;
+    }
+
+    const successCount = existing.successCount + interval.successCount;
+    const degradedCount = existing.degradedCount + interval.degradedCount;
+    const failureCount = existing.failureCount + interval.failureCount;
+    const totalCount = existing.totalCount + interval.totalCount;
+
+    grouped.set(key, {
+      timestamp: existing.timestamp,
+      successCount,
+      degradedCount,
+      failureCount,
+      totalCount,
+      uptimePercentage:
+        totalCount > 0 ? ((successCount + degradedCount) / totalCount) * 100 : null,
+    });
+  }
+
+  return Array.from(grouped.values()).sort(
+    (a, b) => b.timestamp.getTime() - a.timestamp.getTime(),
+  );
+}
+
 // Uptime statistics with configurable or adaptive granularity
 analyticsRoutes.get("/uptime", async (c) => {
   const organizationId = await requireOrganization(c);
@@ -51,16 +103,6 @@ analyticsRoutes.get("/uptime", async (c) => {
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - days);
 
-  // Define interval data structure
-  type IntervalData = {
-    timestamp: Date;
-    successCount: number;
-    degradedCount: number;
-    failureCount: number;
-    totalCount: number;
-    uptimePercentage: number | null;
-  };
-
   let intervals: IntervalData[] = [];
   let granularity: "minute" | "hour" | "day" = "day";
 
@@ -92,9 +134,7 @@ analyticsRoutes.get("/uptime", async (c) => {
     forceGranularity === "day" ||
     (!forceGranularity && daysWithDailyData >= days / 3)
   ) {
-    // Use daily data
-    granularity = "day";
-    intervals = dailyAggregates.map((day) => ({
+    const mappedDaily = dailyAggregates.map((day) => ({
       timestamp: day.date,
       successCount: Number(day.successCount || 0),
       degradedCount: Number(day.degradedCount || 0),
@@ -102,6 +142,9 @@ analyticsRoutes.get("/uptime", async (c) => {
       totalCount: Number(day.totalCount || 0),
       uptimePercentage: day.uptimePercentage,
     }));
+
+    granularity = "day";
+    intervals = monitorId ? mappedDaily : aggregateIntervalsByTimestamp(mappedDaily);
   } else {
     // Try hourly data
     const hourlyAggregates = await db.query.checkResultsHourly.findMany({
@@ -123,9 +166,7 @@ analyticsRoutes.get("/uptime", async (c) => {
       forceGranularity === "hour" ||
       (!forceGranularity && hourlyAggregates.length >= days)
     ) {
-      // Use hourly data
-      granularity = "hour";
-      intervals = hourlyAggregates.map((hour) => ({
+      const mappedHourly = hourlyAggregates.map((hour) => ({
         timestamp: hour.hour,
         successCount: Number(hour.successCount || 0),
         degradedCount: Number(hour.degradedCount || 0),
@@ -133,6 +174,9 @@ analyticsRoutes.get("/uptime", async (c) => {
         totalCount: Number(hour.totalCount || 0),
         uptimePercentage: hour.uptimePercentage,
       }));
+
+      granularity = "hour";
+      intervals = monitorId ? mappedHourly : aggregateIntervalsByTimestamp(mappedHourly);
     } else if (monitorId) {
       // Try minute-level data from raw check results
       const minuteResults = await db
@@ -281,7 +325,7 @@ analyticsRoutes.get("/uptime", async (c) => {
 
   // Supplement aggregated data with recent raw check results for the current interval
   // This ensures that recent failures show up immediately even before aggregation runs
-  if (intervals.length > 0 && monitorId) {
+  if (intervals.length > 0 && (monitorId || scopedMonitorIds?.length)) {
     const now = new Date();
     let currentIntervalStart: Date;
 
@@ -322,10 +366,15 @@ analyticsRoutes.get("/uptime", async (c) => {
         })
         .from(checkResults)
         .where(
-          and(
-            eq(checkResults.monitorId, monitorId),
-            gte(checkResults.createdAt, currentIntervalStart),
-          ),
+          monitorId
+            ? and(
+                eq(checkResults.monitorId, monitorId),
+                gte(checkResults.createdAt, currentIntervalStart),
+              )
+            : and(
+                inArray(checkResults.monitorId, scopedMonitorIds!),
+                gte(checkResults.createdAt, currentIntervalStart),
+              ),
         );
 
       const recentResult = recentResults[0];

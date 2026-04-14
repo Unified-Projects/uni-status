@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-04-14
+
+### Added
+- Added startup warming for published unprotected public status-page shell/live caches with environment-controlled concurrency and page limits
+
+### Changed
+- Updated public status-page rendering to load cached shell data on the server, hydrate live monitor and incident data on the client, and keep subscribe sections padded consistently across layouts
+- Updated organization uptime analytics to aggregate intervals across multiple monitors for org-wide views while still folding in the latest raw check results for the current interval
+- Simplified the dashboard overview so monitor summary cards and the combined uptime history render together without a tab switch, and renamed the uptime section to reflect the org-wide combined view
+- Bumped workspace package/runtime version references from `0.2.5` to `0.2.6`
+
+### Tests
+- Added coverage for split public status-page shell/live payloads, protected shell/live access enforcement, org-wide uptime interval aggregation, and shell-rendered public status-page content
+
 ## [0.2.5] - 2026-04-14
 
 ### Added

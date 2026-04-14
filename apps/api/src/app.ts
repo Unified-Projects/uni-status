@@ -34,7 +34,7 @@ import { alertsRoutes } from "./routes/alerts";
 import { organizationsRoutes } from "./routes/organizations";
 import { sseRoutes } from "./routes/sse";
 import { websocketRoutes } from "./routes/ws";
-import { publicRoutes } from "./routes/public";
+import { publicRoutes, warmPublicStatusPageCachesOnStartup } from "./routes/public";
 import { maintenanceWindowsRoutes } from "./routes/maintenance-windows";
 import { embedsRoutes } from "./routes/embeds";
 import { deploymentsRoutes } from "./routes/deployments";
@@ -321,3 +321,6 @@ async function loadEnterprise() {
 }
 
 loadEnterprise();
+void warmPublicStatusPageCachesOnStartup().catch((error) => {
+  log.warn({ err: error }, "Failed to warm public status page caches on startup");
+});

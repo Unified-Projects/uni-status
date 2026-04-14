@@ -72,9 +72,9 @@ export function OrganizationUptimeTab() {
     <Card>
       <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <CardTitle>Uptime History</CardTitle>
+          <CardTitle>Combined Uptime History</CardTitle>
           <CardDescription>
-            Historical uptime over the past {days} days
+            Combined uptime across all monitors over the past {days} days
           </CardDescription>
         </div>
         <div className="flex items-center gap-2">

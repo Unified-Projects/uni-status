@@ -9,10 +9,6 @@ import {
   CardHeader,
   CardTitle,
   Button,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
 } from "@uni-status/ui";
 import { useDashboardAnalytics } from "@/hooks/use-analytics";
 import { useSSE } from "@/hooks/use-sse";
@@ -51,7 +47,7 @@ export default function DashboardPage() {
     return (
       <div className="space-y-6">
         <DashboardHeader />
-        <DashboardTabsSkeleton />
+        <DashboardPageSkeleton />
       </div>
     );
   }
@@ -59,29 +55,17 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <DashboardHeader />
-      <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="uptime">Uptime</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="overview" className="space-y-6">
-          <DashboardOverview
-            totalMonitors={totalMonitors}
-            operationalCount={operationalCount}
-            degradedCount={degradedCount}
-            downCount={downCount}
-            activeIncidents={activeIncidents}
-            uptimeAverage={analytics?.uptime?.average ?? null}
-            recentIncidents={recentIncidents}
-            monitorsWithIssues={monitorsWithIssues}
-          />
-        </TabsContent>
-
-        <TabsContent value="uptime">
-          <OrganizationUptimeTab />
-        </TabsContent>
-      </Tabs>
+      <DashboardOverview
+        totalMonitors={totalMonitors}
+        operationalCount={operationalCount}
+        degradedCount={degradedCount}
+        downCount={downCount}
+        activeIncidents={activeIncidents}
+        uptimeAverage={analytics?.uptime?.average ?? null}
+        recentIncidents={recentIncidents}
+        monitorsWithIssues={monitorsWithIssues}
+      />
+      <OrganizationUptimeTab />
     </div>
   );
 }
@@ -291,16 +275,11 @@ function DashboardOverview({
   );
 }
 
-function DashboardTabsSkeleton() {
+function DashboardPageSkeleton() {
   return (
     <div className="space-y-6">
-      <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="uptime">Uptime</TabsTrigger>
-        </TabsList>
-      </Tabs>
       <LoadingState variant="stats" />
+      <LoadingState variant="card" count={1} />
       <div className="grid gap-6 md:grid-cols-2">
         <LoadingState variant="card" count={1} />
         <LoadingState variant="card" count={1} />

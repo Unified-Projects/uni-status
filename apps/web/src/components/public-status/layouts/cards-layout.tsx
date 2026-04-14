@@ -182,7 +182,7 @@ export function CardsLayout({
         </div>
 
         {/* Subscribe Form */}
-        <div className="mt-12 border-t pt-8 max-w-xl mx-auto">
+        <div className="mt-12 border-t pt-8 pb-8 max-w-xl mx-auto">
           <SubscribeForm slug={pageData.slug} />
         </div>
       </div>

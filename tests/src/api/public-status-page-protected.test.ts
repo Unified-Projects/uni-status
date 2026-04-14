@@ -69,12 +69,13 @@ describe("Public status page password protection", () => {
   });
 
   it("denies access without password and succeeds after verification", async () => {
-    const unauthRes = await fetch(`${API_BASE_URL}/api/public/status-pages/${slug}`);
-    expect([401, 404]).toContain(unauthRes.status);
-    const unauthBody = await unauthRes.json();
-    // API returns AUTH_REQUIRED for all auth failures, with meta.requiresPassword indicating password protection
-    expect(unauthBody.error?.code).toBe("AUTH_REQUIRED");
-    expect(unauthBody.meta?.requiresPassword).toBe(true);
+    for (const suffix of ["", "/shell", "/live"]) {
+      const unauthRes = await fetch(`${API_BASE_URL}/api/public/status-pages/${slug}${suffix}`);
+      expect([401, 404]).toContain(unauthRes.status);
+      const unauthBody = await unauthRes.json();
+      expect(unauthBody.error?.code).toBe("AUTH_REQUIRED");
+      expect(unauthBody.meta?.requiresPassword).toBe(true);
+    }
 
     // Verify with wrong password
     const badVerify = await fetch(`${API_BASE_URL}/api/public/status-pages/${slug}/verify-password`, {
@@ -95,13 +96,14 @@ describe("Public status page password protection", () => {
     const token = verifyBody.data.token;
     expect(token).toBeDefined();
 
-    // Access with cookie
-    const authRes = await fetch(`${API_BASE_URL}/api/public/status-pages/${slug}`, {
-      headers: { Cookie: `sp_token_${slug}=${token}` },
-    });
-    expect(authRes.status).toBe(200);
-    const authBody = await authRes.json();
-    expect(authBody.success).toBe(true);
-    expect(authBody.data.monitors.length).toBeGreaterThan(0);
+    for (const suffix of ["", "/shell", "/live"]) {
+      const authRes = await fetch(`${API_BASE_URL}/api/public/status-pages/${slug}${suffix}`, {
+        headers: { Cookie: `sp_token_${slug}=${token}` },
+      });
+      expect(authRes.status).toBe(200);
+      const authBody = await authRes.json();
+      expect(authBody.success).toBe(true);
+      expect(authBody.data.monitors.length).toBeGreaterThan(0);
+    }
   });
 });

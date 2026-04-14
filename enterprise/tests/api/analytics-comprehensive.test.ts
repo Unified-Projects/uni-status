@@ -168,6 +168,69 @@ describe("Analytics API - Comprehensive", () => {
       const body = await response.json();
       expect(body.success).toBe(true);
     });
+
+    it("combines multiple monitors into a single interval per day for org-wide uptime", async () => {
+      const aggregateCtx = await bootstrapTestContext();
+
+      const createMonitor = async (name: string) => {
+        const response = await fetch(`${API_BASE_URL}/api/v1/monitors`, {
+          method: "POST",
+          headers: aggregateCtx.headers,
+          body: JSON.stringify({
+            name,
+            url: `https://${name.toLowerCase().replace(/\s+/g, "-")}.example.com`,
+            type: "https",
+            intervalSeconds: 60,
+            timeoutMs: 30000,
+          }),
+        });
+        const body = await response.json();
+        return body.data.id as string;
+      };
+
+      const firstMonitorId = await createMonitor(`Aggregate Monitor A ${randomUUID().slice(0, 8)}`);
+      const secondMonitorId = await createMonitor(`Aggregate Monitor B ${randomUUID().slice(0, 8)}`);
+
+      const date = new Date();
+      date.setHours(0, 0, 0, 0);
+
+      await insertDailyAggregate({
+        monitorId: firstMonitorId,
+        date,
+        successCount: 8,
+        degradedCount: 1,
+        failureCount: 1,
+        totalCount: 10,
+        uptimePercentage: 90,
+      });
+
+      await insertDailyAggregate({
+        monitorId: secondMonitorId,
+        date,
+        successCount: 6,
+        degradedCount: 2,
+        failureCount: 2,
+        totalCount: 10,
+        uptimePercentage: 80,
+      });
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/v1/analytics/uptime?days=7&granularity=day`,
+        { headers: aggregateCtx.headers }
+      );
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+
+      expect(body.success).toBe(true);
+      expect(body.data.intervals).toHaveLength(1);
+      expect(body.data.intervals[0].successCount).toBe(14);
+      expect(body.data.intervals[0].degradedCount).toBe(3);
+      expect(body.data.intervals[0].failureCount).toBe(3);
+      expect(body.data.intervals[0].totalCount).toBe(20);
+      expect(body.data.intervals[0].uptime).toBeCloseTo(85, 5);
+      expect(body.data.uptimePercentage).toBeCloseTo(85, 5);
+    });
   });
 
   describe("GET /api/v1/analytics/response-times", () => {

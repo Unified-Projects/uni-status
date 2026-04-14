@@ -294,7 +294,7 @@ export function SidebarLayout({
           </div>
 
           {/* Subscribe Form */}
-          <div className="mt-12 border-t pt-8">
+          <div className="mt-12 border-t pt-8 pb-8">
             <SubscribeForm slug={pageData.slug} />
           </div>
         </div>

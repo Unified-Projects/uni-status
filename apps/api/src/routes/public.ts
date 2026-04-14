@@ -58,6 +58,10 @@ const publicStatusPageShellCache = new Map<string, {
   expiresAt: number;
 }>();
 
+function getPublicStatusPageCacheKey(page: typeof statusPages.$inferSelect): string {
+  return `${page.id}:${page.updatedAt.getTime()}`;
+}
+
 function getCachedPublicStatusPagePayload(
   key: string
 ): Awaited<ReturnType<typeof buildPublicStatusPagePayload>> | null {
@@ -143,6 +147,78 @@ function setCachedPublicStatusPageShell(
       publicStatusPageShellCache.delete(oldestKey);
     }
   }
+}
+
+export async function warmPublicStatusPageCachesOnStartup(): Promise<void> {
+  if (process.env.NODE_ENV === "test" || process.env.STATUS_PAGE_STARTUP_WARM === "false") {
+    return;
+  }
+
+  const warmLimit = Number.parseInt(process.env.STATUS_PAGE_STARTUP_WARM_LIMIT ?? "0", 10);
+  const concurrency = Math.max(
+    1,
+    Number.parseInt(process.env.STATUS_PAGE_STARTUP_WARM_CONCURRENCY ?? "4", 10) || 4
+  );
+
+  const publishedPages = await db.query.statusPages.findMany({
+    where: eq(statusPages.published, true),
+  });
+
+  const warmablePages = publishedPages.filter((page) => {
+    const authConfig = getStatusPageAuthConfig(page);
+    return (authConfig?.protectionMode || "none") === "none";
+  });
+
+  const targetPages =
+    warmLimit > 0 ? warmablePages.slice(0, warmLimit) : warmablePages;
+
+  if (targetPages.length === 0) {
+    return;
+  }
+
+  const organizationIds = Array.from(new Set(targetPages.map((page) => page.organizationId)));
+  const organizationRows = organizationIds.length
+    ? await db.query.organizations.findMany({
+        where: inArray(organizations.id, organizationIds),
+      })
+    : [];
+  const organizationsById = new Map(organizationRows.map((organization) => [organization.id, organization]));
+
+  log.info(
+    { count: targetPages.length, concurrency },
+    "Warming published public status page shell/live caches"
+  );
+
+  let warmedCount = 0;
+
+  for (let index = 0; index < targetPages.length; index += concurrency) {
+    const batch = targetPages.slice(index, index + concurrency);
+
+    await Promise.all(
+      batch.map(async (page) => {
+        try {
+          const organization = organizationsById.get(page.organizationId) ?? null;
+          const cacheKey = getPublicStatusPageCacheKey(page);
+          const shellData = await buildPublicStatusPageShellPayload({ page, organization });
+          setCachedPublicStatusPageShell(cacheKey, shellData);
+
+          const fullData = await buildPublicStatusPagePayload({ page, organization });
+          setCachedPublicStatusPagePayload(cacheKey, fullData);
+          warmedCount += 1;
+        } catch (error) {
+          log.warn(
+            { err: error, statusPageId: page.id, slug: page.slug },
+            "Failed to warm public status page cache"
+          );
+        }
+      })
+    );
+  }
+
+  log.info(
+    { warmedCount, requestedCount: targetPages.length },
+    "Finished warming published public status page caches"
+  );
 }
 
 type StatusPageAuthConfig = {
@@ -498,7 +574,7 @@ publicRoutes.get("/status-pages/:slug", async (c) => {
     if ("response" in access) return access.response;
     const { page, organization, protectionMode } = access;
 
-    const cacheKey = `${page.id}:${page.updatedAt.getTime()}`;
+    const cacheKey = getPublicStatusPageCacheKey(page);
     if (protectionMode === "none") {
       const cached = getCachedPublicStatusPagePayload(cacheKey);
       if (cached) {
@@ -556,7 +632,7 @@ publicRoutes.get("/status-pages/:slug/shell", async (c) => {
     if ("response" in access) return access.response;
     const { page, organization, protectionMode } = access;
 
-    const cacheKey = `${page.id}:${page.updatedAt.getTime()}`;
+    const cacheKey = getPublicStatusPageCacheKey(page);
     if (protectionMode === "none") {
       const cached = getCachedPublicStatusPageShell(cacheKey);
       if (cached) {
@@ -612,7 +688,7 @@ publicRoutes.get("/status-pages/:slug/live", async (c) => {
     if ("response" in access) return access.response;
     const { page, organization, protectionMode } = access;
 
-    const cacheKey = `${page.id}:${page.updatedAt.getTime()}`;
+    const cacheKey = getPublicStatusPageCacheKey(page);
     let payload = protectionMode === "none" ? getCachedPublicStatusPagePayload(cacheKey) : null;
 
     if (!payload) {
