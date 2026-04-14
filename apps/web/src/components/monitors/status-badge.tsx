@@ -17,25 +17,25 @@ const statusConfig: Record<
   active: {
     label: "Operational",
     variant: "default",
-    className: "bg-[var(--status-success-text)] hover:opacity-80 text-white border-[var(--status-success-text)]",
+    className: "bg-[var(--status-success-bg)] hover:opacity-90 text-[var(--status-success-text)] border-[var(--status-success-border)]",
     icon: CheckCircle,
   },
   degraded: {
     label: "Degraded",
     variant: "default",
-    className: "bg-[var(--status-warning-text)] hover:opacity-80 text-white border-[var(--status-warning-text)]",
+    className: "bg-[var(--status-warning-bg)] hover:opacity-90 text-[var(--status-warning-text)] border-[var(--status-warning-border)]",
     icon: AlertTriangle,
   },
   down: {
     label: "Down",
     variant: "destructive",
-    className: "bg-[var(--status-error-text)] hover:opacity-80 text-white border-[var(--status-error-text)]",
+    className: "bg-[var(--status-error-bg)] hover:opacity-90 text-[var(--status-error-text)] border-[var(--status-error-border)]",
     icon: XCircle,
   },
   paused: {
     label: "Paused",
     variant: "secondary",
-    className: "bg-[var(--status-gray-text)] hover:opacity-80 text-white border-[var(--status-gray-text)]",
+    className: "bg-[var(--status-gray-bg)] hover:opacity-90 text-[var(--status-gray-text)] border-[var(--status-gray-border)]",
     icon: Pause,
   },
   pending: {

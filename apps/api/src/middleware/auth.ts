@@ -3,7 +3,7 @@ import { HTTPException } from "hono/http-exception";
 import { auth } from "@uni-status/auth/server";
 import { db } from "@uni-status/database";
 import { apiKeys, organizationMembers, organizations, users, systemSettings } from "@uni-status/database/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, or } from "drizzle-orm";
 import { isSelfHosted } from "@uni-status/shared/config/env";
 import {
   verifyFederatedToken,
@@ -13,6 +13,20 @@ import {
 import { createLogger } from "@uni-status/shared";
 
 const log = createLogger({ module: "auth-middleware" });
+const API_KEY_PREFIX_LENGTH = 11;
+const LEGACY_API_KEY_PREFIX_LENGTH = 8;
+
+async function verifyApiKeyToken(token: string, keyHash: string): Promise<boolean> {
+  if (keyHash === token) {
+    return true;
+  }
+
+  try {
+    return await Bun.password.verify(token, keyHash);
+  } catch {
+    return false;
+  }
+}
 
 export interface AuthContext {
   user: {
@@ -52,14 +66,63 @@ export async function authMiddleware(c: Context, next: Next) {
   // Check for API key authentication
   if (authHeader?.startsWith("Bearer us_")) {
     const token = authHeader.slice(7);
-    const keyPrefix = token.slice(0, 8);
+    const keyPrefix = token.slice(0, API_KEY_PREFIX_LENGTH);
+    const legacyKeyPrefix = token.slice(0, LEGACY_API_KEY_PREFIX_LENGTH);
 
     try {
-      const [key] = await db
+      const prefixFilters = [eq(apiKeys.keyPrefix, keyPrefix)];
+      if (legacyKeyPrefix !== keyPrefix) {
+        prefixFilters.push(eq(apiKeys.keyPrefix, legacyKeyPrefix));
+      }
+
+      const candidateKeys = await db
         .select()
         .from(apiKeys)
-        .where(eq(apiKeys.keyPrefix, keyPrefix))
-        .limit(1);
+        .where(or(...prefixFilters));
+
+      const sortedCandidateKeys = candidateKeys.sort((left, right) => {
+        if (left.keyPrefix === right.keyPrefix) {
+          return 0;
+        }
+
+        if (left.keyPrefix === keyPrefix) {
+          return -1;
+        }
+
+        if (right.keyPrefix === keyPrefix) {
+          return 1;
+        }
+
+        return right.keyPrefix.length - left.keyPrefix.length;
+      });
+
+      let key = null;
+      for (const candidateKey of sortedCandidateKeys) {
+        if (await verifyApiKeyToken(token, candidateKey.keyHash)) {
+          key = candidateKey;
+          break;
+        }
+      }
+
+      if (!key && candidateKeys.length > 0) {
+        log.debug(
+          {
+            keyPrefix,
+            legacyKeyPrefix,
+            candidatePrefixes: candidateKeys.map((candidate) => candidate.keyPrefix),
+            tokenPrefix: token.slice(0, 20),
+          },
+          "API key token mismatch"
+        );
+      }
+
+      if (candidateKeys.length > 0 && !key) {
+        c.set("auth", authContext);
+        return c.json(
+          { success: false, error: { code: "UNAUTHORIZED", message: "Invalid API key" } },
+          401
+        );
+      }
 
       if (key) {
         // Check if key is expired
@@ -68,34 +131,6 @@ export async function authMiddleware(c: Context, next: Next) {
           c.set("auth", authContext);
           return c.json(
             { success: false, error: { code: "UNAUTHORIZED", message: "API key has expired" } },
-            401
-          );
-        }
-
-        // Verify the API key
-        // In test environment, keys are stored as plaintext for simplicity
-        // In production, use bcrypt verification
-        let isValid = key.keyHash === token;
-        if (!isValid) {
-          log.debug({
-            keyPrefix,
-            storedHashPrefix: key.keyHash?.slice(0, 20),
-            tokenPrefix: token.slice(0, 20)
-          }, "API key token mismatch");
-          if (key.keyHash) {
-            try {
-              isValid = await Bun.password.verify(token, key.keyHash);
-            } catch {
-              // keyHash is not a valid bcrypt hash, plaintext comparison already failed
-              isValid = false;
-            }
-          }
-        }
-
-        if (!isValid) {
-          c.set("auth", authContext);
-          return c.json(
-            { success: false, error: { code: "UNAUTHORIZED", message: "Invalid API key" } },
             401
           );
         }
@@ -152,7 +187,7 @@ export async function authMiddleware(c: Context, next: Next) {
           .where(eq(apiKeys.id, key.id));
       }
     } catch (error) {
-      log.error({ err: error, keyPrefix: token?.slice(0, 8) }, "API key authentication error");
+      log.error({ err: error, keyPrefix, legacyKeyPrefix }, "API key authentication error");
     }
   }
 

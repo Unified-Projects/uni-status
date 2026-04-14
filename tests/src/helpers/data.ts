@@ -3,6 +3,7 @@ import { randomUUID, randomBytes, createHash } from "crypto";
 
 const DEFAULT_DB_URL =
   "postgresql://uni_status:uni_status_dev@postgres:5432/uni_status?sslmode=disable";
+const API_KEY_PREFIX_LENGTH = 11;
 
 // Self-hosted mode types
 export type SignupMode = "invite_only" | "domain_auto_join" | "open_with_approval";
@@ -849,20 +850,21 @@ export async function insertSubscriber(
  */
 export async function insertApiKey(
   organizationId: string,
-  userIdOrParams: string | { userId: string; name?: string; scopes?: string[]; scope?: string; expiresAt?: Date },
+  userIdOrParams: string | { userId: string; name?: string; scopes?: string[]; scope?: string; expiresAt?: Date; token?: string },
   paramsArg?: {
     name?: string;
     scopes?: string[];
     expiresAt?: Date;
+    token?: string;
   }
-): Promise<{ id: string; key: string }> {
+): Promise<{ id: string; key: string; token: string }> {
   const client = new Client({
     connectionString: process.env.DATABASE_URL ?? DEFAULT_DB_URL,
   });
   await client.connect();
 
   let userId: string;
-  let params: { name?: string; scopes?: string[]; expiresAt?: Date } | undefined;
+  let params: { name?: string; scopes?: string[]; expiresAt?: Date; token?: string } | undefined;
 
   if (typeof userIdOrParams === "string") {
     // New signature: (organizationId, userId, params)
@@ -875,12 +877,13 @@ export async function insertApiKey(
       name: userIdOrParams.name,
       scopes: userIdOrParams.scopes || (userIdOrParams.scope ? [userIdOrParams.scope] : undefined),
       expiresAt: userIdOrParams.expiresAt,
+      token: userIdOrParams.token,
     };
   }
 
   const id = randomUUID();
-  const token = `us_${randomBytes(16).toString("hex")}`;
-  const keyPrefix = token.slice(0, 8);
+  const token = params?.token ?? `us_${randomBytes(16).toString("hex")}`;
+  const keyPrefix = token.slice(0, API_KEY_PREFIX_LENGTH);
   const now = new Date();
 
   await client.query(
@@ -1103,7 +1106,7 @@ export async function insertOrganizationMember(
 
   // Create an API key for this user
   const token = `us_${randomBytes(16).toString("hex")}`;
-  const keyPrefix = token.slice(0, 8);
+  const keyPrefix = token.slice(0, API_KEY_PREFIX_LENGTH);
   const apiKeyId = randomUUID();
 
   await client.query(

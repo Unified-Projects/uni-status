@@ -149,6 +149,34 @@ describe("API Authorization", () => {
 
       expect(response.status).toBe(401);
     });
+
+    it("authenticates keys that share a legacy 8-character prefix", async () => {
+      const sharedPrefix = "us_abcde";
+      const firstToken = `${sharedPrefix}11111111111111111111111111111111`;
+      const secondToken = `${sharedPrefix}22222222222222222222222222222222`;
+
+      await insertApiKey(ctx.organizationId, ctx.userId, {
+        name: "collision-key-1",
+        scopes: ["read"],
+        token: firstToken,
+      });
+
+      await insertApiKey(ctx.organizationId, ctx.userId, {
+        name: "collision-key-2",
+        scopes: ["read"],
+        token: secondToken,
+      });
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/monitors`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${secondToken}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      expect(response.status).toBe(200);
+    });
   });
 
   describe("Expired tokens", () => {

@@ -255,10 +255,10 @@ export default function EmbedsPage() {
                         <Badge
                           variant="default"
                           className={cn(
-                            monitor.status === "active" && "bg-green-500",
-                            monitor.status === "degraded" && "bg-yellow-500",
-                            monitor.status === "down" && "bg-red-500",
-                            monitor.status === "pending" && "bg-gray-500"
+                            monitor.status === "active" && "bg-[var(--status-success-bg)] text-[var(--status-success-text)] border-[var(--status-success-border)] hover:opacity-90",
+                            monitor.status === "degraded" && "bg-[var(--status-warning-bg)] text-[var(--status-warning-text)] border-[var(--status-warning-border)] hover:opacity-90",
+                            monitor.status === "down" && "bg-[var(--status-error-bg)] text-[var(--status-error-text)] border-[var(--status-error-border)] hover:opacity-90",
+                            monitor.status === "pending" && "bg-[var(--status-gray-bg)] text-[var(--status-gray-text)] border-[var(--status-gray-border)] hover:opacity-90"
                           )}
                         >
                           {monitor.status === "active" ? "Operational" : monitor.status}

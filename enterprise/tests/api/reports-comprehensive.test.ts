@@ -421,6 +421,10 @@ describe("Reports API - Comprehensive", () => {
       const body = await response.json();
       expect(body.success).toBe(true);
       expect(Array.isArray(body.data)).toBe(true);
+      if (body.data.length > 0) {
+        expect(body.data[0].downloadUrl).toMatch(/^\/api\/v1\/reports\/.+\/download$/);
+        expect(body.data[0].fileUrl).toBeNull();
+      }
     });
 
     it("lists reports with pagination", async () => {
@@ -482,6 +486,8 @@ describe("Reports API - Comprehensive", () => {
       const body = await response.json();
       expect(body.success).toBe(true);
       expect(body.data.id).toBe(report.id);
+      expect(body.data.downloadUrl).toBe(`/api/v1/reports/${report.id}/download`);
+      expect(body.data.fileUrl).toBeNull();
     });
   });
 

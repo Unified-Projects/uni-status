@@ -5,6 +5,7 @@ const DEFAULT_DB_URL =
   "postgresql://uni_status:uni_status_dev@postgres:5432/uni_status?sslmode=disable";
 
 const API_BASE_URL = process.env.API_BASE_URL ?? "http://api:3001";
+const API_KEY_PREFIX_LENGTH = 11;
 
 // Shared pool for dbClient queries
 let sharedPool: Pool | null = null;
@@ -111,7 +112,7 @@ export async function bootstrapTestContext(): Promise<TestContext> {
   const organizationId = randomUUID();
   const apiKeyId = randomUUID();
   const token = `us_${randomBytes(16).toString("hex")}`;
-  const keyPrefix = token.slice(0, 8);
+  const keyPrefix = token.slice(0, API_KEY_PREFIX_LENGTH);
 
   await client.query("BEGIN");
   await client.query(
@@ -179,7 +180,7 @@ export async function bootstrapTestContext(): Promise<TestContext> {
       apiKeyId,
       organizationId,
       "test-key",
-      token, // hash is not validated in middleware yet
+      token, // tests still seed plaintext keys; middleware supports plaintext and bcrypt
       keyPrefix,
       JSON.stringify(["read", "write", "admin"]),
       userId,

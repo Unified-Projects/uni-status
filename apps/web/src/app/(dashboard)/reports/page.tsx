@@ -321,15 +321,16 @@ export default function ReportsPage() {
                         </div>
                         <div className="flex items-center gap-2">
                           {getStatusBadge(report.status)}
-                          {report.status === "completed" && report.fileUrl && (
+                          {report.status === "completed" && report.downloadUrl && (
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() =>
-                                window.open(`/api/v1/reports/${report.id}/download`, "_blank")
-                              }
+                              onClick={() => window.open(report.downloadUrl, "_blank")}
+                              aria-label={`Download ${getReportTypeLabel(report.reportType)} report`}
+                              title="Download report"
                             >
                               <Download className="h-4 w-4" />
+                              <span>Download</span>
                             </Button>
                           )}
                         </div>

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-04-14
+
+### Changed
+- Restored report downloads in the dashboard by aligning the reports UI with the proxied `downloadUrl` API response and making the action visible as a labeled download control
+- Improved status badge readability across dashboard monitor and embed surfaces by switching operational/degraded/down badges from white-on-solid fills to higher-contrast semantic status colors
+- Updated badge template preview rendering to automatically choose a readable foreground color for status text and icons based on the selected status fill color
+- Bumped workspace package/runtime version references from `0.2.6` to `0.2.7`
+
+### Tests
+- Added enterprise reports API coverage for sanitized report responses to assert `downloadUrl` is returned while `fileUrl` remains hidden
+
 ## [0.2.6] - 2026-04-14
 
 ### Added

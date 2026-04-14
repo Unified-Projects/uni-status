@@ -2358,6 +2358,7 @@ export interface SlaReport {
   includedMonitors: string[];
   includedStatusPages: string[];
   fileUrl: string | null;
+  downloadUrl: string;
   expiresAt: string | null;
   createdAt: string;
 }

@@ -436,7 +436,7 @@ export function getSeverityColor(
  * Get combined classes for a badge-style status indicator
  */
 export function getStatusBadgeClasses(colors: StatusColorConfig): string {
-  return `${colors.solid} ${colors.solidHover} text-white`;
+  return `${colors.bg} ${colors.text} border ${colors.border} hover:opacity-90`;
 }
 
 /**

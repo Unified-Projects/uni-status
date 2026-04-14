@@ -85,7 +85,7 @@ const DEFAULT_TEMPLATE_CONFIG: BadgeTemplateConfig = {
     unknown: STATUS_COLORS.unknown,
   },
   textColor: "#ffffff",
-  statusTextColor: "#ffffff",
+  statusTextColor: "",
   scale: 1,
   dot: {
     size: 14,
@@ -748,7 +748,7 @@ function buildBadgeSvg(
   const labelColor = config.labelColor || "#4b5563";
   const statusColor = getStatusColor(config, status);
   const labelTextColor = config.textColor || "#ffffff";
-  const statusTextColor = config.statusTextColor || "#ffffff";
+  const statusTextColor = config.statusTextColor || getReadableForegroundColor(statusColor);
   const showIcon = config.showIcon !== false;
   const customCss = config.customCss || "";
 
@@ -765,7 +765,7 @@ function buildBadgeSvg(
     const padding = condensed ? 10 : 14;
     const width = padding + iconSpace + textWidth + padding / 2;
     const radius = 6; // Slight corner rounding (was used when rounded=false)
-    const iconSvg = showIcon ? renderStatusIcon(statusColor, status) : "";
+    const iconSvg = showIcon ? renderStatusIcon(statusTextColor, status) : "";
 
     return {
       svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${modernHeight}" role="img">
@@ -882,12 +882,69 @@ function escapeText(text: string) {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function renderStatusIcon(_color: string, status: PreviewStatus) {
+function renderStatusIcon(color: string, status: PreviewStatus) {
   // Use shared icon utility for consistent icons
   return getStatusIconSvg(status as StatusIconType, {
-    stroke: "white",
+    stroke: color,
     strokeWidth: 1.5,
     fill: "none",
   });
 }
 
+function getReadableForegroundColor(backgroundColor: string) {
+  const rgb = parseHexColor(backgroundColor);
+  if (!rgb) {
+    return "#111827";
+  }
+
+  const whiteContrast = getContrastRatio(rgb, { r: 255, g: 255, b: 255 });
+  const darkContrast = getContrastRatio(rgb, { r: 17, g: 24, b: 39 });
+  return darkContrast >= whiteContrast ? "#111827" : "#ffffff";
+}
+
+function parseHexColor(color: string) {
+  const normalized = color.trim().replace(/^#/, "");
+  const value =
+    normalized.length === 3
+      ? normalized
+          .split("")
+          .map((char) => char + char)
+          .join("")
+      : normalized;
+
+  if (!/^[0-9a-fA-F]{6}$/.test(value)) {
+    return null;
+  }
+
+  return {
+    r: Number.parseInt(value.slice(0, 2), 16),
+    g: Number.parseInt(value.slice(2, 4), 16),
+    b: Number.parseInt(value.slice(4, 6), 16),
+  };
+}
+
+function getContrastRatio(
+  a: { r: number; g: number; b: number },
+  b: { r: number; g: number; b: number }
+) {
+  const luminanceA = getRelativeLuminance(a);
+  const luminanceB = getRelativeLuminance(b);
+  const lighter = Math.max(luminanceA, luminanceB);
+  const darker = Math.min(luminanceA, luminanceB);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+function getRelativeLuminance({ r, g, b }: { r: number; g: number; b: number }) {
+  const transform = (channel: number) => {
+    const normalized = channel / 255;
+    return normalized <= 0.03928
+      ? normalized / 12.92
+      : ((normalized + 0.055) / 1.055) ** 2.4;
+  };
+
+  const red = transform(r);
+  const green = transform(g);
+  const blue = transform(b);
+
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+}
