@@ -3,6 +3,7 @@ import {
   text,
   timestamp,
   boolean,
+  integer,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
@@ -76,6 +77,9 @@ export const twoFactor = pgTable("twoFactor", {
     .references(() => user.id, { onDelete: "cascade" }),
   secret: text("secret").notNull(),
   backupCodes: text("backupCodes").notNull(),
+  verified: boolean("verified").default(true),
+  failedVerificationCount: integer("failedVerificationCount").default(0),
+  lockedUntil: timestamp("lockedUntil"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
 });

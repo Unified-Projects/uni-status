@@ -1732,7 +1732,7 @@ export async function processReportGeneration(
       page.setDefaultTimeout(30000);
       page.setDefaultNavigationTimeout(30000);
 
-      await page.setContent(html, { waitUntil: "networkidle0", timeout: 30000 });
+      await page.setContent(html, { waitUntil: "load", timeout: 30000 });
 
       pdfBuffer = await page.pdf({
         format: "A4",
