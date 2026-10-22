@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.8] - 2026-10-23
+
+### Security
+- Upgraded better-auth and @better-auth/sso from 1.5.5 to 1.6.33 (CVE-2026-53512, CVE-2026-53513, CVE-2026-53515, CVE-2026-53518)
+- Upgraded Next.js from 16.2.0 to 16.4.2 (CVE-2026-75604, GHSA-2464-fhr4-w9xw, GHSA-vcvr-r3jv-pc5j, GHSA-673q-mjm6-r5xr)
+- Patched transitive packages flagged by image scans: @fastify/busboy, @graphql-tools/utils, @xmldom/xmldom, basic-ftp, drizzle-orm, effect, engine.io, fast-uri, hono, js-yaml, kysely, defu
+- Rebuilt all images on `node:26.12.1-alpine` and `oven/bun:1.4.4-alpine`, picking up OpenSSL 3.5.9 (CVE-2026-31789) and npm's tar 7.5.22
+
+### Changed
+- Added `verified`, `failedVerificationCount` and `lockedUntil` columns to the `twoFactor` table for better-auth 1.6 TOTP enrolment and lockout. Run the migrations container before starting the new controller
+- Updated remaining workspace dependencies to their latest minor and patch releases, and GitHub Actions to current versions
+- Report PDF rendering now waits for the page `load` event, as Puppeteer 24.43 dropped the `networkidle` options from `setContent`
+- Bumped workspace package/runtime version references from `0.2.7` to `0.2.8`
+
 ## [0.2.7] - 2026-04-14
 
 ### Changed

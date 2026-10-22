@@ -1,6 +1,6 @@
 {
   "name": "@uni-status/database",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "private": true,
   "type": "module",
   "exports": {
@@ -22,11 +22,11 @@
   },
   "dependencies": {
     "@uni-status/shared": "workspace:*",
-    "drizzle-orm": "^0.45.1",
-    "postgres": "^3.4.8"
+    "drizzle-orm": "^0.45.4",
+    "postgres": "^3.4.9"
   },
   "devDependencies": {
-    "drizzle-kit": "^0.31.10",
-    "typescript": "^5.7.3"
+    "drizzle-kit": "^0.31.11",
+    "typescript": "^5.9.3"
   }
 }

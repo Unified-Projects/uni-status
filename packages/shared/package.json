@@ -1,6 +1,6 @@
 {
   "name": "@uni-status/shared",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "private": true,
   "type": "module",
   "exports": {
@@ -83,9 +83,9 @@
   "dependencies": {
     "@uni-status/licensing": "workspace:*",
     "lucide-react": "^0.577.0",
-    "zod": "^4.3.6"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "typescript": "^5.7.2"
+    "typescript": "^5.9.3"
   }
 }
