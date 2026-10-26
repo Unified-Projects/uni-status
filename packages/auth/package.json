@@ -21,12 +21,12 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@better-auth/core": "~1.6.33",
-    "@better-auth/sso": "~1.6.33",
+    "@better-auth/core": "~1.7.12",
+    "@better-auth/sso": "~1.7.12",
     "@uni-status/database": "workspace:*",
     "@uni-status/email": "workspace:*",
     "@uni-status/shared": "workspace:*",
-    "better-auth": "~1.6.33",
+    "better-auth": "~1.7.12",
     "pg": "^8.23.1",
     "react": "^19.3.1"
   },
