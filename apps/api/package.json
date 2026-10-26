@@ -12,7 +12,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1156.0",
     "@hono/swagger-ui": "^0.6.1",
-    "@hono/zod-openapi": "^1.2.2",
+    "@hono/zod-openapi": "^1.6.3",
     "@resvg/resvg-js": "^2.6.2",
     "@uni-status/auth": "workspace:*",
     "@uni-status/database": "workspace:*",
@@ -28,7 +28,7 @@
     "nanoid": "^5.1.16",
     "puppeteer": "^24.43.1",
     "react": "^19.3.1",
-    "satori": "^0.25.0",
+    "satori": "^0.63.2",
     "zod": "^4.6.7"
   },
   "devDependencies": {
