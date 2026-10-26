@@ -21,7 +21,7 @@
     "@uni-status/enterprise": "workspace:*",
     "@uni-status/shared": "workspace:*",
     "@uni-status/ui": "workspace:*",
-    "@vercel/og": "^0.11.1",
+    "@vercel/og": "^1.0.3",
     "date-fns": "^4.4.0",
     "framer-motion": "^12.43.0",
     "leaflet": "^1.9.4",
