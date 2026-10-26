@@ -19,7 +19,7 @@
     "docker:logs": "docker compose logs -f"
   },
   "devDependencies": {
-    "@types/bun": "^1.4.3",
+    "@types/bun": "^1.4.4",
     "eslint": "^10.13.0",
     "prettier": "^3.9.10",
     "turbo": "^2.11.10",
