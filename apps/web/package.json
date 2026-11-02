@@ -45,9 +45,9 @@
     "@types/node": "^25.9.9",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "autoprefixer": "^10.6.1",
-    "eslint": "^10.13.0",
-    "postcss": "^8.5.31",
+    "autoprefixer": "^10.6.2",
+    "eslint": "^10.14.0",
+    "postcss": "^8.5.32",
     "tailwindcss": "^4.3.3",
     "tailwindcss-animate": "^1.0.7",
     "typescript": "^5.9.3"
