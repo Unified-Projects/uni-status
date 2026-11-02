@@ -23,7 +23,7 @@
     "@uni-status/shared": "workspace:*",
     "nodemailer": "^8.0.11",
     "react-email": "^5.2.11",
-    "resend": "^6.34.1"
+    "resend": "^6.36.0"
   },
   "devDependencies": {
     "@react-email/preview-server": "^5.2.10",
