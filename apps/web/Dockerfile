@@ -1,4 +1,4 @@
-FROM node:26.12.1-alpine AS base
+FROM node:26.13.0-alpine AS base
 RUN npm install -g pnpm
 WORKDIR /app
 
@@ -41,7 +41,7 @@ WORKDIR /app/apps/web
 RUN pnpm build
 
 # Production
-FROM node:26.12.1-alpine AS production
+FROM node:26.13.0-alpine AS production
 WORKDIR /app
 
 ENV NODE_ENV=production
