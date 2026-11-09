@@ -10,9 +10,9 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1156.0",
-    "@hono/swagger-ui": "^0.6.1",
-    "@hono/zod-openapi": "^1.2.2",
+    "@aws-sdk/client-s3": "^3.1163.0",
+    "@hono/swagger-ui": "^0.6.2",
+    "@hono/zod-openapi": "^1.6.3",
     "@resvg/resvg-js": "^2.6.2",
     "@uni-status/auth": "workspace:*",
     "@uni-status/database": "workspace:*",
@@ -23,12 +23,12 @@
     "drizzle-orm": "^0.45.4",
     "graphql": "^16.14.2",
     "graphql-yoga": "^5.24.6",
-    "hono": "^4.13.13",
+    "hono": "^4.13.16",
     "ioredis": "5.11.1",
     "nanoid": "^5.1.16",
     "puppeteer": "^24.43.1",
     "react": "^19.3.1",
-    "satori": "^0.25.0",
+    "satori": "^0.63.2",
     "zod": "^4.6.7"
   },
   "devDependencies": {
