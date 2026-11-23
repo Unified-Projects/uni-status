@@ -1,9 +1,9 @@
-FROM node:26.12.1-alpine AS base
+FROM node:26.13.1-alpine AS base
 RUN npm install -g pnpm
 WORKDIR /app
 
 # Bun binary for dev runtime
-FROM oven/bun:1.4.4-alpine AS bunbase
+FROM oven/bun:1.4.5-alpine AS bunbase
 
 # Development - install and run in one stage
 FROM base AS dev
@@ -46,7 +46,7 @@ WORKDIR /app/apps/api
 RUN bun run build
 
 # Production
-FROM oven/bun:1.4.4-alpine AS production
+FROM oven/bun:1.4.5-alpine AS production
 WORKDIR /app
 
 # Install system dependencies for health checks and Puppeteer
