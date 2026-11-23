@@ -1,9 +1,9 @@
-FROM node:26.12.1-alpine AS base
+FROM node:26.13.1-alpine AS base
 RUN npm install -g pnpm
 WORKDIR /app
 
 # Bun binary for dev runtime
-FROM oven/bun:1.4.4-alpine AS bunbase
+FROM oven/bun:1.4.5-alpine AS bunbase
 
 # Development - install and run in one stage
 FROM base AS dev
@@ -41,7 +41,7 @@ RUN pnpm install --shamefully-hoist --frozen-lockfile
 COPY . .
 
 # Production - run source directly (Bun handles TypeScript/JSX natively)
-FROM oven/bun:1.4.4-alpine AS production
+FROM oven/bun:1.4.5-alpine AS production
 WORKDIR /app
 
 # Install Chromium for Puppeteer PDF generation
